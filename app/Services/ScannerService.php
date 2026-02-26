@@ -271,6 +271,26 @@ class ScannerService
             $crawler->filter('img[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                 $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'img', $links);
             });
+
+            // Extract from <img srcset=""> (responsive images)
+            $crawler->filter('img[srcset]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinksFromSrcset($node, $sourceUrl, 'img', $links);
+            });
+
+            // Extract from <img data-src=""> (lazy loading)
+            $crawler->filter('img[data-src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'data-src', $sourceUrl, 'img', $links);
+            });
+
+            // Extract from <source srcset=""> inside <picture> elements
+            $crawler->filter('picture source[srcset]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinksFromSrcset($node, $sourceUrl, 'img', $links);
+            });
+
+            // Extract from <source src=""> inside <picture> elements
+            $crawler->filter('picture source[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'img', $links);
+            });
         } catch (\Exception $e) {
             // Silently handle parsing errors
         }
@@ -312,6 +332,76 @@ class ScannerService
             'source' => $sourceUrl,
             'element' => $element,
         ];
+    }
+
+    /**
+     * Add links from a srcset attribute to the links array.
+     *
+     * Parses the srcset format which contains multiple URLs with size descriptors
+     * e.g., "image-320w.jpg 320w, image-480w.jpg 480w, image-800w.jpg 800w"
+     *
+     * @param  Crawler  $node       The DOM node to extract from.
+     * @param  string   $sourceUrl  The source page URL.
+     * @param  string   $element    The element type ('img').
+     * @param  array    &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addLinksFromSrcset(Crawler $node, string $sourceUrl, string $element, array &$links): void
+    {
+        $srcset = $node->attr('srcset');
+
+        if ($srcset === null || $srcset === '') {
+            return;
+        }
+
+        // Split srcset on comma followed by optional whitespace, then find the URL in each candidate
+        // This regex splits correctly for standard srcset but data: URLs are complex
+        // Standard srcset format: "url descriptor, url descriptor, ..."
+        $candidates = preg_split('/,\s*(?=[^\s])/', $srcset);
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+
+            if ($candidate === '') {
+                continue;
+            }
+
+            // Split by whitespace - first part is the URL, rest is descriptor (e.g., "320w" or "2x")
+            $parts = preg_split('/\s+/', $candidate, 2);
+            $url = $parts[0] ?? '';
+
+            if ($url === '') {
+                continue;
+            }
+
+            // Skip data: URLs and fragment-only
+            if (preg_match('/^(data:|#)/', $url)) {
+                continue;
+            }
+
+            $normalizedUrl = $this->normalizeUrl($url, $sourceUrl);
+
+            if ($normalizedUrl === null) {
+                continue;
+            }
+
+            // Avoid duplicates in links array
+            $alreadyAdded = false;
+            foreach ($links as $link) {
+                if ($link['url'] === $normalizedUrl && $link['element'] === $element) {
+                    $alreadyAdded = true;
+                    break;
+                }
+            }
+
+            if (!$alreadyAdded) {
+                $links[] = [
+                    'url' => $normalizedUrl,
+                    'source' => $sourceUrl,
+                    'element' => $element,
+                ];
+            }
+        }
     }
 
     /**

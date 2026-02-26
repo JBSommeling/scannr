@@ -506,6 +506,88 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('img', $links[0]['element']);
     }
 
+    public function test_extract_links_finds_img_srcset(): void
+    {
+        $html = '<html><body><img srcset="/images/logo-320w.jpg 320w, /images/logo-480w.jpg 480w, /images/logo-800w.jpg 800w"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $this->assertCount(3, $links);
+        $this->assertContains('https://example.com/images/logo-320w.jpg', $urls);
+        $this->assertContains('https://example.com/images/logo-480w.jpg', $urls);
+        $this->assertContains('https://example.com/images/logo-800w.jpg', $urls);
+        $this->assertEquals('img', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_img_srcset_with_pixel_density(): void
+    {
+        $html = '<html><body><img srcset="/images/logo.jpg 1x, /images/logo@2x.jpg 2x"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $this->assertCount(2, $links);
+        $this->assertContains('https://example.com/images/logo.jpg', $urls);
+        $this->assertContains('https://example.com/images/logo@2x.jpg', $urls);
+    }
+
+    public function test_extract_links_finds_img_data_src(): void
+    {
+        $html = '<html><body><img data-src="/images/lazy-loaded.jpg" class="lazy"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/images/lazy-loaded.jpg', $links[0]['url']);
+        $this->assertEquals('img', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_picture_source_srcset(): void
+    {
+        $html = '<html><body>
+            <picture>
+                <source srcset="/images/hero-wide.jpg 1200w, /images/hero-medium.jpg 800w" media="(min-width: 800px)">
+                <source srcset="/images/hero-narrow.jpg 400w">
+                <img src="/images/hero-fallback.jpg">
+            </picture>
+        </body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $this->assertContains('https://example.com/images/hero-wide.jpg', $urls);
+        $this->assertContains('https://example.com/images/hero-medium.jpg', $urls);
+        $this->assertContains('https://example.com/images/hero-narrow.jpg', $urls);
+        $this->assertContains('https://example.com/images/hero-fallback.jpg', $urls);
+    }
+
+    public function test_extract_links_avoids_duplicates_in_srcset(): void
+    {
+        $html = '<html><body><img src="/images/logo.jpg" srcset="/images/logo.jpg 1x, /images/logo@2x.jpg 2x"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        // Should have 3 images: logo.jpg from src, logo.jpg from srcset (dedupe handled), logo@2x.jpg from srcset
+        // Actually src adds one, then srcset checks for duplicates
+        $this->assertCount(2, $links);
+        $this->assertContains('https://example.com/images/logo.jpg', $urls);
+        $this->assertContains('https://example.com/images/logo@2x.jpg', $urls);
+    }
+
+    public function test_extract_links_handles_srcset_with_empty_candidates(): void
+    {
+        $html = '<html><body><img srcset="/images/small.jpg 320w, , /images/large.jpg 800w"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $this->assertCount(2, $links);
+        $this->assertContains('https://example.com/images/small.jpg', $urls);
+        $this->assertContains('https://example.com/images/large.jpg', $urls);
+    }
+
     public function test_extract_links_skips_data_urls(): void
     {
         $html = '<html><body><img src="data:image/png;base64,abc123" alt="Data Image"><img src="/real.png"></body></html>';
