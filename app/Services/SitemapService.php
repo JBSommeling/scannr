@@ -94,24 +94,36 @@ class SitemapService
     {
         $this->setBaseUrl($baseUrl);
 
-        $sitemapUrls = [
-            $this->baseUrl . '/sitemap.xml',
-            $this->baseUrl . '/sitemap_index.xml',
-            $this->baseUrl . '/sitemap/',
-        ];
-
-        // First try to get sitemap URL from robots.txt
+        // First try to get sitemap URLs from robots.txt
         $robotsSitemaps = $this->getSitemapsFromRobots();
-        $sitemapUrls = array_merge($robotsSitemaps, $sitemapUrls);
 
         $discoveredUrls = [];
-        foreach ($sitemapUrls as $sitemapUrl) {
-            $sitemapUrl = trim($sitemapUrl);
-            $urls = $this->parseSitemap($sitemapUrl);
 
-            if (!empty($urls)) {
+        // If we found sitemaps in robots.txt, parse ALL of them
+        if (!empty($robotsSitemaps)) {
+            foreach ($robotsSitemaps as $sitemapUrl) {
+                $sitemapUrl = trim($sitemapUrl);
+                $urls = $this->parseSitemap($sitemapUrl);
                 $discoveredUrls = array_merge($discoveredUrls, $urls);
-                break; // Found a working sitemap
+            }
+        }
+
+        // If no URLs found from robots.txt sitemaps, try default locations
+        if (empty($discoveredUrls)) {
+            $defaultSitemapUrls = [
+                $this->baseUrl . '/sitemap.xml',
+                $this->baseUrl . '/sitemap_index.xml',
+                $this->baseUrl . '/sitemap/',
+            ];
+
+            foreach ($defaultSitemapUrls as $sitemapUrl) {
+                $sitemapUrl = trim($sitemapUrl);
+                $urls = $this->parseSitemap($sitemapUrl);
+
+                if (!empty($urls)) {
+                    $discoveredUrls = array_merge($discoveredUrls, $urls);
+                    break; // Found a working sitemap in default locations
+                }
             }
         }
 
