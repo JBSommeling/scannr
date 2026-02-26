@@ -279,7 +279,12 @@ class ScanSite extends Command
             }
         }
 
-        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0) {
+        // Broken links alert (only shown when > 0)
+        if ($stats['broken'] > 0) {
+            $this->error("  ⚠ Broken links: {$stats['broken']}");
+        }
+
+        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0 || $stats['broken'] > 0) {
             $this->newLine();
         }
 
@@ -312,13 +317,37 @@ class ScanSite extends Command
         }
 
         $this->table($headers, $tableData);
+
+        // Display broken links in a separate table
+        $brokenLinks = array_filter($this->results, fn($r) => !$r['isOk']);
+        if (!empty($brokenLinks)) {
+            $this->newLine();
+            $this->error('Broken Links:');
+
+            $brokenTableData = [];
+            foreach ($brokenLinks as $result) {
+                $brokenTableData[] = [
+                    'URL' => $this->truncate($result['url'], 60),
+                    'Source' => $this->truncate($result['sourcePage'], 40),
+                    'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                    'Status' => $result['status'],
+                    'Error' => $result['type'],
+                ];
+            }
+
+            $this->table(['URL', 'Source', 'Element', 'Status', 'Error'], $brokenTableData);
+        }
     }
 
     protected function displayJson(array $results, array $stats): void
     {
+        // Extract broken links for separate section
+        $brokenLinks = array_values(array_filter($this->results, fn($r) => !$r['isOk']));
+
         $output = [
             'summary' => $stats,
             'results' => array_values($results),
+            'brokenLinks' => $brokenLinks,
         ];
 
         $this->line(json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
