@@ -388,56 +388,177 @@ class ScanSite extends Command
             }
 
             $content = (string) $response->getBody();
-            $count = 0;
+            $contentType = $response->getHeaderLine('Content-Type');
 
-            // Suppress XML errors
-            libxml_use_internal_errors(true);
-            $xml = simplexml_load_string($content);
-            libxml_clear_errors();
-
-            if ($xml === false) {
-                return 0;
+            // Determine format and parse accordingly
+            if ($this->isXmlContent($content, $contentType)) {
+                return $this->parseXmlSitemap($content, $depth);
             }
 
-            // Register namespaces
-            $namespaces = $xml->getNamespaces(true);
-            if (isset($namespaces[''])) {
-                $xml->registerXPathNamespace('sm', $namespaces['']);
+            if ($this->isHtmlContent($content, $contentType)) {
+                return $this->parseHtmlSitemap($content, $url);
             }
 
-            // Check if it's a sitemap index
-            $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
-            if (!empty($sitemapNodes)) {
-                foreach ($sitemapNodes as $node) {
-                    $childSitemapUrl = (string) $node;
-                    $count += $this->parseSitemap($childSitemapUrl, $depth + 1);
-                }
-                return $count;
+            // Try plain text (one URL per line)
+            if ($this->isTextContent($contentType)) {
+                return $this->parseTextSitemap($content);
             }
 
-            // Parse regular sitemap URLs
-            $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
-            if (!empty($urlNodes)) {
-                foreach ($urlNodes as $node) {
-                    $pageUrl = (string) $node;
-                    $pageUrl = rtrim($pageUrl, '/');
-
-                    if (!isset($this->visited[$pageUrl]) && $this->isInternalUrl($pageUrl)) {
-                        $this->queue[] = [
-                            'url' => $pageUrl,
-                            'depth' => 0, // Treat as entry point so it crawls links from these pages too
-                            'source' => 'sitemap',
-                        ];
-                        $count++;
-                    }
-                }
-            }
-
-            return $count;
+            return 0;
 
         } catch (\Exception $e) {
             return 0;
         }
+    }
+
+    protected function isXmlContent(string $content, string $contentType): bool
+    {
+        // Check content type header
+        if (str_contains($contentType, 'xml')) {
+            return true;
+        }
+
+        // Check if content starts with XML declaration or root element
+        $trimmed = ltrim($content);
+        return str_starts_with($trimmed, '<?xml') ||
+               str_starts_with($trimmed, '<urlset') ||
+               str_starts_with($trimmed, '<sitemapindex');
+    }
+
+    protected function isHtmlContent(string $content, string $contentType): bool
+    {
+        // Check content type header
+        if (str_contains($contentType, 'text/html')) {
+            return true;
+        }
+
+        // Check if content looks like HTML
+        $trimmed = ltrim($content);
+        return str_starts_with($trimmed, '<!DOCTYPE') ||
+               str_starts_with($trimmed, '<html') ||
+               str_starts_with($trimmed, '<HTML');
+    }
+
+    protected function isTextContent(string $contentType): bool
+    {
+        return str_contains($contentType, 'text/plain');
+    }
+
+    protected function parseXmlSitemap(string $content, int $depth): int
+    {
+        // Suppress XML errors
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($content);
+        libxml_clear_errors();
+
+        if ($xml === false) {
+            return 0;
+        }
+
+        $count = 0;
+
+        // Register namespaces
+        $namespaces = $xml->getNamespaces(true);
+        if (isset($namespaces[''])) {
+            $xml->registerXPathNamespace('sm', $namespaces['']);
+        }
+
+        // Check if it's a sitemap index
+        $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
+        if (!empty($sitemapNodes)) {
+            foreach ($sitemapNodes as $node) {
+                $childSitemapUrl = (string) $node;
+                $count += $this->parseSitemap($childSitemapUrl, $depth + 1);
+            }
+            return $count;
+        }
+
+        // Parse regular sitemap URLs
+        $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
+        if (!empty($urlNodes)) {
+            foreach ($urlNodes as $node) {
+                $pageUrl = (string) $node;
+                $count += $this->addSitemapUrl($pageUrl);
+            }
+        }
+
+        return $count;
+    }
+
+    protected function parseHtmlSitemap(string $content, string $baseUrl): int
+    {
+        $count = 0;
+
+        try {
+            $crawler = new Crawler($content, $baseUrl);
+
+            // Extract all links from the HTML sitemap page
+            $crawler->filter('a[href]')->each(function (Crawler $node) use (&$count, $baseUrl) {
+                $href = $node->attr('href');
+
+                if ($href === null || $href === '') {
+                    return;
+                }
+
+                // Skip non-http links
+                if (preg_match('/^(javascript|mailto|tel|#)/', $href)) {
+                    return;
+                }
+
+                $normalizedUrl = $this->normalizeUrl($href, $baseUrl);
+
+                if ($normalizedUrl === null) {
+                    return;
+                }
+
+                // Only add internal URLs from HTML sitemaps
+                if ($this->isInternalUrl($normalizedUrl)) {
+                    $count += $this->addSitemapUrl($normalizedUrl);
+                }
+            });
+        } catch (\Exception $e) {
+            // Silently handle parsing errors
+        }
+
+        return $count;
+    }
+
+    protected function parseTextSitemap(string $content): int
+    {
+        $count = 0;
+        $lines = preg_split('/\r\n|\r|\n/', $content);
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+
+            // Skip empty lines and comments
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            // Check if it looks like a URL
+            if (filter_var($line, FILTER_VALIDATE_URL)) {
+                $count += $this->addSitemapUrl($line);
+            }
+        }
+
+        return $count;
+    }
+
+    protected function addSitemapUrl(string $url): int
+    {
+        $url = rtrim($url, '/');
+
+        if (!isset($this->visited[$url]) && $this->isInternalUrl($url)) {
+            $this->queue[] = [
+                'url' => $url,
+                'depth' => 0, // Treat as entry point so it crawls links from these pages too
+                'source' => 'sitemap',
+            ];
+            return 1;
+        }
+
+        return 0;
     }
 
     protected function displayResults(): void
