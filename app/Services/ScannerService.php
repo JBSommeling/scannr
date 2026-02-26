@@ -232,13 +232,18 @@ class ScannerService
     /**
      * Extract all links from HTML content.
      *
-     * Parses HTML and extracts href attributes from anchor tags.
+     * Parses HTML and extracts URLs from:
+     * - <a href=""> (anchor links)
+     * - <link href=""> (stylesheets, icons, etc.)
+     * - <script src=""> (JavaScript files)
+     * - <img src=""> (images)
+     *
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
      * Normalizes relative URLs to absolute URLs.
      *
      * @param  string  $html       The HTML content to parse.
      * @param  string  $sourceUrl  The URL the HTML was fetched from (for resolving relative URLs).
-     * @return array<array{url: string, source: string}> Array of extracted links with URL and source page.
+     * @return array<array{url: string, source: string, element: string}> Array of extracted links with URL, source page, and element type.
      */
     public function extractLinks(string $html, string $sourceUrl): array
     {
@@ -247,34 +252,66 @@ class ScannerService
         try {
             $crawler = new Crawler($html, $sourceUrl);
 
+            // Extract from <a href="">
             $crawler->filter('a[href]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
-                $href = $node->attr('href');
+                $this->addLinkFromAttribute($node, 'href', $sourceUrl, 'a', $links);
+            });
 
-                if ($href === null || $href === '') {
-                    return;
-                }
+            // Extract from <link href=""> (stylesheets, icons, etc.)
+            $crawler->filter('link[href]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'href', $sourceUrl, 'link', $links);
+            });
 
-                // Skip javascript:, mailto:, tel:, etc.
-                if (preg_match('/^(javascript|mailto|tel|#)/', $href)) {
-                    return;
-                }
+            // Extract from <script src="">
+            $crawler->filter('script[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'script', $links);
+            });
 
-                $normalizedUrl = $this->normalizeUrl($href, $sourceUrl);
-
-                if ($normalizedUrl === null) {
-                    return;
-                }
-
-                $links[] = [
-                    'url' => $normalizedUrl,
-                    'source' => $sourceUrl,
-                ];
+            // Extract from <img src="">
+            $crawler->filter('img[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'img', $links);
             });
         } catch (\Exception $e) {
             // Silently handle parsing errors
         }
 
         return $links;
+    }
+
+    /**
+     * Add a link from an element attribute to the links array.
+     *
+     * @param  Crawler  $node       The DOM node to extract from.
+     * @param  string   $attribute  The attribute name ('href' or 'src').
+     * @param  string   $sourceUrl  The source page URL.
+     * @param  string   $element    The element type ('a', 'link', 'script', 'img').
+     * @param  array    &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addLinkFromAttribute(Crawler $node, string $attribute, string $sourceUrl, string $element, array &$links): void
+    {
+        $value = $node->attr($attribute);
+
+        if ($value === null || $value === '') {
+            return;
+        }
+
+        // Skip javascript:, mailto:, tel:, data:, etc.
+        if (preg_match('/^(javascript|mailto|tel|data|#)/', $value)) {
+            return;
+        }
+
+        $normalizedUrl = $this->normalizeUrl($value, $sourceUrl);
+
+        if ($normalizedUrl === null) {
+            return;
+        }
+
+        $links[] = [
+            'url' => $normalizedUrl,
+            'source' => $sourceUrl,
+            'element' => $element,
+        ];
     }
 
     /**
@@ -367,11 +404,12 @@ class ScannerService
      *     isOk: bool,
      *     isLoop: bool,
      *     hasHttpsDowngrade: bool,
-     *     extractedLinks: array<array{url: string, source: string}>
+     *     sourceElement: string,
+     *     extractedLinks: array<array{url: string, source: string, element: string}>
      * }
      * @throws GuzzleException
      */
-    public function processInternalUrl(string $url, string $source): array
+    public function processInternalUrl(string $url, string $source, string $element = 'a'): array
     {
         $result = $this->followRedirects($url, 'GET');
 
@@ -389,6 +427,7 @@ class ScannerService
             'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
             'isLoop' => $result['loop'],
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
+            'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
         ];
     }
@@ -401,6 +440,7 @@ class ScannerService
      *
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
+     * @param string $element The HTML element type that contained this URL ('a', 'link', 'script', 'img').
      * @return array{
      *     url: string,
      *     sourcePage: string,
@@ -409,11 +449,12 @@ class ScannerService
      *     redirectChain: array<string>,
      *     isOk: bool,
      *     isLoop: bool,
-     *     hasHttpsDowngrade: bool
+     *     hasHttpsDowngrade: bool,
+     *     sourceElement: string
      * }
      * @throws GuzzleException
      */
-    public function processExternalUrl(string $url, string $source): array
+    public function processExternalUrl(string $url, string $source, string $element = 'a'): array
     {
         $result = $this->followRedirects($url, 'HEAD');
 
@@ -426,6 +467,7 @@ class ScannerService
             'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
             'isLoop' => $result['loop'],
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
+            'sourceElement' => $element,
         ];
     }
 
@@ -488,6 +530,22 @@ class ScannerService
             'broken' => array_filter($results, fn($r) => !$r['isOk']),
             default => $results,
         };
+    }
+
+    /**
+     * Filter scan results by source element type.
+     *
+     * @param  array   $results  Array of scan result items.
+     * @param  string  $element  Element filter: 'all', 'a', 'link', 'script', or 'img'.
+     * @return array Filtered results.
+     */
+    public function filterByElement(array $results, string $element): array
+    {
+        if ($element === 'all') {
+            return $results;
+        }
+
+        return array_filter($results, fn($r) => ($r['sourceElement'] ?? 'a') === $element);
     }
 }
 

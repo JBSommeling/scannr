@@ -64,16 +64,16 @@ class ScanSiteCommandTest extends TestCase
     public function test_json_output_format(): void
     {
         $this->markTestSkipped('This test is currently skipped because the JSON output format is not fully implemented yet.');
-        $this->artisan('site:scan', [
-            'url' => 'https://example.com',
-            '--depth' => 1,
-            '--max' => 2,
-            '--format' => 'json',
-        ])
-            ->expectsOutputToContain('"summary"')
-            ->expectsOutputToContain('"results"')
-            ->expectsOutputToContain('"total"')
-            ->assertExitCode(0);
+//        $this->artisan('site:scan', [
+//            'url' => 'https://example.com',
+//            '--depth' => 1,
+//            '--max' => 2,
+//            '--format' => 'json',
+//        ])
+//            ->expectsOutputToContain('"summary"')
+//            ->expectsOutputToContain('"results"')
+//            ->expectsOutputToContain('"total"')
+//            ->assertExitCode(0);
     }
 
     /**
@@ -87,7 +87,7 @@ class ScanSiteCommandTest extends TestCase
             '--max' => 2,
             '--format' => 'csv',
         ])
-            ->expectsOutputToContain('URL,Source,Status,Type,Redirects,IsOk')
+            ->expectsOutputToContain('URL,Source,Element,Status,Type,Redirects,IsOk')
             ->assertExitCode(0);
     }
 
@@ -116,6 +116,111 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => 1,
             '--max' => 2,
             '--status' => 'broken',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test element filter for anchor links
+     */
+    public function test_element_filter_anchor(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 2,
+            '--filter' => 'a',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test element filter for images
+     */
+    public function test_element_filter_img(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 2,
+            '--filter' => 'img',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test element filter for scripts
+     */
+    public function test_element_filter_script(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 2,
+            '--filter' => 'script',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test element filter for link elements
+     */
+    public function test_element_filter_link(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 2,
+            '--filter' => 'link',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test scan-elements option with single element
+     */
+    public function test_scan_elements_single(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 5,
+            '--scan-elements' => 'a',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test scan-elements option with multiple elements
+     */
+    public function test_scan_elements_multiple(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 5,
+            '--scan-elements' => 'a,img',
+        ])
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test scan-elements option with all elements
+     */
+    public function test_scan_elements_all(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 5,
+            '--scan-elements' => 'all',
         ])
             ->expectsOutputToContain('Summary:')
             ->assertExitCode(0);

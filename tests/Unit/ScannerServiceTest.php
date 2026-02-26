@@ -234,6 +234,105 @@ class ScannerServiceTest extends TestCase
     }
 
     // ======================
+    // filterByElement tests
+    // ======================
+
+    public function test_filter_by_element_returns_all_for_all_filter(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'a'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'script'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'link'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'all');
+        $this->assertCount(4, $result);
+    }
+
+    public function test_filter_by_element_returns_only_anchors(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'a'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'a'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'link'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'a');
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('a', $item['sourceElement']);
+        }
+    }
+
+    public function test_filter_by_element_returns_only_images(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'a'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'link'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'img');
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('img', $item['sourceElement']);
+        }
+    }
+
+    public function test_filter_by_element_returns_only_scripts(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'script'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'script'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'a'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'script');
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('script', $item['sourceElement']);
+        }
+    }
+
+    public function test_filter_by_element_returns_only_links(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'link'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'link'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'a'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'link');
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('link', $item['sourceElement']);
+        }
+    }
+
+    public function test_filter_by_element_handles_missing_source_element(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1'],  // No sourceElement, defaults to 'a'
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'a'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'a');
+        $this->assertCount(2, $result);
+    }
+
+    public function test_filter_by_element_handles_empty_results(): void
+    {
+        $result = $this->service->filterByElement([], 'img');
+        $this->assertCount(0, $result);
+    }
+
+    // ======================
     // calculateStats tests
     // ======================
 
@@ -372,6 +471,78 @@ class ScannerServiceTest extends TestCase
         $links = $this->service->extractLinks($html, 'https://example.com/source');
 
         $this->assertEquals('https://example.com/source', $links[0]['source']);
+    }
+
+    public function test_extract_links_finds_link_href(): void
+    {
+        $html = '<html><head><link href="/css/style.css" rel="stylesheet"></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/css/style.css', $links[0]['url']);
+        $this->assertEquals('link', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_script_src(): void
+    {
+        $html = '<html><head><script src="/js/app.js"></script></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/js/app.js', $links[0]['url']);
+        $this->assertEquals('script', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_img_src(): void
+    {
+        $html = '<html><body><img src="/images/logo.png" alt="Logo"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/images/logo.png', $links[0]['url']);
+        $this->assertEquals('img', $links[0]['element']);
+    }
+
+    public function test_extract_links_skips_data_urls(): void
+    {
+        $html = '<html><body><img src="data:image/png;base64,abc123" alt="Data Image"><img src="/real.png"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/real.png', $links[0]['url']);
+        $this->assertEquals('img', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_all_element_types(): void
+    {
+        $html = '<html>
+            <head>
+                <link href="/style.css" rel="stylesheet">
+                <script src="/app.js"></script>
+            </head>
+            <body>
+                <a href="/page">Link</a>
+                <img src="/image.png">
+            </body>
+        </html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $elements = array_column($links, 'element');
+        $this->assertCount(4, $links);
+        $this->assertContains('https://example.com/style.css', $urls);
+        $this->assertContains('https://example.com/app.js', $urls);
+        $this->assertContains('https://example.com/page', $urls);
+        $this->assertContains('https://example.com/image.png', $urls);
+        $this->assertContains('a', $elements);
+        $this->assertContains('link', $elements);
+        $this->assertContains('script', $elements);
+        $this->assertContains('img', $elements);
     }
 
     // ======================

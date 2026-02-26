@@ -22,6 +22,8 @@ class ScanSite extends Command
         {--timeout=5 : Request timeout in seconds}
         {--format=table : Output format (table, json, csv)}
         {--status=all : Filter results (all, ok, broken)}
+        {--filter=all : Filter displayed results by element type (all, a, link, script, img)}
+        {--scan-elements=all : Element types to scan (all, or comma-separated: a,img,link,script)}
         {--sitemap : Use sitemap.xml to discover URLs}';
 
     /**
@@ -39,6 +41,7 @@ class ScanSite extends Command
     protected array $results = [];
     protected string $baseHost;
     protected string $baseUrl;
+    protected array $scanElements = [];
 
     /**
      * Execute the console command.
@@ -81,12 +84,20 @@ class ScanSite extends Command
         $maxDepth = (int) $this->option('depth');
         $maxUrls = (int) $this->option('max');
 
+        // Parse scan-elements option
+        $scanElementsOption = $this->option('scan-elements');
+        if ($scanElementsOption === 'all') {
+            $this->scanElements = ['a', 'link', 'script', 'img'];
+        } else {
+            $this->scanElements = array_map('trim', explode(',', $scanElementsOption));
+        }
+
         $this->info("Site Scan: {$this->baseUrl}");
         $this->info(str_repeat('=', 40));
         $this->newLine();
 
         // Initialize BFS queue with starting URL
-        $this->queue[] = ['url' => $this->baseUrl, 'depth' => 0, 'source' => 'start'];
+        $this->queue[] = ['url' => $this->baseUrl, 'depth' => 0, 'source' => 'start', 'element' => 'a'];
 
         // If --sitemap option is used, discover URLs from sitemap.xml
         if ($this->option('sitemap')) {
@@ -102,6 +113,7 @@ class ScanSite extends Command
             $url = $current['url'];
             $depth = $current['depth'];
             $source = $current['source'];
+            $element = $current['element'] ?? 'a';
 
             // Skip if already visited
             if (isset($this->visited[$url])) {
@@ -119,9 +131,9 @@ class ScanSite extends Command
             $isInternal = $this->scannerService->isInternalUrl($url);
 
             if ($isInternal) {
-                $this->processInternalUrl($url, $depth, $source);
+                $this->processInternalUrl($url, $depth, $source, $element);
             } else {
-                $this->processExternalUrl($url, $source);
+                $this->processExternalUrl($url, $source, $element);
             }
 
             $progressBar->advance();
@@ -135,30 +147,51 @@ class ScanSite extends Command
         return CommandAlias::SUCCESS;
     }
 
-    protected function processInternalUrl(string $url, int $depth, string $source): void
+    protected function processInternalUrl(string $url, int $depth, string $source, string $element): void
     {
-        $result = $this->scannerService->processInternalUrl($url, $source);
+        // For internal <a> links, we always need to fetch the page to discover content
+        // But we only store the result if the element is in scanElements
+        $shouldStoreResult = in_array($element, $this->scanElements);
+
+        // For non-<a> internal elements (img, script, link), skip entirely if not in scanElements
+        if ($element !== 'a' && !$shouldStoreResult) {
+            return;
+        }
+
+        $result = $this->scannerService->processInternalUrl($url, $source, $element);
 
         // Store result without extractedLinks
         $extractedLinks = $result['extractedLinks'] ?? [];
         unset($result['extractedLinks']);
-        $this->results[] = $result;
+
+        // Only store result if element type is in scanElements list
+        if ($shouldStoreResult) {
+            $this->results[] = $result;
+        }
 
         // Add extracted links to the queue
         foreach ($extractedLinks as $link) {
+            $linkElement = $link['element'] ?? 'a';
+
             if (!isset($this->visited[$link['url']])) {
                 $this->queue[] = [
                     'url' => $link['url'],
                     'depth' => $depth + 1,
                     'source' => $url,
+                    'element' => $linkElement,
                 ];
             }
         }
     }
 
-    protected function processExternalUrl(string $url, string $source): void
+    protected function processExternalUrl(string $url, string $source, string $element): void
     {
-        $result = $this->scannerService->processExternalUrl($url, $source);
+        // Skip external URLs if element type is not in scanElements list
+        if (!in_array($element, $this->scanElements)) {
+            return;
+        }
+
+        $result = $this->scannerService->processExternalUrl($url, $source, $element);
         $this->results[] = $result;
     }
 
@@ -191,9 +224,11 @@ class ScanSite extends Command
     {
         $format = $this->option('format');
         $statusFilter = $this->option('status');
+        $elementFilter = $this->option('filter');
 
         // Filter results using the scanner service
         $filtered = $this->scannerService->filterResults($this->results, $statusFilter);
+        $filtered = $this->scannerService->filterByElement($filtered, $elementFilter);
 
         // Calculate stats using the scanner service
         $stats = $this->scannerService->calculateStats($this->results);
@@ -249,6 +284,7 @@ class ScanSite extends Command
             $row = [
                 'URL' => $this->truncate($result['url'], 50),
                 'Source' => $this->truncate($result['sourcePage'], 30),
+                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
                 'Status' => $result['status'],
                 'Type' => $result['type'],
             ];
@@ -261,7 +297,7 @@ class ScanSite extends Command
             $tableData[] = $row;
         }
 
-        $headers = ['URL', 'Source', 'Status', 'Type'];
+        $headers = ['URL', 'Source', 'Element', 'Status', 'Type'];
         if ($this->output->isVerbose()) {
             $headers[] = 'Redirects';
         }
@@ -282,17 +318,19 @@ class ScanSite extends Command
     protected function displayCsv(array $results): void
     {
         // Header
-        $this->line('URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade');
+        $this->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade');
 
         foreach ($results as $result) {
             $redirects = implode(' -> ', $result['redirectChain']);
             $isOk = $result['isOk'] ? 'true' : 'false';
             $httpsDowngrade = ($result['hasHttpsDowngrade'] ?? false) ? 'true' : 'false';
+            $element = $result['sourceElement'] ?? 'a';
 
             $this->line(sprintf(
-                '"%s","%s","%s","%s","%s","%s","%s"',
+                '"%s","%s","%s","%s","%s","%s","%s","%s"',
                 str_replace('"', '""', $result['url']),
                 str_replace('"', '""', $result['sourcePage']),
+                $element,
                 $result['status'],
                 $result['type'],
                 str_replace('"', '""', $redirects),

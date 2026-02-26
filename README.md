@@ -6,6 +6,8 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 
 - **BFS Crawling**: Systematically crawls websites level by level
 - **Broken Link Detection**: Identifies links returning 4xx/5xx status codes
+- **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, and `<img>` elements
+- **Element Type Filtering**: Filter results by element type (anchors, images, scripts, stylesheets)
 - **Redirect Chain Tracking**: Follows and reports redirect chains, including loop detection
 - **HTTPS Downgrade Detection**: Warns when redirects downgrade from HTTPS to HTTP
 - **Sitemap Integration**: Discover URLs from XML, HTML, or plain text sitemaps
@@ -46,6 +48,8 @@ php artisan site:scan {url} [options]
 | `--timeout=N` | 5 | Request timeout in seconds |
 | `--format=FORMAT` | table | Output format: `table`, `json`, or `csv` |
 | `--status=FILTER` | all | Filter results: `all`, `ok`, or `broken` |
+| `--filter=TYPE` | all | Filter displayed results by element type: `all`, `a`, `link`, `script`, or `img` |
+| `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated list (e.g., `a,img`) |
 | `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
 
 ### Examples
@@ -66,6 +70,36 @@ php artisan site:scan https://example.com --format=json
 
 ```bash
 php artisan site:scan https://example.com --status=broken
+```
+
+**Show only broken images:**
+
+```bash
+php artisan site:scan https://example.com --status=broken --filter=img
+```
+
+**Show only script resources:**
+
+```bash
+php artisan site:scan https://example.com --filter=script
+```
+
+**Show only stylesheet/link resources:**
+
+```bash
+php artisan site:scan https://example.com --filter=link
+```
+
+**Scan only anchor links (skip images, scripts, stylesheets):**
+
+```bash
+php artisan site:scan https://example.com --scan-elements=a
+```
+
+**Scan only anchor links and images:**
+
+```bash
+php artisan site:scan https://example.com --scan-elements=a,img
 ```
 
 **Export to CSV:**
@@ -118,13 +152,15 @@ Summary:
   ⚠ Redirect chains: 5 chains, 8 total hops
   ⚠ HTTPS downgrades: 1
 
-+--------------------------------------------------+------------------------------+--------+----------+
-| URL                                              | Source                       | Status | Type     |
-+--------------------------------------------------+------------------------------+--------+----------+
-| https://example.com/about                        | https://example.com          | 200    | internal |
-| https://example.com/missing                      | https://example.com/about    | 404    | internal |
-| https://external-site.com                        | https://example.com/links    | 200    | external |
-+--------------------------------------------------+------------------------------+--------+----------+
++--------------------------------------------------+------------------------------+---------+--------+----------+
+| URL                                              | Source                       | Element | Status | Type     |
++--------------------------------------------------+------------------------------+---------+--------+----------+
+| https://example.com/about                        | https://example.com          | <a>     | 200    | internal |
+| https://example.com/style.css                    | https://example.com          | <link>  | 200    | internal |
+| https://example.com/app.js                       | https://example.com          | <script>| 200    | internal |
+| https://example.com/missing.png                  | https://example.com/about    | <img>   | 404    | internal |
+| https://external-site.com                        | https://example.com/links    | <a>     | 200    | external |
++--------------------------------------------------+------------------------------+---------+--------+----------+
 ```
 
 ### JSON Format
@@ -147,6 +183,18 @@ Returns structured JSON with summary and detailed results:
     {
       "url": "https://example.com/about",
       "sourcePage": "https://example.com",
+      "sourceElement": "a",
+      "status": 200,
+      "type": "internal",
+      "redirectChain": [],
+      "isOk": true,
+      "isLoop": false,
+      "hasHttpsDowngrade": false
+    },
+    {
+      "url": "https://example.com/logo.png",
+      "sourcePage": "https://example.com",
+      "sourceElement": "img",
       "status": 200,
       "type": "internal",
       "redirectChain": [],
@@ -163,9 +211,10 @@ Returns structured JSON with summary and detailed results:
 Outputs CSV data suitable for spreadsheet applications:
 
 ```csv
-URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade
-"https://example.com/about","https://example.com","200","internal","","true","false"
-"https://example.com/missing","https://example.com/about","404","internal","","false","false"
+URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
+"https://example.com/about","https://example.com","a","200","internal","","true","false"
+"https://example.com/style.css","https://example.com","link","200","internal","","true","false"
+"https://example.com/missing.png","https://example.com/about","img","404","internal","","false","false"
 ```
 
 ## How It Works
@@ -177,7 +226,11 @@ URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade
    - Parses XML sitemaps, sitemap index files, HTML sitemaps, and plain text sitemaps
    - Adds discovered URLs to the crawl queue
 3. **BFS Queue**: URLs are processed in a breadth-first manner, ensuring closer pages are scanned first
-4. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts all links
+4. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts URLs from:
+   - `<a href="">` - Anchor links to other pages
+   - `<link href="">` - Stylesheets, favicons, and other linked resources
+   - `<script src="">` - JavaScript files
+   - `<img src="">` - Images
 5. **External Links**: External URLs are checked with HEAD requests for efficiency
 6. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
 7. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
@@ -191,6 +244,41 @@ URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade
 - The `--sitemap` option discovers URLs from sitemaps before crawling, treating them as entry points (depth=0)
 - Sitemap discovery supports XML sitemaps, sitemap index files, HTML sitemaps, and plain text URL lists
 - HTTPS to HTTP redirect downgrades are flagged as potential security concerns
+- Use `--element` to filter results by the HTML element type that contained the URL
+
+## Element Types
+
+The scanner extracts and tracks URLs from the following HTML elements:
+
+| Element | Filter Value | Description |
+|---------|--------------|-------------|
+| `<a href="">` | `a` | Anchor links to other pages |
+| `<link href="">` | `link` | Stylesheets, favicons, preload resources |
+| `<script src="">` | `script` | JavaScript files |
+| `<img src="">` | `img` | Images |
+
+### Filtering vs. Scanning
+
+There are two ways to control which elements are processed:
+
+- **`--scan-elements`**: Controls which element types are **checked for broken links**. Pages are still crawled to discover content, but only the specified element types have their URLs verified. This saves HTTP requests and speeds up the scan.
+
+- **`--filter`**: Filters the **displayed results** after scanning. Useful when you've scanned everything but want to focus on a specific element type in the output.
+
+**When to use each:**
+
+```bash
+# Fast: Only check if images are broken (skip checking scripts, stylesheets, external links)
+php artisan site:scan https://example.com --scan-elements=img
+
+# Slow but complete: Check everything, but only show images in output
+php artisan site:scan https://example.com --filter=img
+
+# Combined: Check pages and images only, show only broken images
+php artisan site:scan https://example.com --scan-elements=a,img --filter=img --status=broken
+```
+
+**Note:** When using `--scan-elements=img`, pages (`<a>` links) are still crawled to discover images, but anchor links themselves are not checked for broken status - only the images found on those pages are verified.
 
 ## Sitemap Support
 
@@ -213,11 +301,3 @@ When using `--sitemap`, the scanner checks for sitemaps in this order:
 4. `/sitemap/`
 
 The first working sitemap found is used, and discovered URLs are added to the crawl queue with depth=0, so the crawler will also find and scan any links on those pages.
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
