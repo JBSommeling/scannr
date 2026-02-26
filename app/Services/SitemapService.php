@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\ScannerService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Symfony\Component\DomCrawler\Crawler;
@@ -36,11 +37,17 @@ class SitemapService
     protected string $baseHost;
 
     /**
+     * The scanner service instance for URL normalization.
+     */
+    protected ScannerService $scannerService;
+
+    /**
      * Create a new SitemapService instance.
      *
      * @param  Client|null  $client  Optional Guzzle HTTP client instance. If not provided, a default client will be created.
+     * @param  ScannerService|null  $scannerService  Optional ScannerService instance. If not provided, a default instance will be created.
      */
-    public function __construct(?Client $client = null)
+    public function __construct(?Client $client = null, ?ScannerService $scannerService = null)
     {
         $this->client = $client ?? new Client([
             'timeout' => 10,
@@ -52,6 +59,7 @@ class SitemapService
                 'Accept' => 'text/xml,application/xml,text/html,text/plain,*/*',
             ],
         ]);
+        $this->scannerService = $scannerService ?? new ScannerService();
     }
 
     /**
@@ -87,8 +95,9 @@ class SitemapService
      * 1. Checking robots.txt for sitemap declarations
      * 2. Trying common sitemap locations (sitemap.xml, sitemap_index.xml, sitemap/)
      *
-     * @param  string  $baseUrl  The base URL of the website to scan.
+     * @param string $baseUrl The base URL of the website to scan.
      * @return array{urls: array<array{url: string, source: string}>, count: int} An array containing discovered URLs and total count.
+     * @throws GuzzleException
      */
     public function discoverUrls(string $baseUrl): array
     {
@@ -364,7 +373,7 @@ class SitemapService
                     return;
                 }
 
-                $normalizedUrl = $this->normalizeUrl($href, $baseUrl);
+                $normalizedUrl = $this->scannerService->normalizeUrl($href, $baseUrl);
 
                 if ($normalizedUrl !== null) {
                     $urls[] = $normalizedUrl;
@@ -408,57 +417,6 @@ class SitemapService
         return $urls;
     }
 
-    /**
-     * Normalize a URL relative to a base URL.
-     *
-     * Handles protocol-relative URLs, absolute paths, and relative paths.
-     * Removes URL fragments.
-     *
-     * @param  string|null  $url      The URL to normalize.
-     * @param  string       $baseUrl  The base URL for resolving relative URLs.
-     * @return string|null The normalized absolute URL, or null if invalid.
-     */
-    public function normalizeUrl(?string $url, string $baseUrl): ?string
-    {
-        if ($url === null || $url === '') {
-            return null;
-        }
-
-        // Remove fragment
-        $url = preg_replace('/#.*$/', '', $url);
-
-        if ($url === '') {
-            return null;
-        }
-
-        // Handle protocol-relative URLs
-        if (str_starts_with($url, '//')) {
-            $parsedBase = parse_url($baseUrl);
-            $url = ($parsedBase['scheme'] ?? 'https') . ':' . $url;
-        }
-
-        // Handle absolute URLs
-        if (preg_match('/^https?:\/\//', $url)) {
-            return rtrim($url, '/');
-        }
-
-        // Handle relative URLs
-        $parsedBase = parse_url($baseUrl);
-        $scheme = $parsedBase['scheme'] ?? 'https';
-        $host = $parsedBase['host'] ?? '';
-        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
-
-        if (str_starts_with($url, '/')) {
-            // Absolute path
-            return rtrim("{$scheme}://{$host}{$port}{$url}", '/');
-        }
-
-        // Relative path
-        $basePath = $parsedBase['path'] ?? '/';
-        $basePath = preg_replace('/\/[^\/]*$/', '/', $basePath);
-
-        return rtrim("{$scheme}://{$host}{$port}{$basePath}{$url}", '/');
-    }
 
     /**
      * Check if a URL is internal to the base host.

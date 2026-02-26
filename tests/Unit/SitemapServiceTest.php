@@ -364,53 +364,6 @@ class SitemapServiceTest extends TestCase
         $this->assertCount(2, $result);
     }
 
-    // ===================
-    // normalizeUrl tests
-    // ===================
-
-    public function test_normalize_url_handles_absolute_url(): void
-    {
-        $result = $this->service->normalizeUrl('https://example.com/page', 'https://example.com');
-
-        $this->assertEquals('https://example.com/page', $result);
-    }
-
-    public function test_normalize_url_handles_relative_path(): void
-    {
-        $result = $this->service->normalizeUrl('/page', 'https://example.com');
-
-        $this->assertEquals('https://example.com/page', $result);
-    }
-
-    public function test_normalize_url_handles_protocol_relative(): void
-    {
-        $result = $this->service->normalizeUrl('//example.com/page', 'https://example.com');
-
-        $this->assertEquals('https://example.com/page', $result);
-    }
-
-    public function test_normalize_url_removes_trailing_slash(): void
-    {
-        $result = $this->service->normalizeUrl('https://example.com/page/', 'https://example.com');
-
-        $this->assertEquals('https://example.com/page', $result);
-    }
-
-    public function test_normalize_url_removes_fragment(): void
-    {
-        $result = $this->service->normalizeUrl('https://example.com/page#section', 'https://example.com');
-
-        $this->assertEquals('https://example.com/page', $result);
-    }
-
-    public function test_normalize_url_returns_null_for_empty(): void
-    {
-        $result = $this->service->normalizeUrl('', 'https://example.com');
-        $this->assertNull($result);
-
-        $result = $this->service->normalizeUrl(null, 'https://example.com');
-        $this->assertNull($result);
-    }
 
     // ===================
     // isInternalUrl tests

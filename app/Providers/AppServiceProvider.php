@@ -13,17 +13,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton('sitemap', function ($app) {
-            return new SitemapService();
-        });
-
-        $this->app->alias('sitemap', SitemapService::class);
-
         $this->app->singleton('scanner', function ($app) {
             return new ScannerService();
         });
 
         $this->app->alias('scanner', ScannerService::class);
+
+        $this->app->singleton('sitemap', function ($app) {
+            return new SitemapService(null, $app->make('scanner'));
+        });
+
+        $this->app->alias('sitemap', SitemapService::class);
     }
 
     /**
