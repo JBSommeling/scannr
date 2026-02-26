@@ -125,6 +125,7 @@ class ScanSite extends Command
             'redirectChain' => $result['chain'],
             'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
             'isLoop' => $result['loop'],
+            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
         ];
 
         // If successful and got HTML content, parse for more links
@@ -145,6 +146,7 @@ class ScanSite extends Command
             'redirectChain' => $result['chain'],
             'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
             'isLoop' => $result['loop'],
+            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
         ];
     }
 
@@ -156,6 +158,7 @@ class ScanSite extends Command
         $body = null;
         $finalStatus = 0;
         $loop = false;
+        $hasHttpsDowngrade = false;
 
         while ($hops < $this->maxRedirects) {
             try {
@@ -172,6 +175,13 @@ class ScanSite extends Command
 
                     // Normalize redirect location
                     $location = $this->normalizeUrl($location, $currentUrl);
+
+                    // Check for HTTPS to HTTP downgrade
+                    $currentScheme = parse_url($currentUrl, PHP_URL_SCHEME);
+                    $locationScheme = parse_url($location, PHP_URL_SCHEME);
+                    if ($currentScheme === 'https' && $locationScheme === 'http') {
+                        $hasHttpsDowngrade = true;
+                    }
 
                     // Check for loop
                     if (in_array($location, $chain) || $location === $url) {
@@ -211,6 +221,7 @@ class ScanSite extends Command
             'chain' => $chain,
             'loop' => $loop,
             'body' => $body,
+            'hasHttpsDowngrade' => $hasHttpsDowngrade,
         ];
     }
 
@@ -344,12 +355,22 @@ class ScanSite extends Command
         $broken = count(array_filter($this->results, fn($r) => !$r['isOk'] && $r['status'] !== 'Timeout'));
         $timeouts = count(array_filter($this->results, fn($r) => $r['status'] === 'Timeout'));
 
+        // Redirect chain statistics
+        $redirectChainCount = count(array_filter($this->results, fn($r) => !empty($r['redirectChain'])));
+        $totalRedirectHops = array_sum(array_map(fn($r) => count($r['redirectChain']), $this->results));
+
+        // HTTPS downgrade count
+        $httpsDowngrades = count(array_filter($this->results, fn($r) => $r['hasHttpsDowngrade'] ?? false));
+
         return [
             'total' => $total,
             'ok' => $ok,
             'redirects' => $redirects,
             'broken' => $broken,
             'timeouts' => $timeouts,
+            'redirectChainCount' => $redirectChainCount,
+            'totalRedirectHops' => $totalRedirectHops,
+            'httpsDowngrades' => $httpsDowngrades,
         ];
     }
 
@@ -362,6 +383,28 @@ class ScanSite extends Command
         $this->line("  Broken:         {$stats['broken']}");
         $this->line("  Timeouts:       {$stats['timeouts']}");
         $this->newLine();
+
+        // Redirect chain summary (always shown when > 0)
+        if ($stats['redirectChainCount'] > 0) {
+            $this->line("  ⚠ Redirect chains: {$stats['redirectChainCount']} chains, {$stats['totalRedirectHops']} total hops");
+        }
+
+        // HTTPS downgrade warning (only shown when > 0)
+        if ($stats['httpsDowngrades'] > 0) {
+            $this->warn("  ⚠ HTTPS downgrades: {$stats['httpsDowngrades']}");
+
+            // List affected URLs when verbose
+            if ($this->output->isVerbose()) {
+                $downgradedUrls = array_filter($this->results, fn($r) => $r['hasHttpsDowngrade'] ?? false);
+                foreach ($downgradedUrls as $result) {
+                    $this->line("    - {$result['url']}");
+                }
+            }
+        }
+
+        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0) {
+            $this->newLine();
+        }
 
         if (empty($results)) {
             $this->info('No links to display for the selected filter.');
@@ -406,20 +449,22 @@ class ScanSite extends Command
     protected function displayCsv(array $results): void
     {
         // Header
-        $this->line('URL,Source,Status,Type,Redirects,IsOk');
+        $this->line('URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade');
 
         foreach ($results as $result) {
             $redirects = implode(' -> ', $result['redirectChain']);
             $isOk = $result['isOk'] ? 'true' : 'false';
+            $httpsDowngrade = ($result['hasHttpsDowngrade'] ?? false) ? 'true' : 'false';
 
             $this->line(sprintf(
-                '"%s","%s","%s","%s","%s","%s"',
+                '"%s","%s","%s","%s","%s","%s","%s"',
                 str_replace('"', '""', $result['url']),
                 str_replace('"', '""', $result['sourcePage']),
                 $result['status'],
                 $result['type'],
                 str_replace('"', '""', $redirects),
-                $isOk
+                $isOk,
+                $httpsDowngrade
             ));
         }
     }

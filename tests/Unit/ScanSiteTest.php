@@ -226,11 +226,11 @@ class ScanSiteTest extends TestCase
     public function test_calculate_stats_counts_correctly(): void
     {
         $this->setProperty('results', [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => []],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://example.com/redirect']],
-            ['isOk' => false, 'status' => 404, 'redirectChain' => []],
-            ['isOk' => false, 'status' => 500, 'redirectChain' => []],
-            ['isOk' => false, 'status' => 'Timeout', 'redirectChain' => []],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://example.com/redirect'], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 404, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 500, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 'Timeout', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
         ]);
 
         $stats = $this->invokeMethod('calculateStats', []);
@@ -240,6 +240,9 @@ class ScanSiteTest extends TestCase
         $this->assertEquals(1, $stats['redirects']); // 200 with redirects
         $this->assertEquals(2, $stats['broken']);    // 404 + 500
         $this->assertEquals(1, $stats['timeouts']);  // Timeout
+        $this->assertEquals(1, $stats['redirectChainCount']); // 1 chain
+        $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
+        $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
     }
 
     public function test_calculate_stats_handles_empty_results(): void
@@ -253,13 +256,16 @@ class ScanSiteTest extends TestCase
         $this->assertEquals(0, $stats['redirects']);
         $this->assertEquals(0, $stats['broken']);
         $this->assertEquals(0, $stats['timeouts']);
+        $this->assertEquals(0, $stats['redirectChainCount']);
+        $this->assertEquals(0, $stats['totalRedirectHops']);
+        $this->assertEquals(0, $stats['httpsDowngrades']);
     }
 
     public function test_calculate_stats_counts_multiple_redirects(): void
     {
         $this->setProperty('results', [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://a.com', 'https://b.com']],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://c.com']],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://a.com', 'https://b.com'], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://c.com'], 'hasHttpsDowngrade' => false],
         ]);
 
         $stats = $this->invokeMethod('calculateStats', []);
@@ -267,6 +273,24 @@ class ScanSiteTest extends TestCase
         $this->assertEquals(2, $stats['total']);
         $this->assertEquals(0, $stats['ok']);
         $this->assertEquals(2, $stats['redirects']);
+        $this->assertEquals(2, $stats['redirectChainCount']); // 2 chains
+        $this->assertEquals(3, $stats['totalRedirectHops']); // 2 + 1 hops
+    }
+
+    public function test_calculate_stats_counts_https_downgrades(): void
+    {
+        $this->setProperty('results', [
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['http://example.com'], 'hasHttpsDowngrade' => true],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://example.com'], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => ['http://other.com'], 'hasHttpsDowngrade' => true],
+        ]);
+
+        $stats = $this->invokeMethod('calculateStats', []);
+
+        $this->assertEquals(3, $stats['total']);
+        $this->assertEquals(2, $stats['httpsDowngrades']);
+        $this->assertEquals(3, $stats['redirectChainCount']);
+        $this->assertEquals(3, $stats['totalRedirectHops']);
     }
 
     // ==================
