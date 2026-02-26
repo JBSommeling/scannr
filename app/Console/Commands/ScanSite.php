@@ -170,16 +170,25 @@ class ScanSite extends Command
         }
 
         // Add extracted links to the queue
+        // Prioritize elements that match scanElements by adding them to the front of the queue
         foreach ($extractedLinks as $link) {
             $linkElement = $link['element'] ?? 'a';
 
             if (!isset($this->visited[$link['url']])) {
-                $this->queue[] = [
+                $queueItem = [
                     'url' => $link['url'],
                     'depth' => $depth + 1,
                     'source' => $url,
                     'element' => $linkElement,
                 ];
+
+                // If this element type is in scanElements, prioritize it by adding to front
+                // But always keep 'a' elements accessible for discovering more content
+                if (in_array($linkElement, $this->scanElements) && $linkElement !== 'a') {
+                    array_unshift($this->queue, $queueItem);
+                } else {
+                    $this->queue[] = $queueItem;
+                }
             }
         }
     }
