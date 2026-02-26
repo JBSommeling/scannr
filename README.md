@@ -7,6 +7,10 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **BFS Crawling**: Systematically crawls websites level by level
 - **Broken Link Detection**: Identifies links returning 4xx/5xx status codes
 - **Redirect Chain Tracking**: Follows and reports redirect chains, including loop detection
+- **HTTPS Downgrade Detection**: Warns when redirects downgrade from HTTPS to HTTP
+- **Sitemap Integration**: Discover URLs from XML, HTML, or plain text sitemaps
+- **Sitemap Index Support**: Recursively parses sitemap index files
+- **robots.txt Support**: Automatically discovers sitemaps from robots.txt
 - **Internal & External Links**: Scans both internal pages and external links
 - **Multiple Output Formats**: Table, JSON, or CSV output
 - **Configurable**: Adjustable depth, max URLs, and timeout settings
@@ -42,6 +46,7 @@ php artisan site:scan {url} [options]
 | `--timeout=N` | 5 | Request timeout in seconds |
 | `--format=FORMAT` | table | Output format: `table`, `json`, or `csv` |
 | `--status=FILTER` | all | Filter results: `all`, `ok`, or `broken` |
+| `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
 
 ### Examples
 
@@ -75,6 +80,18 @@ php artisan site:scan https://example.com --format=csv > report.csv
 php artisan site:scan https://example.com --depth=2 --max=50 --timeout=3
 ```
 
+**Scan using sitemap for URL discovery:**
+
+```bash
+php artisan site:scan https://example.com --sitemap
+```
+
+**Combine sitemap discovery with custom settings:**
+
+```bash
+php artisan site:scan https://example.com --sitemap --depth=2 --max=500 --format=json
+```
+
 **Verbose output with redirect chains:**
 
 ```bash
@@ -98,6 +115,9 @@ Summary:
   Broken:         2
   Timeouts:       1
 
+  ⚠ Redirect chains: 5 chains, 8 total hops
+  ⚠ HTTPS downgrades: 1
+
 +--------------------------------------------------+------------------------------+--------+----------+
 | URL                                              | Source                       | Status | Type     |
 +--------------------------------------------------+------------------------------+--------+----------+
@@ -118,7 +138,10 @@ Returns structured JSON with summary and detailed results:
     "ok": 142,
     "redirects": 5,
     "broken": 2,
-    "timeouts": 1
+    "timeouts": 1,
+    "redirectChainCount": 5,
+    "totalRedirectHops": 8,
+    "httpsDowngrades": 1
   },
   "results": [
     {
@@ -128,7 +151,8 @@ Returns structured JSON with summary and detailed results:
       "type": "internal",
       "redirectChain": [],
       "isOk": true,
-      "isLoop": false
+      "isLoop": false,
+      "hasHttpsDowngrade": false
     }
   ]
 }
@@ -139,26 +163,56 @@ Returns structured JSON with summary and detailed results:
 Outputs CSV data suitable for spreadsheet applications:
 
 ```csv
-URL,Source,Status,Type,Redirects,IsOk
-"https://example.com/about","https://example.com","200","internal","","true"
-"https://example.com/missing","https://example.com/about","404","internal","","false"
+URL,Source,Status,Type,Redirects,IsOk,HttpsDowngrade
+"https://example.com/about","https://example.com","200","internal","","true","false"
+"https://example.com/missing","https://example.com/about","404","internal","","false","false"
 ```
 
 ## How It Works
 
 1. **Initialization**: The scanner starts with the provided URL as the seed
-2. **BFS Queue**: URLs are processed in a breadth-first manner, ensuring closer pages are scanned first
-3. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts all links
-4. **External Links**: External URLs are checked with HEAD requests for efficiency
-5. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection
-6. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
+2. **Sitemap Discovery** (optional): When `--sitemap` is used, the scanner:
+   - Checks robots.txt for Sitemap directives
+   - Tries common sitemap locations (sitemap.xml, sitemap_index.xml, sitemap/)
+   - Parses XML sitemaps, sitemap index files, HTML sitemaps, and plain text sitemaps
+   - Adds discovered URLs to the crawl queue
+3. **BFS Queue**: URLs are processed in a breadth-first manner, ensuring closer pages are scanned first
+4. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts all links
+5. **External Links**: External URLs are checked with HEAD requests for efficiency
+6. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
+7. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
 
 ## Notes
 
 - The scanner respects the `--depth` limit for crawling, but will still check external links found at any depth
 - SSL certificate verification is disabled by default to handle sites with certificate issues
 - Timeout errors are tracked separately from HTTP error responses
-- Use verbose mode (`-v`) to see redirect chains in table output
+- Use verbose mode (`-v`) to see redirect chains in table output and list HTTPS downgraded URLs
+- The `--sitemap` option discovers URLs from sitemaps before crawling, treating them as entry points (depth=0)
+- Sitemap discovery supports XML sitemaps, sitemap index files, HTML sitemaps, and plain text URL lists
+- HTTPS to HTTP redirect downgrades are flagged as potential security concerns
+
+## Sitemap Support
+
+The scanner can discover URLs from various sitemap formats:
+
+### Supported Formats
+
+- **XML Sitemaps**: Standard sitemap.xml files following the sitemap protocol
+- **Sitemap Index**: Index files containing references to multiple sitemaps (recursively parsed up to 3 levels)
+- **HTML Sitemaps**: HTML pages with links (typically at /sitemap/)
+- **Plain Text**: Simple text files with one URL per line
+
+### Discovery Order
+
+When using `--sitemap`, the scanner checks for sitemaps in this order:
+
+1. Sitemaps declared in robots.txt (`Sitemap:` directive)
+2. `/sitemap.xml`
+3. `/sitemap_index.xml`
+4. `/sitemap/`
+
+The first working sitemap found is used, and discovered URLs are added to the crawl queue with depth=0, so the crawler will also find and scan any links on those pages.
 
 ## Security Vulnerabilities
 

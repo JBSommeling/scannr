@@ -2,12 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Services\ScannerService;
+use App\Services\SitemapService;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Command\Command as CommandAlias;
-use Symfony\Component\DomCrawler\Crawler;
 
 class ScanSite extends Command
 {
@@ -33,12 +32,13 @@ class ScanSite extends Command
     protected $description = 'Scan a website for broken links using BFS crawling';
 
     protected Client $client;
+    protected ScannerService $scannerService;
+    protected SitemapService $sitemapService;
     protected array $visited = [];
     protected array $queue = [];
     protected array $results = [];
     protected string $baseHost;
     protected string $baseUrl;
-    protected int $maxRedirects = 5;
 
     /**
      * Execute the console command.
@@ -68,6 +68,15 @@ class ScanSite extends Command
                 'Connection' => 'keep-alive',
             ],
         ]);
+
+        // Initialize the scanner service
+        $this->scannerService = app(ScannerService::class);
+        $this->scannerService->setClient($this->client);
+        $this->scannerService->setBaseUrl($this->baseUrl);
+
+        // Initialize the sitemap service with an HTTP client
+        $this->sitemapService = app(SitemapService::class);
+        $this->sitemapService->setClient($this->client);
 
         $maxDepth = (int) $this->option('depth');
         $maxUrls = (int) $this->option('max');
@@ -107,7 +116,7 @@ class ScanSite extends Command
             $this->visited[$url] = true;
             $scannedCount++;
 
-            $isInternal = $this->isInternalUrl($url);
+            $isInternal = $this->scannerService->isInternalUrl($url);
 
             if ($isInternal) {
                 $this->processInternalUrl($url, $depth, $source);
@@ -128,449 +137,66 @@ class ScanSite extends Command
 
     protected function processInternalUrl(string $url, int $depth, string $source): void
     {
-        $result = $this->followRedirects($url, 'GET');
+        $result = $this->scannerService->processInternalUrl($url, $source);
 
-        $this->results[] = [
-            'url' => $url,
-            'sourcePage' => $source,
-            'status' => $result['finalStatus'],
-            'type' => 'internal',
-            'redirectChain' => $result['chain'],
-            'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
-            'isLoop' => $result['loop'],
-            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
-        ];
+        // Store result without extractedLinks
+        $extractedLinks = $result['extractedLinks'] ?? [];
+        unset($result['extractedLinks']);
+        $this->results[] = $result;
 
-        // If successful and got HTML content, parse for more links
-        if ($result['finalStatus'] === 200 && $result['body'] !== null) {
-            $this->extractLinks($result['body'], $url, $depth);
+        // Add extracted links to the queue
+        foreach ($extractedLinks as $link) {
+            if (!isset($this->visited[$link['url']])) {
+                $this->queue[] = [
+                    'url' => $link['url'],
+                    'depth' => $depth + 1,
+                    'source' => $url,
+                ];
+            }
         }
     }
 
     protected function processExternalUrl(string $url, string $source): void
     {
-        $result = $this->followRedirects($url, 'HEAD');
-
-        $this->results[] = [
-            'url' => $url,
-            'sourcePage' => $source,
-            'status' => $result['finalStatus'],
-            'type' => 'external',
-            'redirectChain' => $result['chain'],
-            'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
-            'isLoop' => $result['loop'],
-            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
-        ];
-    }
-
-    protected function followRedirects(string $url, string $method = 'GET'): array
-    {
-        $chain = [];
-        $currentUrl = $url;
-        $hops = 0;
-        $body = null;
-        $finalStatus = 0;
-        $loop = false;
-        $hasHttpsDowngrade = false;
-
-        while ($hops < $this->maxRedirects) {
-            try {
-                $response = $this->client->request($method, $currentUrl);
-                $finalStatus = $response->getStatusCode();
-
-                // If 3xx redirect
-                if ($finalStatus >= 300 && $finalStatus < 400) {
-                    $location = $response->getHeaderLine('Location');
-
-                    if (empty($location)) {
-                        break;
-                    }
-
-                    // Normalize redirect location
-                    $location = $this->normalizeUrl($location, $currentUrl);
-
-                    // Check for HTTPS to HTTP downgrade
-                    $currentScheme = parse_url($currentUrl, PHP_URL_SCHEME);
-                    $locationScheme = parse_url($location, PHP_URL_SCHEME);
-                    if ($currentScheme === 'https' && $locationScheme === 'http') {
-                        $hasHttpsDowngrade = true;
-                    }
-
-                    // Check for loop
-                    if (in_array($location, $chain) || $location === $url) {
-                        $loop = true;
-                        $chain[] = $location . ' (LOOP)';
-                        break;
-                    }
-
-                    $chain[] = $location;
-                    $currentUrl = $location;
-                    $hops++;
-                    continue;
-                }
-
-                // Got final response (200, 404, 5xx, etc.)
-                if ($method === 'GET' && $finalStatus === 200) {
-                    $body = (string) $response->getBody();
-                }
-                break;
-
-            } catch (ConnectException $e) {
-                $finalStatus = 'Timeout';
-                break;
-            } catch (RequestException $e) {
-                $finalStatus = $e->hasResponse()
-                    ? $e->getResponse()->getStatusCode()
-                    : 'Error';
-                break;
-            } catch (\Exception $e) {
-                $finalStatus = 'Error';
-                break;
-            }
-        }
-
-        return [
-            'finalStatus' => $finalStatus,
-            'chain' => $chain,
-            'loop' => $loop,
-            'body' => $body,
-            'hasHttpsDowngrade' => $hasHttpsDowngrade,
-        ];
-    }
-
-    protected function extractLinks(string $html, string $sourceUrl, int $currentDepth): void
-    {
-        try {
-            $crawler = new Crawler($html, $sourceUrl);
-
-            $crawler->filter('a[href]')->each(function (Crawler $node) use ($sourceUrl, $currentDepth) {
-                $href = $node->attr('href');
-
-                if ($href === null || $href === '') {
-                    return;
-                }
-
-                // Skip javascript:, mailto:, tel:, etc.
-                if (preg_match('/^(javascript|mailto|tel|#)/', $href)) {
-                    return;
-                }
-
-                $normalizedUrl = $this->normalizeUrl($href, $sourceUrl);
-
-                if ($normalizedUrl === null) {
-                    return;
-                }
-
-                // Skip if already visited or in queue
-                if (isset($this->visited[$normalizedUrl])) {
-                    return;
-                }
-
-                // Add to queue
-                $this->queue[] = [
-                    'url' => $normalizedUrl,
-                    'depth' => $currentDepth + 1,
-                    'source' => $sourceUrl,
-                ];
-            });
-        } catch (\Exception $e) {
-            // Silently handle parsing errors
-        }
-    }
-
-    protected function normalizeUrl(?string $url, string $baseUrl): ?string
-    {
-        if ($url === null || $url === '') {
-            return null;
-        }
-
-        // Remove fragment
-        $url = preg_replace('/#.*$/', '', $url);
-
-        if ($url === '') {
-            return null;
-        }
-
-        // Handle protocol-relative URLs
-        if (str_starts_with($url, '//')) {
-            $parsedBase = parse_url($baseUrl);
-            $url = ($parsedBase['scheme'] ?? 'https') . ':' . $url;
-        }
-
-        // Handle absolute URLs
-        if (preg_match('/^https?:\/\//', $url)) {
-            return rtrim($url, '/');
-        }
-
-        // Handle relative URLs
-        $parsedBase = parse_url($baseUrl);
-        $scheme = $parsedBase['scheme'] ?? 'https';
-        $host = $parsedBase['host'] ?? '';
-        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
-
-        if (str_starts_with($url, '/')) {
-            // Absolute path
-            return rtrim("{$scheme}://{$host}{$port}{$url}", '/');
-        }
-
-        // Relative path
-        $basePath = $parsedBase['path'] ?? '/';
-        $basePath = preg_replace('/\/[^\/]*$/', '/', $basePath);
-
-        return rtrim("{$scheme}://{$host}{$port}{$basePath}{$url}", '/');
-    }
-
-    protected function isInternalUrl(string $url): bool
-    {
-        $parsed = parse_url($url);
-
-        if (!isset($parsed['host'])) {
-            return true;
-        }
-
-        return $parsed['host'] === $this->baseHost
-            || str_ends_with($parsed['host'], '.' . $this->baseHost);
+        $result = $this->scannerService->processExternalUrl($url, $source);
+        $this->results[] = $result;
     }
 
     protected function discoverFromSitemap(): void
     {
-        $sitemapUrls = [
-            $this->baseUrl . '/sitemap.xml',
-            $this->baseUrl . '/sitemap_index.xml',
-            $this->baseUrl . '/sitemap/',
-        ];
+        $this->info('Discovering URLs from sitemap...');
 
-        // First try to get sitemap URL from robots.txt
-        $robotsUrl = $this->baseUrl . '/robots.txt';
-        try {
-            $response = $this->client->request('GET', $robotsUrl);
-            if ($response->getStatusCode() === 200) {
-                $robotsContent = (string) $response->getBody();
-                if (preg_match_all('/Sitemap:\s*(.+)/i', $robotsContent, $matches)) {
-                    $sitemapUrls = array_merge($matches[1], $sitemapUrls);
+        $result = $this->sitemapService->discoverUrls($this->baseUrl);
+
+        if ($result['count'] > 0) {
+            // Add discovered URLs to the queue
+            foreach ($result['urls'] as $urlData) {
+                if (!isset($this->visited[$urlData['url']])) {
+                    $this->queue[] = [
+                        'url' => $urlData['url'],
+                        'depth' => 0, // Treat as entry point so it crawls links from these pages too
+                        'source' => $urlData['source'],
+                    ];
                 }
             }
-        } catch (\Exception $e) {
-            // Ignore robots.txt errors
-        }
-
-        $this->info('Discovering URLs from sitemap...');
-        $discoveredCount = 0;
-
-        foreach ($sitemapUrls as $sitemapUrl) {
-            $sitemapUrl = trim($sitemapUrl);
-            $discoveredCount += $this->parseSitemap($sitemapUrl);
-
-            if ($discoveredCount > 0) {
-                break; // Found a working sitemap
-            }
-        }
-
-        if ($discoveredCount > 0) {
-            $this->info("  Found {$discoveredCount} URLs from sitemap (will also crawl links from pages)");
+            $this->info("  Found {$result['count']} URLs from sitemap (will also crawl links from pages)");
         } else {
             $this->warn('  No sitemap found, using page crawling only');
         }
         $this->newLine();
     }
 
-    protected function parseSitemap(string $url, int $depth = 0): int
-    {
-        if ($depth > 3) {
-            return 0; // Prevent infinite recursion in sitemap indexes
-        }
-
-        try {
-            $response = $this->client->request('GET', $url);
-
-            if ($response->getStatusCode() !== 200) {
-                return 0;
-            }
-
-            $content = (string) $response->getBody();
-            $contentType = $response->getHeaderLine('Content-Type');
-
-            // Determine format and parse accordingly
-            if ($this->isXmlContent($content, $contentType)) {
-                return $this->parseXmlSitemap($content, $depth);
-            }
-
-            if ($this->isHtmlContent($content, $contentType)) {
-                return $this->parseHtmlSitemap($content, $url);
-            }
-
-            // Try plain text (one URL per line)
-            if ($this->isTextContent($contentType)) {
-                return $this->parseTextSitemap($content);
-            }
-
-            return 0;
-
-        } catch (\Exception $e) {
-            return 0;
-        }
-    }
-
-    protected function isXmlContent(string $content, string $contentType): bool
-    {
-        // Check content type header
-        if (str_contains($contentType, 'xml')) {
-            return true;
-        }
-
-        // Check if content starts with XML declaration or root element
-        $trimmed = ltrim($content);
-        return str_starts_with($trimmed, '<?xml') ||
-               str_starts_with($trimmed, '<urlset') ||
-               str_starts_with($trimmed, '<sitemapindex');
-    }
-
-    protected function isHtmlContent(string $content, string $contentType): bool
-    {
-        // Check content type header
-        if (str_contains($contentType, 'text/html')) {
-            return true;
-        }
-
-        // Check if content looks like HTML
-        $trimmed = ltrim($content);
-        return str_starts_with($trimmed, '<!DOCTYPE') ||
-               str_starts_with($trimmed, '<html') ||
-               str_starts_with($trimmed, '<HTML');
-    }
-
-    protected function isTextContent(string $contentType): bool
-    {
-        return str_contains($contentType, 'text/plain');
-    }
-
-    protected function parseXmlSitemap(string $content, int $depth): int
-    {
-        // Suppress XML errors
-        libxml_use_internal_errors(true);
-        $xml = simplexml_load_string($content);
-        libxml_clear_errors();
-
-        if ($xml === false) {
-            return 0;
-        }
-
-        $count = 0;
-
-        // Register namespaces
-        $namespaces = $xml->getNamespaces(true);
-        if (isset($namespaces[''])) {
-            $xml->registerXPathNamespace('sm', $namespaces['']);
-        }
-
-        // Check if it's a sitemap index
-        $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
-        if (!empty($sitemapNodes)) {
-            foreach ($sitemapNodes as $node) {
-                $childSitemapUrl = (string) $node;
-                $count += $this->parseSitemap($childSitemapUrl, $depth + 1);
-            }
-            return $count;
-        }
-
-        // Parse regular sitemap URLs
-        $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
-        if (!empty($urlNodes)) {
-            foreach ($urlNodes as $node) {
-                $pageUrl = (string) $node;
-                $count += $this->addSitemapUrl($pageUrl);
-            }
-        }
-
-        return $count;
-    }
-
-    protected function parseHtmlSitemap(string $content, string $baseUrl): int
-    {
-        $count = 0;
-
-        try {
-            $crawler = new Crawler($content, $baseUrl);
-
-            // Extract all links from the HTML sitemap page
-            $crawler->filter('a[href]')->each(function (Crawler $node) use (&$count, $baseUrl) {
-                $href = $node->attr('href');
-
-                if ($href === null || $href === '') {
-                    return;
-                }
-
-                // Skip non-http links
-                if (preg_match('/^(javascript|mailto|tel|#)/', $href)) {
-                    return;
-                }
-
-                $normalizedUrl = $this->normalizeUrl($href, $baseUrl);
-
-                if ($normalizedUrl === null) {
-                    return;
-                }
-
-                // Only add internal URLs from HTML sitemaps
-                if ($this->isInternalUrl($normalizedUrl)) {
-                    $count += $this->addSitemapUrl($normalizedUrl);
-                }
-            });
-        } catch (\Exception $e) {
-            // Silently handle parsing errors
-        }
-
-        return $count;
-    }
-
-    protected function parseTextSitemap(string $content): int
-    {
-        $count = 0;
-        $lines = preg_split('/\r\n|\r|\n/', $content);
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-
-            // Skip empty lines and comments
-            if ($line === '' || str_starts_with($line, '#')) {
-                continue;
-            }
-
-            // Check if it looks like a URL
-            if (filter_var($line, FILTER_VALIDATE_URL)) {
-                $count += $this->addSitemapUrl($line);
-            }
-        }
-
-        return $count;
-    }
-
-    protected function addSitemapUrl(string $url): int
-    {
-        $url = rtrim($url, '/');
-
-        if (!isset($this->visited[$url]) && $this->isInternalUrl($url)) {
-            $this->queue[] = [
-                'url' => $url,
-                'depth' => 0, // Treat as entry point so it crawls links from these pages too
-                'source' => 'sitemap',
-            ];
-            return 1;
-        }
-
-        return 0;
-    }
 
     protected function displayResults(): void
     {
         $format = $this->option('format');
         $statusFilter = $this->option('status');
 
-        // Filter results
-        $filtered = $this->filterResults($statusFilter);
+        // Filter results using the scanner service
+        $filtered = $this->scannerService->filterResults($this->results, $statusFilter);
 
-        // Calculate stats
-        $stats = $this->calculateStats();
+        // Calculate stats using the scanner service
+        $stats = $this->scannerService->calculateStats($this->results);
 
         // Display based on format
         match ($format) {
@@ -580,41 +206,6 @@ class ScanSite extends Command
         };
     }
 
-    protected function filterResults(string $filter): array
-    {
-        return match ($filter) {
-            'ok' => array_filter($this->results, fn($r) => $r['isOk']),
-            'broken' => array_filter($this->results, fn($r) => !$r['isOk']),
-            default => $this->results,
-        };
-    }
-
-    protected function calculateStats(): array
-    {
-        $total = count($this->results);
-        $ok = count(array_filter($this->results, fn($r) => $r['isOk'] && empty($r['redirectChain'])));
-        $redirects = count(array_filter($this->results, fn($r) => !empty($r['redirectChain']) && $r['isOk']));
-        $broken = count(array_filter($this->results, fn($r) => !$r['isOk'] && $r['status'] !== 'Timeout'));
-        $timeouts = count(array_filter($this->results, fn($r) => $r['status'] === 'Timeout'));
-
-        // Redirect chain statistics
-        $redirectChainCount = count(array_filter($this->results, fn($r) => !empty($r['redirectChain'])));
-        $totalRedirectHops = array_sum(array_map(fn($r) => count($r['redirectChain']), $this->results));
-
-        // HTTPS downgrade count
-        $httpsDowngrades = count(array_filter($this->results, fn($r) => $r['hasHttpsDowngrade'] ?? false));
-
-        return [
-            'total' => $total,
-            'ok' => $ok,
-            'redirects' => $redirects,
-            'broken' => $broken,
-            'timeouts' => $timeouts,
-            'redirectChainCount' => $redirectChainCount,
-            'totalRedirectHops' => $totalRedirectHops,
-            'httpsDowngrades' => $httpsDowngrades,
-        ];
-    }
 
     protected function displayTable(array $results, array $stats): void
     {
