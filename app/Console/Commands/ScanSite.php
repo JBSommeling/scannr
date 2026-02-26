@@ -234,6 +234,10 @@ class ScanSite extends Command
         $format = $this->option('format');
         $statusFilter = $this->option('status');
         $elementFilter = $this->option('filter');
+        $scanElementsFilter = $this->option('scan-elements');
+
+        // Check if any filter is actually applied
+        $isFiltered = $statusFilter !== 'all' || $elementFilter !== 'all' || $scanElementsFilter !== 'all';
 
         // Filter results using the scanner service
         $filtered = $this->scannerService->filterResults($this->results, $statusFilter);
@@ -247,18 +251,20 @@ class ScanSite extends Command
 
         // Display based on format
         match ($format) {
-            'json' => $this->displayJson($filtered, $filteredStats, $totalScanned),
+            'json' => $this->displayJson($filtered, $filteredStats, $totalScanned, $isFiltered),
             'csv' => $this->displayCsv($filtered),
-            default => $this->displayTable($filtered, $filteredStats, $totalScanned),
+            default => $this->displayTable($filtered, $filteredStats, $totalScanned, $isFiltered),
         };
     }
 
 
-    protected function displayTable(array $results, array $stats, int $totalScanned): void
+    protected function displayTable(array $results, array $stats, int $totalScanned, bool $isFiltered): void
     {
         $this->info('Summary:');
         $this->line("  Total scanned:  {$totalScanned}");
-        $this->line("  Filtered:       {$stats['total']}");
+        if ($isFiltered) {
+            $this->line("  Filtered:       {$stats['total']}");
+        }
         $this->line("  Working (2xx):  {$stats['ok']}");
         $this->line("  Redirects:      {$stats['redirects']}");
         $this->line("  Broken:         {$stats['broken']}");
@@ -343,13 +349,25 @@ class ScanSite extends Command
         }
     }
 
-    protected function displayJson(array $results, array $stats, int $totalScanned): void
+    protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered): void
     {
         // Extract broken links from filtered results only
         $brokenLinks = array_values(array_filter($results, fn($r) => !$r['isOk']));
 
+        // Build summary - start with totalScanned
+        $summary = ['totalScanned' => $totalScanned];
+
+        // Only add filtered count when a filter is applied
+        if ($isFiltered) {
+            $summary['filtered'] = $stats['total'];
+        }
+
+        // Add other stats, excluding 'total' to avoid duplication
+        $statsWithoutTotal = array_diff_key($stats, ['total' => true]);
+        $summary = array_merge($summary, $statsWithoutTotal);
+
         $output = [
-            'summary' => array_merge(['totalScanned' => $totalScanned], $stats),
+            'summary' => $summary,
             'results' => array_values($results),
             'brokenLinks' => $brokenLinks,
         ];
