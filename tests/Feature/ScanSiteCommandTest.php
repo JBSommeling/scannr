@@ -54,7 +54,7 @@ class ScanSiteCommandTest extends TestCase
         ])
             ->expectsOutputToContain('Site Scan: https://example.com')
             ->expectsOutputToContain('Summary:')
-            ->expectsOutputToContain('Total links:')
+            ->expectsOutputToContain('Total scanned:')
             ->assertExitCode(0);
     }
 
@@ -236,7 +236,7 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => 10,
             '--max' => 1,
         ])
-            ->expectsOutputToContain('Total links:')
+            ->expectsOutputToContain('Total scanned:')
             ->assertExitCode(0);
     }
 
@@ -309,7 +309,7 @@ class ScanSiteCommandTest extends TestCase
         ])
             ->expectsOutputToContain('Discovering URLs from sitemap...')
             ->expectsOutputToContain('Summary:')
-            ->expectsOutputToContain('Total links:')
+            ->expectsOutputToContain('Total scanned:')
             ->assertExitCode(0);
     }
 }

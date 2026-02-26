@@ -239,22 +239,26 @@ class ScanSite extends Command
         $filtered = $this->scannerService->filterResults($this->results, $statusFilter);
         $filtered = $this->scannerService->filterByElement($filtered, $elementFilter);
 
-        // Calculate stats using the scanner service
-        $stats = $this->scannerService->calculateStats($this->results);
+        // Calculate stats based on FILTERED results
+        $filteredStats = $this->scannerService->calculateStats($filtered);
+
+        // Keep total scanned count from all results
+        $totalScanned = count($this->results);
 
         // Display based on format
         match ($format) {
-            'json' => $this->displayJson($filtered, $stats),
+            'json' => $this->displayJson($filtered, $filteredStats, $totalScanned),
             'csv' => $this->displayCsv($filtered),
-            default => $this->displayTable($filtered, $stats),
+            default => $this->displayTable($filtered, $filteredStats, $totalScanned),
         };
     }
 
 
-    protected function displayTable(array $results, array $stats): void
+    protected function displayTable(array $results, array $stats, int $totalScanned): void
     {
         $this->info('Summary:');
-        $this->line("  Total links:    {$stats['total']}");
+        $this->line("  Total scanned:  {$totalScanned}");
+        $this->line("  Filtered:       {$stats['total']}");
         $this->line("  Working (2xx):  {$stats['ok']}");
         $this->line("  Redirects:      {$stats['redirects']}");
         $this->line("  Broken:         {$stats['broken']}");
@@ -272,7 +276,7 @@ class ScanSite extends Command
 
             // List affected URLs when verbose
             if ($this->output->isVerbose()) {
-                $downgradedUrls = array_filter($this->results, fn($r) => $r['hasHttpsDowngrade'] ?? false);
+                $downgradedUrls = array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false);
                 foreach ($downgradedUrls as $result) {
                     $this->line("    - {$result['url']}");
                 }
@@ -318,8 +322,8 @@ class ScanSite extends Command
 
         $this->table($headers, $tableData);
 
-        // Display broken links in a separate table
-        $brokenLinks = array_filter($this->results, fn($r) => !$r['isOk']);
+        // Display broken links in a separate table (from filtered results only)
+        $brokenLinks = array_filter($results, fn($r) => !$r['isOk']);
         if (!empty($brokenLinks)) {
             $this->newLine();
             $this->error('Broken Links:');
@@ -339,13 +343,13 @@ class ScanSite extends Command
         }
     }
 
-    protected function displayJson(array $results, array $stats): void
+    protected function displayJson(array $results, array $stats, int $totalScanned): void
     {
-        // Extract broken links for separate section
-        $brokenLinks = array_values(array_filter($this->results, fn($r) => !$r['isOk']));
+        // Extract broken links from filtered results only
+        $brokenLinks = array_values(array_filter($results, fn($r) => !$r['isOk']));
 
         $output = [
-            'summary' => $stats,
+            'summary' => array_merge(['totalScanned' => $totalScanned], $stats),
             'results' => array_values($results),
             'brokenLinks' => $brokenLinks,
         ];
