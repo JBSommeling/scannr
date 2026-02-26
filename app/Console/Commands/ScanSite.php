@@ -22,7 +22,8 @@ class ScanSite extends Command
         {--max=300 : Maximum number of URLs to scan}
         {--timeout=5 : Request timeout in seconds}
         {--format=table : Output format (table, json, csv)}
-        {--status=all : Filter results (all, ok, broken)}';
+        {--status=all : Filter results (all, ok, broken)}
+        {--sitemap : Use sitemap.xml to discover URLs}';
 
     /**
      * The console command description.
@@ -77,6 +78,11 @@ class ScanSite extends Command
 
         // Initialize BFS queue with starting URL
         $this->queue[] = ['url' => $this->baseUrl, 'depth' => 0, 'source' => 'start'];
+
+        // If --sitemap option is used, discover URLs from sitemap.xml
+        if ($this->option('sitemap')) {
+            $this->discoverFromSitemap();
+        }
 
         $scannedCount = 0;
         $progressBar = $this->output->createProgressBar($maxUrls);
@@ -324,6 +330,114 @@ class ScanSite extends Command
 
         return $parsed['host'] === $this->baseHost
             || str_ends_with($parsed['host'], '.' . $this->baseHost);
+    }
+
+    protected function discoverFromSitemap(): void
+    {
+        $sitemapUrls = [
+            $this->baseUrl . '/sitemap.xml',
+            $this->baseUrl . '/sitemap_index.xml',
+            $this->baseUrl . '/sitemap/',
+        ];
+
+        // First try to get sitemap URL from robots.txt
+        $robotsUrl = $this->baseUrl . '/robots.txt';
+        try {
+            $response = $this->client->request('GET', $robotsUrl);
+            if ($response->getStatusCode() === 200) {
+                $robotsContent = (string) $response->getBody();
+                if (preg_match_all('/Sitemap:\s*(.+)/i', $robotsContent, $matches)) {
+                    $sitemapUrls = array_merge($matches[1], $sitemapUrls);
+                }
+            }
+        } catch (\Exception $e) {
+            // Ignore robots.txt errors
+        }
+
+        $this->info('Discovering URLs from sitemap...');
+        $discoveredCount = 0;
+
+        foreach ($sitemapUrls as $sitemapUrl) {
+            $sitemapUrl = trim($sitemapUrl);
+            $discoveredCount += $this->parseSitemap($sitemapUrl);
+
+            if ($discoveredCount > 0) {
+                break; // Found a working sitemap
+            }
+        }
+
+        if ($discoveredCount > 0) {
+            $this->info("  Found {$discoveredCount} URLs from sitemap (will also crawl links from pages)");
+        } else {
+            $this->warn('  No sitemap found, using page crawling only');
+        }
+        $this->newLine();
+    }
+
+    protected function parseSitemap(string $url, int $depth = 0): int
+    {
+        if ($depth > 3) {
+            return 0; // Prevent infinite recursion in sitemap indexes
+        }
+
+        try {
+            $response = $this->client->request('GET', $url);
+
+            if ($response->getStatusCode() !== 200) {
+                return 0;
+            }
+
+            $content = (string) $response->getBody();
+            $count = 0;
+
+            // Suppress XML errors
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($content);
+            libxml_clear_errors();
+
+            if ($xml === false) {
+                return 0;
+            }
+
+            // Register namespaces
+            $namespaces = $xml->getNamespaces(true);
+            if (isset($namespaces[''])) {
+                $xml->registerXPathNamespace('sm', $namespaces['']);
+            }
+
+            // Check if it's a sitemap index
+            $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
+            if (!empty($sitemapNodes)) {
+                foreach ($sitemapNodes as $node) {
+                    $childSitemapUrl = (string) $node;
+                    $count += $this->parseSitemap($childSitemapUrl, $depth + 1);
+                }
+                return $count;
+            }
+
+            // Parse regular sitemap URLs
+            $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
+            if (!empty($urlNodes)) {
+                foreach ($urlNodes as $node) {
+                    $pageUrl = (string) $node;
+                    $pageUrl = rtrim($pageUrl, '/');
+
+                    if (!isset($this->visited[$pageUrl]) && $this->isInternalUrl($pageUrl)) {
+                        $this->queue[] = [
+                            'url' => $pageUrl,
+                            'depth' => 0, // Treat as entry point so it crawls links from these pages too
+                            'source' => 'sitemap',
+                        ];
+                        $count++;
+                    }
+                }
+            }
+
+            return $count;
+
+        } catch (\Exception $e) {
+            return 0;
+        }
     }
 
     protected function displayResults(): void

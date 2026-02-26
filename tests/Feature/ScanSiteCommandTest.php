@@ -148,5 +148,63 @@ class ScanSiteCommandTest extends TestCase
             ->expectsOutputToContain('Summary:')
             ->assertExitCode(0);
     }
-}
 
+    /**
+     * Test sitemap option is available in command signature
+     */
+    public function test_sitemap_option_exists(): void
+    {
+        $this->artisan('site:scan', ['url' => 'https://example.com', '--help' => true])
+            ->expectsOutputToContain('sitemap')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test sitemap option shows discovery message
+     */
+    public function test_sitemap_option_shows_discovery_message(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--sitemap' => true,
+            '--depth' => 1,
+            '--max' => 5,
+        ])
+            ->expectsOutputToContain('Discovering URLs from sitemap...')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test sitemap option with no sitemap available falls back to page crawling
+     */
+    public function test_sitemap_fallback_to_page_crawling(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--sitemap' => true,
+            '--depth' => 1,
+            '--max' => 5,
+        ])
+            // example.com likely doesn't have a sitemap, should fallback
+            ->expectsOutputToContain('Summary:')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test sitemap combined with regular crawling still works even when no sitemap found
+     */
+    public function test_sitemap_combined_with_regular_crawling(): void
+    {
+        // Test that using --sitemap still crawls pages normally even if no sitemap is found
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--sitemap' => true,
+            '--depth' => 1,
+            '--max' => 5,
+        ])
+            ->expectsOutputToContain('Discovering URLs from sitemap...')
+            ->expectsOutputToContain('Summary:')
+            ->expectsOutputToContain('Total links:')
+            ->assertExitCode(0);
+    }
+}
