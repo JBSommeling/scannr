@@ -64,7 +64,7 @@ readonly class ScanConfig
         // Parse scan elements
         $scanElementsOption = $command->option('scan-elements');
         $scanElements = $scanElementsOption === 'all'
-            ? ['a', 'link', 'script', 'img']
+            ? ['a', 'link', 'script', 'img', 'media']
             : array_map('trim', explode(',', $scanElementsOption));
 
         // Parse custom tracking params
@@ -104,7 +104,7 @@ readonly class ScanConfig
     {
         return $this->statusFilter !== 'all'
             || $this->elementFilter !== 'all'
-            || $this->scanElements !== ['a', 'link', 'script', 'img'];
+            || $this->scanElements !== ['a', 'link', 'script', 'img', 'media'];
     }
 
     /**

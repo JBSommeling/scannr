@@ -6,7 +6,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 
 - **BFS Crawling**: Systematically crawls websites level by level
 - **Broken Link Detection**: Identifies links returning 4xx/5xx status codes
-- **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, and `<img>` elements
+- **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, `<img>`, media elements (`<video>`, `<audio>`, `<object>`, `<embed>`), download triggers (`<a download>`, `data-href`, `data-url`, etc.), and inline JS handlers (`onclick`)
 - **Element Type Filtering**: Filter results by element type (anchors, images, scripts, stylesheets)
 - **URL Normalization**: Normalizes URLs by removing fragments, trailing slashes, and tracking parameters
 - **Tracking Parameter Stripping**: Automatically removes common tracking params (utm_*, fbclid, gclid, ref, source)
@@ -272,6 +272,11 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
    - `<script src="">` - JavaScript files
    - `<img src="">` - Images
    - `<img srcset="">`, `<img data-src="">`, `<picture source>` - Responsive and lazy-loaded images
+   - `<video>`, `<audio>`, `<source>`, `<object>`, `<embed>` - Media files and embedded documents
+   - `<a download>`, `[data-href]`, `[data-url]`, `[data-download]`, `[data-file]` - Download links (including JS-triggered)
+   - `[onclick]` - URLs in inline JS handlers (`location.href`, `window.open()`, `download()`)
+   - Inline `<script>` content (with `--js`) - Download URLs in JS data blobs, JSON config, React/Next.js/Nuxt data
+   - External JS bundles (with `--js`) - Download URLs compiled into React/Vue/Svelte bundles (same-domain only)
 6. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.)
 7. **External Links**: External URLs are checked with HEAD requests for efficiency
 8. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
@@ -302,6 +307,11 @@ The scanner extracts and tracks URLs from the following HTML elements:
 | `<link href="">` | `link` | Stylesheets, favicons, preload resources |
 | `<script src="">` | `script` | JavaScript files |
 | `<img src="">` | `img` | Images |
+| `<video>`, `<audio>`, `<source>`, `<object>`, `<embed>` | `media` | Media files, embedded documents |
+| `<a download>`, `[data-href]`, `[data-url]`, `[data-download]`, `[data-file]` | `media` | Download links, including JS-triggered downloads |
+| `[onclick]` with `location.href`, `window.open()`, `download()` | `media` | Download URLs in inline JavaScript handlers |
+| Inline `<script>` content (requires `--js`) | `media` | Download URLs in JS data blobs, JSON config, React/Next.js/Nuxt data |
+| External JS bundles (requires `--js`) | `media` | Download URLs compiled into React/Vue/Svelte JS bundles (internal only) |
 
 ### Filtering vs. Scanning
 
