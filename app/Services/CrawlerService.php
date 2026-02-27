@@ -20,6 +20,8 @@ class CrawlerService
     protected array $queue = [];
     protected array $results = [];
     protected ?Client $client = null;
+    protected ?string $originalHost = null;
+    protected ?string $canonicalHost = null;
 
     public function __construct(
         protected ScannerService $scannerService,
@@ -50,6 +52,9 @@ class CrawlerService
         $this->visited = [];
         $this->queue = [];
         $this->results = [];
+        $this->originalHost = parse_url($config->baseUrl, PHP_URL_HOST);
+        $this->canonicalHost = null;
+        $canonicalBaseResolved = false;
 
         // Configure HTTP client (use injected client or create new one)
         $client = $this->client ?? $this->createHttpClient($config->timeout);
@@ -104,6 +109,24 @@ class CrawlerService
 
             if ($isInternal) {
                 $this->processInternalUrl($url, $depth, $source, $element, $config->scanElements);
+
+                // After processing the first URL (start), check if there was a redirect
+                // and update the base URL to the canonical URL to avoid counting
+                // the same redirect (e.g., www -> non-www) for every resource
+                if (!$canonicalBaseResolved && $source === 'start' && !empty($this->results)) {
+                    $firstResult = end($this->results);
+                    if (!empty($firstResult['redirectChain'])) {
+                        $canonicalUrl = rtrim(end($firstResult['redirectChain']), '/');
+                        $this->canonicalHost = parse_url($canonicalUrl, PHP_URL_HOST);
+                        $this->scannerService->setBaseUrl($canonicalUrl);
+                        // Clear the redirect chain for the start URL since it's expected
+                        $this->results[array_key_last($this->results)]['redirectChain'] = [];
+
+                        // Rewrite all URLs currently in the queue to use canonical host
+                        $this->rewriteQueueToCanonicalHost();
+                    }
+                    $canonicalBaseResolved = true;
+                }
             } else {
                 $this->processExternalUrl($url, $source, $element, $config->scanElements);
             }
@@ -202,10 +225,12 @@ class CrawlerService
         // Add extracted links to the queue
         foreach ($extractedLinks as $link) {
             $linkElement = $link['element'] ?? 'a';
+            // Rewrite URL to canonical host if needed (e.g., www -> non-www)
+            $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
 
-            if (!isset($this->visited[$link['url']])) {
+            if (!isset($this->visited[$linkUrl])) {
                 $queueItem = [
-                    'url' => $link['url'],
+                    'url' => $linkUrl,
                     'depth' => $depth + 1,
                     'source' => $url,
                     'element' => $linkElement,
@@ -252,6 +277,44 @@ class CrawlerService
     public function getVisited(): array
     {
         return $this->visited;
+    }
+
+    /**
+     * Rewrite a URL from the original host to the canonical host.
+     *
+     * This handles cases where www.example.com redirects to example.com,
+     * ensuring we use the canonical URL to avoid duplicate redirect chains.
+     */
+    protected function rewriteUrlToCanonicalHost(string $url): string
+    {
+        if ($this->canonicalHost === null || $this->originalHost === null) {
+            return $url;
+        }
+
+        if ($this->canonicalHost === $this->originalHost) {
+            return $url;
+        }
+
+        $urlHost = parse_url($url, PHP_URL_HOST);
+        if ($urlHost === $this->originalHost) {
+            return str_replace("//{$this->originalHost}", "//{$this->canonicalHost}", $url);
+        }
+
+        return $url;
+    }
+
+    /**
+     * Rewrite all URLs in the queue to use the canonical host.
+     *
+     * Called after discovering the canonical host to ensure all queued
+     * URLs use the correct host.
+     */
+    protected function rewriteQueueToCanonicalHost(): void
+    {
+        foreach ($this->queue as &$item) {
+            $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
+        }
+        unset($item);
     }
 }
 

@@ -223,6 +223,10 @@ class ScannerService
         $loop = false;
         $hasHttpsDowngrade = false;
 
+        // Keep track of visited URLs to detect loops
+        $visitedUrls = [];
+        $visitedUrls[$url] = true;
+
         while ($hops < $this->maxRedirects) {
             try {
                 $response = $this->client->request($method, $currentUrl);
@@ -230,14 +234,18 @@ class ScannerService
 
                 // If 3xx redirect
                 if ($finalStatus >= 300 && $finalStatus < 400) {
-                    $location = $response->getHeaderLine('Location');
+                    $rawLocation = $response->getHeaderLine('Location');
 
-                    if (empty($location)) {
+                    if (empty($rawLocation)) {
                         break;
                     }
 
-                    // Normalize redirect location
-                    $location = $this->normalizeUrl($location, $currentUrl);
+                    // Resolve relative redirect location to absolute URL (but keep trailing slashes)
+                    $location = $this->resolveRedirectUrl($rawLocation, $currentUrl);
+
+                    if ($location === null) {
+                        break;
+                    }
 
                     // Check for HTTPS to HTTP downgrade
                     $currentScheme = parse_url($currentUrl, PHP_URL_SCHEME);
@@ -246,13 +254,14 @@ class ScannerService
                         $hasHttpsDowngrade = true;
                     }
 
-                    // Check for loop
-                    if (in_array($location, $chain) || $location === $url) {
+                    // Check for loop (redirecting to an already visited URL)
+                    if (isset($visitedUrls[$location])) {
                         $loop = true;
                         $chain[] = $location . ' (LOOP)';
                         break;
                     }
 
+                    $visitedUrls[$location] = true;
                     $chain[] = $location;
                     $currentUrl = $location;
                     $hops++;
@@ -514,6 +523,58 @@ class ScannerService
         $basePath = preg_replace('/\/[^\/]*$/', '/', $basePath);
 
         return $this->stripTrackingParams(rtrim("{$scheme}://{$host}{$port}{$basePath}{$url}", '/'));
+    }
+
+    /**
+     * Resolve a redirect URL to an absolute URL.
+     *
+     * Similar to normalizeUrl but preserves trailing slashes and does not
+     * strip tracking parameters. Used for following redirects accurately.
+     *
+     * @param  string|null  $url      The redirect URL to resolve.
+     * @param  string       $baseUrl  The current URL for resolving relative URLs.
+     * @return string|null The absolute URL, or null if invalid.
+     */
+    public function resolveRedirectUrl(?string $url, string $baseUrl): ?string
+    {
+        if ($url === null || $url === '') {
+            return null;
+        }
+
+        // Remove fragment only
+        $url = preg_replace('/#.*$/', '', $url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        // Handle protocol-relative URLs
+        if (str_starts_with($url, '//')) {
+            $parsedBase = parse_url($baseUrl);
+            return ($parsedBase['scheme'] ?? 'https') . ':' . $url;
+        }
+
+        // Handle absolute URLs - return as-is (no trailing slash stripping)
+        if (preg_match('/^https?:\/\//', $url)) {
+            return $url;
+        }
+
+        // Handle relative URLs
+        $parsedBase = parse_url($baseUrl);
+        $scheme = $parsedBase['scheme'] ?? 'https';
+        $host = $parsedBase['host'] ?? '';
+        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
+
+        if (str_starts_with($url, '/')) {
+            // Absolute path
+            return "{$scheme}://{$host}{$port}{$url}";
+        }
+
+        // Relative path
+        $basePath = $parsedBase['path'] ?? '/';
+        $basePath = preg_replace('/\/[^\/]*$/', '/', $basePath);
+
+        return "{$scheme}://{$host}{$port}{$basePath}{$url}";
     }
 
     /**

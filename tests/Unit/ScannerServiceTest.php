@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\ScannerService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Psr7\Request;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -700,6 +701,94 @@ class ScannerServiceTest extends TestCase
         $result = $this->service->followRedirects('https://example.com', 'GET');
 
         $this->assertTrue($result['hasHttpsDowngrade']);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_detects_loop_to_original_url(): void
+    {
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com' : '';
+        });
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturn($response1);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com', 'GET');
+
+        $this->assertTrue($result['loop']);
+        $this->assertCount(1, $result['chain']);
+        $this->assertStringContainsString('(LOOP)', $result['chain'][0]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_detects_loop_in_chain(): void
+    {
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/page-a' : '';
+        });
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(301);
+        $response2->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/page-b' : '';
+        });
+
+        $response3 = $this->createMock(ResponseInterface::class);
+        $response3->method('getStatusCode')->willReturn(301);
+        $response3->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/page-a' : '';
+        });
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2, $response3);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com', 'GET');
+
+        $this->assertTrue($result['loop']);
+        $this->assertCount(3, $result['chain']);
+        $this->assertEquals('https://example.com/page-a', $result['chain'][0]);
+        $this->assertEquals('https://example.com/page-b', $result['chain'][1]);
+        $this->assertStringContainsString('https://example.com/page-a', $result['chain'][2]);
+        $this->assertStringContainsString('(LOOP)', $result['chain'][2]);
+    }
+
+    public function test_follow_redirects_trailing_slash_redirect_is_not_a_loop(): void
+    {
+        // Redirect from /page to /page/ is a real redirect, not a loop
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/page/' : '';
+        });
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($this->createMock(StreamInterface::class));
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/page', 'GET');
+
+        // Should NOT be a loop - this is a valid redirect
+        $this->assertFalse($result['loop']);
+        $this->assertCount(1, $result['chain']);
+        $this->assertEquals('https://example.com/page/', $result['chain'][0]);
+        $this->assertEquals(200, $result['finalStatus']);
     }
 
     // ======================
