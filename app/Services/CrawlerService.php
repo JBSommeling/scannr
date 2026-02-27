@@ -27,6 +27,7 @@ class CrawlerService
     public function __construct(
         protected ScannerService $scannerService,
         protected SitemapService $sitemapService,
+        protected RobotsService $robotsService = new RobotsService(),
     ) {}
 
     /**
@@ -96,6 +97,31 @@ class CrawlerService
         // Configure sitemap service
         $this->sitemapService->setClient($client);
 
+        // Fetch and parse robots.txt if respect-robots is enabled
+        $delayMin = $config->delayMin;
+        $delayMax = $config->delayMax;
+
+        if ($config->respectRobots) {
+            $this->robotsService->setClient($client);
+            $this->robotsService->fetchAndParse($config->baseUrl);
+
+            $robotsDelay = $this->robotsService->getCrawlDelay();
+            if ($robotsDelay !== null) {
+                $robotsDelayMs = (int) ($robotsDelay * 1000);
+                $delayMin = max($delayMin, $robotsDelayMs);
+                $delayMax = max($delayMax, $robotsDelayMs);
+
+                if ($onSitemapDiscovery !== null) {
+                    $onSitemapDiscovery("  Robots.txt Crawl-delay: {$robotsDelay}s (using {$delayMin}ms-{$delayMax}ms delay)");
+                }
+            }
+
+            $rulesCount = count($this->robotsService->getRules());
+            if ($rulesCount > 0 && $onSitemapDiscovery !== null) {
+                $onSitemapDiscovery("  Robots.txt: respecting {$rulesCount} Disallow/Allow rule(s)");
+            }
+        }
+
         // Initialize queue with starting URL
         $this->queue[] = [
             'url' => $config->baseUrl,
@@ -125,6 +151,12 @@ class CrawlerService
 
             // Skip if beyond max depth
             if ($depth > $config->maxDepth) {
+                continue;
+            }
+
+            // Skip if disallowed by robots.txt (only for internal URLs)
+            if ($config->respectRobots && $this->scannerService->isInternalUrl($url) && !$this->robotsService->isAllowed($url)) {
+                $this->visited[$url] = true;
                 continue;
             }
 
@@ -169,8 +201,8 @@ class CrawlerService
                 $this->processExternalUrl($url, $source, $element, $config->scanElements);
             }
 
-            // Rate limiting
-            usleep(random_int($config->delayMin * 1000, $config->delayMax * 1000));
+            // Rate limiting (respects Crawl-delay from robots.txt)
+            usleep(random_int($delayMin * 1000, $delayMax * 1000));
 
             // Progress callback
             if ($onProgress !== null) {
@@ -211,7 +243,7 @@ class CrawlerService
     protected function discoverFromSitemap(string $baseUrl, ?Closure $onMessage = null): void
     {
         if ($onMessage !== null) {
-            $onMessage('Discovering URLs from sitemap...');
+            $onMessage('  Discovering URLs from sitemap...');
         }
 
         $result = $this->sitemapService->discoverUrls($baseUrl);

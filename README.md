@@ -16,6 +16,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Sitemap Integration**: Discover URLs from XML, HTML, or plain text sitemaps
 - **Sitemap Index Support**: Recursively parses sitemap index files
 - **robots.txt Support**: Automatically discovers sitemaps from robots.txt
+- **robots.txt Compliance**: Respects `Disallow` rules and `Crawl-delay` directives from robots.txt (User-agent: *)
 - **Internal & External Links**: Scans both internal pages and external links
 - **Multiple Output Formats**: Table, JSON, or CSV output
 - **Rate Limiting**: Random delay (300-500ms) between requests to avoid overwhelming servers
@@ -57,6 +58,7 @@ php artisan site:scan {url} [options]
 | `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated list (e.g., `a,img`) |
 | `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
 | `--js` | false | Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer) |
+| `--no-robots` | false | Ignore robots.txt rules (Disallow/Crawl-delay) |
 | `--strip-params=PARAMS` | - | Additional tracking parameters to strip (comma-separated, e.g., `ref,tracker_*`) |
 
 ### Examples
@@ -143,6 +145,12 @@ php artisan site:scan https://example.com --js
 
 ```bash
 php artisan site:scan https://example.com --js --sitemap --scan-elements=a,img --status=broken
+```
+
+**Ignore robots.txt rules (crawl everything including disallowed paths):**
+
+```bash
+php artisan site:scan https://example.com --no-robots
 ```
 
 **Strip additional tracking parameters:**
@@ -245,22 +253,29 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
 ## How It Works
 
 1. **Initialization**: The scanner starts with the provided URL as the seed
-2. **Sitemap Discovery** (optional): When `--sitemap` is used, the scanner:
+2. **Robots.txt Compliance**: The scanner fetches and parses robots.txt:
+   - Reads `User-agent: *` (and `ScannrBot`-specific) rules
+   - Applies `Disallow` rules to skip blocked paths during crawling
+   - Applies `Allow` rules with longest-match-wins precedence
+   - Respects `Crawl-delay` by adjusting the delay between requests
+   - Extracts `Sitemap:` directives for sitemap discovery
+   - Use `--no-robots` to bypass these rules
+3. **Sitemap Discovery** (optional): When `--sitemap` is used, the scanner:
    - Checks robots.txt for Sitemap directives
    - Tries common sitemap locations (sitemap.xml, sitemap_index.xml, sitemap/)
    - Parses XML sitemaps, sitemap index files, HTML sitemaps, and plain text sitemaps
    - Adds discovered URLs to the crawl queue
-3. **BFS Queue**: URLs are processed in a breadth-first manner, ensuring closer pages are scanned first
-4. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts URLs from:
+4. **BFS Queue**: URLs are processed in a breadth-first manner, ensuring closer pages are scanned first
+5. **Internal Pages**: For internal URLs, the scanner fetches the full page and extracts URLs from:
    - `<a href="">` - Anchor links to other pages
    - `<link href="">` - Stylesheets, favicons, and other linked resources
    - `<script src="">` - JavaScript files
    - `<img src="">` - Images
    - `<img srcset="">`, `<img data-src="">`, `<picture source>` - Responsive and lazy-loaded images
-5. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.)
-6. **External Links**: External URLs are checked with HEAD requests for efficiency
-6. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
-7. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
+6. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.)
+7. **External Links**: External URLs are checked with HEAD requests for efficiency
+8. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
+9. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
 
 ## Notes
 
@@ -268,6 +283,8 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
 - SSL certificate verification is disabled by default to handle sites with certificate issues
 - Timeout errors are tracked separately from HTTP error responses
 - A random delay (300-500ms by default) is applied between requests to avoid overwhelming servers
+- Robots.txt `Disallow` rules are respected by default; use `--no-robots` to bypass
+- When robots.txt specifies a `Crawl-delay`, the scanner uses the larger of the configured delay and the robots.txt delay
 - Hard limits are enforced for depth (max 10) and URLs (max 2000) regardless of command line options
 - Use verbose mode (`-v`) to see redirect chains in table output and list HTTPS downgraded URLs
 - The `--sitemap` option discovers URLs from sitemaps before crawling, treating them as entry points (depth=0)
@@ -330,6 +347,57 @@ When using `--sitemap`, the scanner checks for sitemaps in this order:
 4. `/sitemap/`
 
 The first working sitemap found is used, and discovered URLs are added to the crawl queue with depth=0, so the crawler will also find and scan any links on those pages.
+
+## Robots.txt Compliance
+
+By default, the scanner respects robots.txt rules to be a well-behaved crawler. This is enabled automatically — no flags needed.
+
+### What Is Respected
+
+| Directive | Behavior |
+|-----------|----------|
+| `User-agent: *` | Rules under this block apply to the scanner |
+| `User-agent: ScannrBot` | If present, these rules take priority over `*` |
+| `Disallow: /path` | URLs matching this path prefix are skipped during crawling |
+| `Allow: /path` | Overrides a `Disallow` when more specific (longest-match-wins) |
+| `Crawl-delay: N` | Delay between requests is set to at least N seconds |
+| `Sitemap: URL` | Used for sitemap discovery (with `--sitemap` flag) |
+
+### Pattern Matching
+
+The scanner supports the de facto robots.txt pattern syntax:
+
+- **Prefix matching**: `Disallow: /admin` blocks `/admin`, `/admin/page`, `/admin/settings`, etc.
+- **Wildcards**: `Disallow: /foo/*/bar` blocks `/foo/anything/bar`
+- **End anchor**: `Disallow: /*.pdf$` blocks `/document.pdf` but not `/document.pdf/view`
+
+### Examples
+
+```
+# robots.txt
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Allow: /admin/public/
+Crawl-delay: 2
+
+Sitemap: https://example.com/sitemap.xml
+```
+
+With this robots.txt:
+- `/admin/settings` → **skipped** (matches `Disallow: /admin/`)
+- `/admin/public/page` → **crawled** (matches `Allow: /admin/public/`, which is more specific)
+- `/private/data` → **skipped** (matches `Disallow: /private/`)
+- `/about` → **crawled** (no matching rule)
+- Delay between requests → **at least 2 seconds**
+
+### Disabling Robots.txt
+
+To ignore robots.txt rules and crawl everything (including disallowed paths):
+
+```bash
+php artisan site:scan https://example.com --no-robots
+```
 
 ## JavaScript Rendering
 
@@ -445,6 +513,8 @@ return [
 ## Rate Limiting
 
 To avoid overwhelming target servers, the scanner applies a random delay between each HTTP request in the main crawl loop. This helps prevent being blocked and is considerate to server resources.
+
+When a `Crawl-delay` directive is found in robots.txt, the scanner will use whichever is larger: the configured delay or the robots.txt delay. This ensures the crawler never exceeds the rate requested by the server.
 
 ### Default Settings
 

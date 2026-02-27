@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\RobotsService;
 use App\Services\ScannerService;
 use App\Services\SitemapService;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +25,12 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->alias('sitemap', SitemapService::class);
+
+        $this->app->singleton('robots', function ($app) {
+            return new RobotsService();
+        });
+
+        $this->app->alias('robots', RobotsService::class);
     }
 
     /**

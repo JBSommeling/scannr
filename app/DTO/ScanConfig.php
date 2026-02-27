@@ -25,6 +25,7 @@ readonly class ScanConfig
         public bool $useSitemap,
         public array $customTrackingParams,
         public bool $useJsRendering = false,
+        public bool $respectRobots = true,
     ) {}
 
     /**
@@ -90,6 +91,7 @@ readonly class ScanConfig
             useSitemap: (bool) $command->option('sitemap'),
             customTrackingParams: $customTrackingParams,
             useJsRendering: (bool) $command->option('js'),
+            respectRobots: !$command->option('no-robots'),
         );
 
         return ['config' => $config, 'warnings' => $warnings];

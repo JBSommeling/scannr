@@ -476,5 +476,591 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertCount(1, $decoded['results']);
         $this->assertEquals('img', $decoded['results'][0]['sourceElement']);
     }
-}
 
+    // ============================
+    // Redirect chain and hops tests
+    // ============================
+
+    public function test_format_table_displays_redirect_chain_count(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/page2',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('Redirect chains:', $lines);
+        $this->assertStringContainsString('2 chains', $lines);
+    }
+
+    public function test_format_table_displays_total_redirect_hops(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/page2',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+        // 2 hops + 3 hops = 5 total hops
+        $this->assertStringContainsString('5 total hops', $lines);
+    }
+
+    public function test_format_json_includes_redirect_chain_stats(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertArrayHasKey('redirectChainCount', $decoded['summary']);
+        $this->assertArrayHasKey('totalRedirectHops', $decoded['summary']);
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(2, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_table_no_redirect_chain_warning_when_none(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+        $this->assertStringNotContainsString('Redirect chains:', $lines);
+    }
+
+    public function test_format_table_single_redirect_not_counted_as_chain(): void
+    {
+        // A single redirect (1 hop) should not be counted as a "chain" (2+ hops)
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/final'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+        // Single redirect should not trigger "Redirect chains" warning
+        $this->assertStringNotContainsString('Redirect chains:', $lines);
+    }
+
+    public function test_format_json_single_redirect_has_zero_chain_count(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/final'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // Single redirect = 0 chains, but 1 hop
+        $this->assertEquals(0, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(1, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_csv_includes_redirect_chain_in_output(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // CSV should include redirects column with chain
+        $dataLine = $output->lines[1];
+        $this->assertStringContainsString('step1', $dataLine);
+        $this->assertStringContainsString('step2', $dataLine);
+    }
+
+    public function test_format_table_verbose_shows_redirect_chain_details(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $output->verbose = true;
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Verbose mode should show redirect details in table
+        $this->assertContains('Redirects', $output->tables[0]['headers']);
+
+        // Check that the row contains redirect chain info
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertArrayHasKey('Redirects', $firstRow);
+        $this->assertStringContainsString('step1', $firstRow['Redirects']);
+    }
+
+    public function test_format_json_includes_redirect_chain_in_results(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertArrayHasKey('redirectChain', $decoded['results'][0]);
+        $this->assertCount(2, $decoded['results'][0]['redirectChain']);
+        $this->assertEquals('https://example.com/step1', $decoded['results'][0]['redirectChain'][0]);
+        $this->assertEquals('https://example.com/step2', $decoded['results'][0]['redirectChain'][1]);
+    }
+
+    public function test_format_table_multiple_chains_counted_correctly(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/a', 'https://example.com/b'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/page2',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/c', 'https://example.com/d', 'https://example.com/e'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/page3',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/single'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/page4',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // 2 chains (2+ hops), 6 total hops (2 + 3 + 1 + 0)
+        $this->assertEquals(2, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(6, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_json_empty_results_has_zero_chain_count(): void
+    {
+        $results = [];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertEquals(0, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(0, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_table_displays_long_chain_with_many_hops(): void
+    {
+        // Test with a very long redirect chain (5 hops)
+        $results = [
+            [
+                'url' => 'https://example.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [
+                    'https://example.com/hop1',
+                    'https://example.com/hop2',
+                    'https://example.com/hop3',
+                    'https://example.com/hop4',
+                    'https://example.com/hop5',
+                ],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(5, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_table_chain_count_singular_label(): void
+    {
+        // Test singular "chain" vs plural "chains"
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('1 chain', $lines);
+    }
+
+    public function test_format_json_redirect_chain_with_broken_link(): void
+    {
+        // Test redirect chain that ends in a broken link
+        $results = [
+            [
+                'url' => 'https://example.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // Chain count should still be 1 even though link is broken
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(2, $decoded['summary']['totalRedirectHops']);
+        // Broken link should appear in brokenLinks
+        $this->assertCount(1, $decoded['brokenLinks']);
+    }
+
+    public function test_format_csv_empty_redirect_chain_shows_empty_redirects(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Data line should have empty redirects
+        $dataLine = $output->lines[1];
+        // Redirects column should be empty (consecutive commas or empty quoted string)
+        $this->assertStringContainsString('""', $dataLine);
+    }
+
+    public function test_format_table_mixed_redirects_and_chains(): void
+    {
+        // Mix of no redirects, single redirects, and chains
+        $results = [
+            [
+                'url' => 'https://example.com/direct',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/single-redirect',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/hop1'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/chain',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/hop1', 'https://example.com/hop2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // Only 1 chain (2+ hops), but 3 total hops (0 + 1 + 2)
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(3, $decoded['summary']['totalRedirectHops']);
+    }
+
+    public function test_format_table_redirect_chain_with_external_urls(): void
+    {
+        // Test redirect chain that includes external URLs
+        $results = [
+            [
+                'url' => 'https://external.com/final',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => ['https://example.com/redirect', 'https://external.com/final'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(2, $decoded['summary']['totalRedirectHops']);
+        $this->assertContains('https://external.com/final', $decoded['results'][0]['redirectChain']);
+    }
+
+    public function test_format_verbose_table_no_redirect_row_when_no_chain(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $output->verbose = true;
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Verbose mode should still have Redirects header
+        $this->assertContains('Redirects', $output->tables[0]['headers']);
+
+        // But the row should not have a Redirects key since chain is empty
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertArrayNotHasKey('Redirects', $firstRow);
+    }
+}
