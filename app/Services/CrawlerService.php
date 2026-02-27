@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\DTO\ScanConfig;
+use App\Services\BrowsershotFetcher;
 use Closure;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -62,6 +63,31 @@ class CrawlerService
         // Configure scanner service
         $this->scannerService->setClient($client);
         $this->scannerService->setBaseUrl($config->baseUrl);
+
+        // Configure JavaScript rendering if enabled
+        if ($config->useJsRendering) {
+            $depCheck = BrowsershotFetcher::checkDependencies();
+            if ($depCheck['available']) {
+                $fetcher = new BrowsershotFetcher();
+                $fetcher->setTimeout($config->timeout);
+
+                // Load custom paths from config if available
+                $jsConfig = config('scanner.js_rendering', []);
+                if (!empty($jsConfig)) {
+                    $fetcher->configure($jsConfig);
+                }
+
+                $this->scannerService->setBrowsershotFetcher($fetcher);
+
+                if ($onSitemapDiscovery !== null) {
+                    $onSitemapDiscovery('  JavaScript rendering enabled (headless browser)');
+                }
+            } else {
+                if ($onSitemapDiscovery !== null) {
+                    $onSitemapDiscovery("  Warning: {$depCheck['message']} Falling back to static HTML.");
+                }
+            }
+        }
 
         if (!empty($config->customTrackingParams)) {
             $this->scannerService->addTrackingParams($config->customTrackingParams);

@@ -45,6 +45,11 @@ class ScannerService
     protected array $trackingParams = [];
 
     /**
+     * Optional BrowsershotFetcher for JavaScript rendering.
+     */
+    protected ?BrowsershotFetcher $browsershotFetcher = null;
+
+    /**
      * Create a new ScannerService instance.
      *
      * @param  Client|null  $client  Optional Guzzle HTTP client instance. If not provided, a default client will be created.
@@ -88,6 +93,21 @@ class ScannerService
     public function setClient(Client $client): self
     {
         $this->client = $client;
+        return $this;
+    }
+
+    /**
+     * Set the BrowsershotFetcher for JavaScript rendering.
+     *
+     * When set, internal pages will be rendered with a headless browser
+     * to extract links from JavaScript-rendered content (SPAs).
+     *
+     * @param  BrowsershotFetcher|null  $fetcher  The fetcher instance, or null to disable.
+     * @return $this
+     */
+    public function setBrowsershotFetcher(?BrowsershotFetcher $fetcher): self
+    {
+        $this->browsershotFetcher = $fetcher;
         return $this;
     }
 
@@ -764,8 +784,22 @@ class ScannerService
         $result = $this->followRedirects($url, 'GET');
 
         $extractedLinks = [];
-        if ($result['finalStatus'] === 200 && $result['body'] !== null) {
-            $extractedLinks = $this->extractLinks($result['body'], $url);
+        if ($result['finalStatus'] === 200) {
+            // When JS rendering is enabled, use Browsershot to get the fully
+            // rendered DOM (for SPAs like React/Vue) and extract links from that.
+            // Fall back to the Guzzle response body if Browsershot fails.
+            $htmlForExtraction = $result['body'];
+
+            if ($this->browsershotFetcher !== null) {
+                $renderedResult = $this->browsershotFetcher->fetch($result['finalUrl'] ?? $url);
+                if ($renderedResult['status'] === 200 && !empty($renderedResult['body'])) {
+                    $htmlForExtraction = $renderedResult['body'];
+                }
+            }
+
+            if ($htmlForExtraction !== null) {
+                $extractedLinks = $this->extractLinks($htmlForExtraction, $url);
+            }
         }
 
         return [

@@ -61,5 +61,32 @@ return [
     'hard_max_depth' => 10,
     'hard_max_urls' => 2000,
 
+    /*
+    |--------------------------------------------------------------------------
+    | JavaScript Rendering
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for headless browser rendering (--js flag).
+    | This uses Puppeteer via spatie/browsershot to render JavaScript
+    | content, enabling scanning of SPAs (React, Vue, Angular, etc.).
+    |
+    | Requirements: Node.js + Puppeteer (npm install puppeteer)
+    |
+    */
+
+    'js_rendering' => [
+        // Path to node binary (null = auto-detect)
+        'node_binary' => null,
+
+        // Path to npm binary (null = auto-detect)
+        'npm_binary' => null,
+
+        // Path to Chrome/Chromium binary (null = use Puppeteer's bundled Chrome)
+        'chrome_path' => null,
+
+        // Timeout for browser rendering in seconds
+        'timeout' => 30,
+    ],
+
 ];
 
