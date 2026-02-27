@@ -84,7 +84,16 @@ class SitemapService
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $parsed = parse_url($this->baseUrl);
-        $this->baseHost = $parsed['host'] ?? '';
+        $host = $parsed['host'] ?? '';
+
+        // Normalize host by removing www. prefix for consistent matching
+        $this->baseHost = preg_replace('/^www\./i', '', $host);
+
+        // Also normalize the baseUrl to use the non-www version
+        if (stripos($host, 'www.') === 0) {
+            $this->baseUrl = str_ireplace('://www.', '://', $this->baseUrl);
+        }
+
         return $this;
     }
 
@@ -306,7 +315,19 @@ class SitemapService
     {
         // Suppress XML errors
         libxml_use_internal_errors(true);
+
+        // Try to parse directly first
         $xml = simplexml_load_string($content);
+
+        // If parsing failed, try wrapping content in urlset (for sitemaps missing the wrapper)
+        if ($xml === false) {
+            // Check if content has <url> elements but no <urlset> wrapper
+            if (preg_match('/<url\s*>/i', $content) && !preg_match('/<urlset/i', $content)) {
+                $wrappedContent = '<?xml version="1.0" encoding="UTF-8"?><urlset>' . $content . '</urlset>';
+                $xml = simplexml_load_string($wrappedContent);
+            }
+        }
+
         libxml_clear_errors();
 
         if ($xml === false) {
@@ -337,6 +358,17 @@ class SitemapService
         if (!empty($urlNodes)) {
             foreach ($urlNodes as $node) {
                 $urls[] = (string) $node;
+            }
+        }
+
+        // Fallback: try to extract <loc> elements directly (for malformed sitemaps)
+        if (empty($urls)) {
+            $locNodes = $xml->xpath('//loc') ?: [];
+            foreach ($locNodes as $node) {
+                $url = (string) $node;
+                if (filter_var($url, FILTER_VALIDATE_URL)) {
+                    $urls[] = $url;
+                }
             }
         }
 
@@ -422,7 +454,8 @@ class SitemapService
      * Check if a URL is internal to the base host.
      *
      * A URL is considered internal if its host matches the base host
-     * or is a subdomain of the base host.
+     * or is a subdomain of the base host. Handles www/non-www equivalence
+     * by normalizing both hosts.
      *
      * @param  string  $url  The URL to check.
      * @return bool True if the URL is internal.
@@ -435,8 +468,20 @@ class SitemapService
             return true;
         }
 
-        return $parsed['host'] === $this->baseHost
-            || str_ends_with($parsed['host'], '.' . $this->baseHost);
+        // Normalize URL host by removing www. prefix
+        $urlHost = preg_replace('/^www\./i', '', $parsed['host']);
+
+        // Exact match (both are now normalized without www)
+        if ($urlHost === $this->baseHost) {
+            return true;
+        }
+
+        // Check if URL host is a subdomain of base host
+        if (str_ends_with($urlHost, '.' . $this->baseHost)) {
+            return true;
+        }
+
+        return false;
     }
 }
 

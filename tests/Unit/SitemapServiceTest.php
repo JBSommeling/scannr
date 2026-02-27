@@ -281,6 +281,38 @@ class SitemapServiceTest extends TestCase
         $this->assertEquals('https://example.com/page1', $result[0]);
     }
 
+    public function test_parse_xml_sitemap_without_urlset_wrapper(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        // Sitemap with only url elements and no urlset wrapper (like sommeling.dev)
+        $sitemapXml = '<!-- Comment -->
+            <url><loc>https://example.com/page1</loc></url>
+            <url><loc>https://example.com/page2</loc></url>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $this->assertCount(2, $result);
+        $this->assertContains('https://example.com/page1', $result);
+        $this->assertContains('https://example.com/page2', $result);
+    }
+
+    public function test_parse_xml_sitemap_with_direct_loc_elements(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        // Sitemap with loc elements that can be found via fallback
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <root>
+                <loc>https://example.com/page1</loc>
+                <loc>https://example.com/page2</loc>
+            </root>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $this->assertCount(2, $result);
+    }
+
     // ===================
     // HTML sitemap parsing tests
     // ===================
@@ -401,6 +433,24 @@ class SitemapServiceTest extends TestCase
         $this->service->setBaseUrl('https://example.com');
 
         $result = $this->service->isInternalUrl('/page');
+
+        $this->assertTrue($result);
+    }
+
+    public function test_is_internal_url_returns_true_for_non_www_when_base_has_www(): void
+    {
+        $this->service->setBaseUrl('https://www.example.com');
+
+        $result = $this->service->isInternalUrl('https://example.com/page');
+
+        $this->assertTrue($result);
+    }
+
+    public function test_is_internal_url_returns_true_for_www_when_base_has_no_www(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->isInternalUrl('https://www.example.com/page');
 
         $this->assertTrue($result);
     }
