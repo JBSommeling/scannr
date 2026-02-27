@@ -159,7 +159,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img'],
+            scanElements: ['a', 'link', 'script', 'img', 'media'],
             statusFilter: 'all',
             elementFilter: 'all',
             outputFormat: 'table',
@@ -179,7 +179,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img'],
+            scanElements: ['a', 'link', 'script', 'img', 'media'],
             statusFilter: 'broken',
             elementFilter: 'all',
             outputFormat: 'table',
@@ -199,7 +199,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img'],
+            scanElements: ['a', 'link', 'script', 'img', 'media'],
             statusFilter: 'all',
             elementFilter: 'a',
             outputFormat: 'table',
@@ -276,7 +276,7 @@ class ScanConfigTest extends TestCase
 
         $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals(['a', 'link', 'script', 'img'], $result['config']->scanElements);
+        $this->assertEquals(['a', 'link', 'script', 'img', 'media'], $result['config']->scanElements);
     }
 
     public function test_from_command_options_parses_scan_elements_comma_separated(): void

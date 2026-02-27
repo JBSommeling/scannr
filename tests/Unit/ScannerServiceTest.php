@@ -611,6 +611,7 @@ class ScannerServiceTest extends TestCase
             <body>
                 <a href="/page">Link</a>
                 <img src="/image.png">
+                <video src="/video.mp4"></video>
             </body>
         </html>';
 
@@ -618,15 +619,110 @@ class ScannerServiceTest extends TestCase
 
         $urls = array_column($links, 'url');
         $elements = array_column($links, 'element');
-        $this->assertCount(4, $links);
+        $this->assertCount(5, $links);
         $this->assertContains('https://example.com/style.css', $urls);
         $this->assertContains('https://example.com/app.js', $urls);
         $this->assertContains('https://example.com/page', $urls);
         $this->assertContains('https://example.com/image.png', $urls);
+        $this->assertContains('https://example.com/video.mp4', $urls);
         $this->assertContains('a', $elements);
         $this->assertContains('link', $elements);
         $this->assertContains('script', $elements);
         $this->assertContains('img', $elements);
+        $this->assertContains('media', $elements);
+    }
+
+    public function test_extract_links_finds_video_src(): void
+    {
+        $html = '<html><body><video src="/video.mp4"></video></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/video.mp4', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_video_poster(): void
+    {
+        $html = '<html><body><video poster="/poster.jpg"></video></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/poster.jpg', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_audio_src(): void
+    {
+        $html = '<html><body><audio src="/audio.mp3"></audio></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/audio.mp3', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_video_source_src(): void
+    {
+        $html = '<html><body><video><source src="/video.webm" type="video/webm"></video></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/video.webm', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_audio_source_src(): void
+    {
+        $html = '<html><body><audio><source src="/audio.ogg" type="audio/ogg"></audio></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/audio.ogg', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_object_data(): void
+    {
+        $html = '<html><body><object data="/document.pdf" type="application/pdf"></object></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/document.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_embed_src(): void
+    {
+        $html = '<html><body><embed src="/flash.swf" type="application/x-shockwave-flash"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/flash.swf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_filter_by_element_returns_only_media(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/1', 'sourceElement' => 'media'],
+            ['url' => 'https://example.com/2', 'sourceElement' => 'img'],
+            ['url' => 'https://example.com/3', 'sourceElement' => 'media'],
+            ['url' => 'https://example.com/4', 'sourceElement' => 'a'],
+        ];
+
+        $result = $this->service->filterByElement($results, 'media');
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('media', $item['sourceElement']);
+        }
     }
 
     // ======================

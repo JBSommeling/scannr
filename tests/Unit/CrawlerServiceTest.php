@@ -35,7 +35,7 @@ class CrawlerServiceTest extends TestCase
             maxDepth: $overrides['maxDepth'] ?? 3,
             maxUrls: $overrides['maxUrls'] ?? 100,
             timeout: $overrides['timeout'] ?? 5,
-            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img'],
+            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img', 'media'],
             statusFilter: $overrides['statusFilter'] ?? 'all',
             elementFilter: $overrides['elementFilter'] ?? 'all',
             outputFormat: $overrides['outputFormat'] ?? 'table',

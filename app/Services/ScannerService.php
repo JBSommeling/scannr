@@ -388,6 +388,7 @@ class ScannerService
      * - <link href=""> (stylesheets, icons, etc.)
      * - <script src=""> (JavaScript files)
      * - <img src=""> (images)
+     * - <video>, <audio>, <source>, <object>, <embed> (media/downloads)
      *
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
      * Normalizes relative URLs to absolute URLs.
@@ -442,6 +443,39 @@ class ScannerService
             $crawler->filter('picture source[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                 $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'img', $links);
             });
+
+            // Extract from <video src="">
+            $crawler->filter('video[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from <video poster="">
+            $crawler->filter('video[poster]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'poster', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from <audio src="">
+            $crawler->filter('audio[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from <source src=""> inside <video> and <audio> elements
+            $crawler->filter('video source[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
+            });
+            $crawler->filter('audio source[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from <object data="">
+            $crawler->filter('object[data]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'data', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from <embed src="">
+            $crawler->filter('embed[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
+            });
         } catch (\Exception $e) {
             // Silently handle parsing errors
         }
@@ -455,7 +489,7 @@ class ScannerService
      * @param  Crawler  $node       The DOM node to extract from.
      * @param  string   $attribute  The attribute name ('href' or 'src').
      * @param  string   $sourceUrl  The source page URL.
-     * @param  string   $element    The element type ('a', 'link', 'script', 'img').
+     * @param  string   $element    The element type ('a', 'link', 'script', 'img', 'media').
      * @param  array    &$links     Reference to the links array.
      * @return void
      */
@@ -832,7 +866,7 @@ class ScannerService
      *
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
-     * @param string $element The HTML element type that contained this URL ('a', 'link', 'script', 'img').
+     * @param string $element The HTML element type that contained this URL ('a', 'link', 'script', 'img', 'media').
      * @return array{
      *     url: string,
      *     sourcePage: string,
@@ -928,7 +962,7 @@ class ScannerService
      * Filter scan results by source element type.
      *
      * @param  array   $results  Array of scan result items.
-     * @param  string  $element  Element filter: 'all', 'a', 'link', 'script', or 'img'.
+     * @param  string  $element  Element filter: 'all', 'a', 'link', 'script', 'img', or 'media'.
      * @return array Filtered results.
      */
     public function filterByElement(array $results, string $element): array

@@ -6,7 +6,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 
 - **BFS Crawling**: Systematically crawls websites level by level
 - **Broken Link Detection**: Identifies links returning 4xx/5xx status codes
-- **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, and `<img>` elements
+- **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, `<img>`, and media elements (`<video>`, `<audio>`, `<object>`, `<embed>`)
 - **Element Type Filtering**: Filter results by element type (anchors, images, scripts, stylesheets)
 - **URL Normalization**: Normalizes URLs by removing fragments, trailing slashes, and tracking parameters
 - **Tracking Parameter Stripping**: Automatically removes common tracking params (utm_*, fbclid, gclid, ref, source)
@@ -302,6 +302,7 @@ The scanner extracts and tracks URLs from the following HTML elements:
 | `<link href="">` | `link` | Stylesheets, favicons, preload resources |
 | `<script src="">` | `script` | JavaScript files |
 | `<img src="">` | `img` | Images |
+| `<video>`, `<audio>`, `<source>`, `<object>`, `<embed>` | `media` | Media files, embedded documents, downloads |
 
 ### Filtering vs. Scanning
 
