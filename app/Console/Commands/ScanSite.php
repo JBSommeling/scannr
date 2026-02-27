@@ -60,8 +60,13 @@ class ScanSite extends Command
 
         $this->baseHost = $parsedUrl['host'];
 
+        // Apply timeout cap from config
+        $requestedTimeout = (int) $this->option('timeout');
+        $maxTimeout = config('scanner.timeout', 30);
+        $timeout = min($requestedTimeout, $maxTimeout);
+
         $this->client = new Client([
-            'timeout' => (int) $this->option('timeout'),
+            'timeout' => $timeout,
             'allow_redirects' => false,
             'http_errors' => false,
             'verify' => false,
@@ -92,6 +97,24 @@ class ScanSite extends Command
 
         $maxDepth = (int) $this->option('depth');
         $maxUrls = (int) $this->option('max');
+
+        // Apply hard caps from config
+        $hardMaxDepth = config('scanner.hard_max_depth', 10);
+        $hardMaxUrls = config('scanner.hard_max_urls', 2000);
+
+        if ($maxDepth > $hardMaxDepth) {
+            $this->warn("Depth {$maxDepth} exceeds hard limit, capping to {$hardMaxDepth}");
+            $maxDepth = $hardMaxDepth;
+        }
+
+        if ($maxUrls > $hardMaxUrls) {
+            $this->warn("Max URLs {$maxUrls} exceeds hard limit, capping to {$hardMaxUrls}");
+            $maxUrls = $hardMaxUrls;
+        }
+
+        // Get rate limiting config
+        $delayMin = config('scanner.request_delay_min', 300);
+        $delayMax = config('scanner.request_delay_max', 500);
 
         // Parse scan-elements option
         $scanElementsOption = $this->option('scan-elements');
@@ -144,6 +167,9 @@ class ScanSite extends Command
             } else {
                 $this->processExternalUrl($url, $source, $element);
             }
+
+            // Rate limiting: random delay between requests
+            usleep(random_int($delayMin * 1000, $delayMax * 1000));
 
             $progressBar->advance();
         }

@@ -21,5 +21,45 @@ return [
         'source',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rate Limiting
+    |--------------------------------------------------------------------------
+    |
+    | Control the delay between HTTP requests to avoid overwhelming servers.
+    | Values are in milliseconds. A random delay between min and max will be
+    | applied between each request in the main crawl loop.
+    |
+    */
+
+    'request_delay_min' => 300,
+    'request_delay_max' => 500,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Request Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Maximum time in seconds to wait for a response from the server.
+    | This acts as a hard cap regardless of what is passed via command options.
+    |
+    */
+
+    'timeout' => 30,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hard Limits
+    |--------------------------------------------------------------------------
+    |
+    | These are absolute maximum values that cannot be exceeded regardless
+    | of what the user specifies via command line options. This protects
+    | against excessive resource usage and accidental abuse.
+    |
+    */
+
+    'hard_max_depth' => 10,
+    'hard_max_urls' => 2000,
+
 ];
 

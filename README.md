@@ -17,6 +17,8 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **robots.txt Support**: Automatically discovers sitemaps from robots.txt
 - **Internal & External Links**: Scans both internal pages and external links
 - **Multiple Output Formats**: Table, JSON, or CSV output
+- **Rate Limiting**: Random delay (300-500ms) between requests to avoid overwhelming servers
+- **Hard Limits**: Configurable maximum caps for depth and URLs to prevent excessive resource usage
 - **Configurable**: Adjustable depth, max URLs, timeout, and tracking parameters
 
 ## Usage
@@ -249,6 +251,8 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
 - The scanner respects the `--depth` limit for crawling, but will still check external links found at any depth
 - SSL certificate verification is disabled by default to handle sites with certificate issues
 - Timeout errors are tracked separately from HTTP error responses
+- A random delay (300-500ms by default) is applied between requests to avoid overwhelming servers
+- Hard limits are enforced for depth (max 10) and URLs (max 2000) regardless of command line options
 - Use verbose mode (`-v`) to see redirect chains in table output and list HTTPS downgraded URLs
 - The `--sitemap` option discovers URLs from sitemaps before crawling, treating them as entry points (depth=0)
 - Sitemap discovery supports XML sitemaps, sitemap index files, HTML sitemaps, and plain text URL lists
@@ -360,6 +364,67 @@ return [
         'source',
         // Add your custom tracking parameters here
     ],
+];
+```
+
+## Rate Limiting
+
+To avoid overwhelming target servers, the scanner applies a random delay between each HTTP request in the main crawl loop. This helps prevent being blocked and is considerate to server resources.
+
+### Default Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `request_delay_min` | 300ms | Minimum delay between requests |
+| `request_delay_max` | 500ms | Maximum delay between requests |
+
+The actual delay is randomly selected between the min and max values for each request.
+
+### Configuration
+
+Rate limiting can be configured in `config/scanner.php`:
+
+```php
+return [
+    // Rate limiting (in milliseconds)
+    'request_delay_min' => 300,
+    'request_delay_max' => 500,
+];
+```
+
+## Hard Limits
+
+The scanner enforces hard limits to prevent excessive resource usage, regardless of what values are passed via command line options. If a user specifies values exceeding these limits, a warning is displayed and the values are automatically capped.
+
+### Default Hard Limits
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `hard_max_depth` | 10 | Maximum crawl depth allowed |
+| `hard_max_urls` | 2000 | Maximum number of URLs to scan |
+| `timeout` | 30s | Maximum request timeout |
+
+### Example Warning
+
+When exceeding limits, the scanner will display:
+
+```
+Depth 15 exceeds hard limit, capping to 10
+Max URLs 5000 exceeds hard limit, capping to 2000
+```
+
+### Configuration
+
+Hard limits can be configured in `config/scanner.php`:
+
+```php
+return [
+    // Request timeout (seconds)
+    'timeout' => 30,
+
+    // Hard limits
+    'hard_max_depth' => 10,
+    'hard_max_urls' => 2000,
 ];
 ```
 

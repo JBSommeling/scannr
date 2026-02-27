@@ -312,4 +312,50 @@ class ScanSiteCommandTest extends TestCase
             ->expectsOutputToContain('Total scanned:')
             ->assertExitCode(0);
     }
+
+    /**
+     * Test that depth exceeding hard limit shows warning and is capped
+     */
+    public function test_depth_exceeding_hard_limit_shows_warning(): void
+    {
+        $hardMaxDepth = config('scanner.hard_max_depth', 10);
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => $hardMaxDepth + 5,
+            '--max' => 1,
+        ])
+            ->expectsOutputToContain("Depth " . ($hardMaxDepth + 5) . " exceeds hard limit, capping to {$hardMaxDepth}")
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test that max URLs exceeding hard limit shows warning and is capped
+     */
+    public function test_max_urls_exceeding_hard_limit_shows_warning(): void
+    {
+        $hardMaxUrls = config('scanner.hard_max_urls', 2000);
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => $hardMaxUrls + 500,
+        ])
+            ->expectsOutputToContain("Max URLs " . ($hardMaxUrls + 500) . " exceeds hard limit, capping to {$hardMaxUrls}")
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Test that values within hard limits do not show warnings
+     */
+    public function test_values_within_hard_limits_no_warning(): void
+    {
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 3,
+            '--max' => 5,
+        ])
+            ->doesntExpectOutputToContain('exceeds hard limit')
+            ->assertExitCode(0);
+    }
 }
