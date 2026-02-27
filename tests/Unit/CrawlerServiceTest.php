@@ -44,6 +44,7 @@ class CrawlerServiceTest extends TestCase
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
             useJsRendering: $overrides['useJsRendering'] ?? false,
+            respectRobots: $overrides['respectRobots'] ?? false,
         );
     }
 
