@@ -243,7 +243,7 @@ class CrawlerService
     protected function discoverFromSitemap(string $baseUrl, ?Closure $onMessage = null): void
     {
         if ($onMessage !== null) {
-            $onMessage('Discovering URLs from sitemap...');
+            $onMessage('  Discovering URLs from sitemap...');
         }
 
         $result = $this->sitemapService->discoverUrls($baseUrl);

@@ -275,7 +275,7 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => 1,
             '--max' => 5,
         ])
-            ->expectsOutputToContain('Discovering URLs from sitemap...')
+            ->expectsOutputToContain('  Discovering URLs from sitemap...')
             ->assertExitCode(0);
     }
 
@@ -307,7 +307,7 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => 1,
             '--max' => 5,
         ])
-            ->expectsOutputToContain('Discovering URLs from sitemap...')
+            ->expectsOutputToContain('  Discovering URLs from sitemap...')
             ->expectsOutputToContain('Summary:')
             ->expectsOutputToContain('Total scanned:')
             ->assertExitCode(0);

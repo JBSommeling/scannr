@@ -45,8 +45,8 @@ return [
     |
     */
 
-    'request_delay_min' => 100,
-    'request_delay_max' => 300,
+    'request_delay_min' => 1,
+    'request_delay_max' => 1,
 
     /*
     |--------------------------------------------------------------------------

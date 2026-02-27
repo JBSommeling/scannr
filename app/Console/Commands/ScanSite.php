@@ -73,9 +73,9 @@ class ScanSite extends Command
         $this->info(str_repeat('=', 40));
         $this->newLine();
 
-        // Create progress bar
+        // Create progress bar (lazy start - will be started on first progress callback)
         $progressBar = $this->output->createProgressBar($config->maxUrls);
-        $progressBar->start();
+        $progressBarStarted = false;
 
         // Create output adapter
         $output = new ConsoleOutput($this);
@@ -83,11 +83,19 @@ class ScanSite extends Command
         // Run the crawl
         $results = $this->crawlerService->crawl(
             $config,
-            fn(int $scanned, int $total) => $progressBar->setProgress($scanned),
+            function (int $scanned, int $total) use ($progressBar, &$progressBarStarted) {
+                if (!$progressBarStarted) {
+                    $progressBar->start();
+                    $progressBarStarted = true;
+                }
+                $progressBar->setProgress($scanned);
+            },
             fn(string $message) => $this->info($message),
         );
 
-        $progressBar->finish();
+        if ($progressBarStarted) {
+            $progressBar->finish();
+        }
         $this->newLine(2);
 
         // Format and display results
