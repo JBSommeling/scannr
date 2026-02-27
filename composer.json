@@ -72,6 +72,9 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "sail-up": [
+            "./vendor/bin/sail up"
         ]
     },
     "extra": {

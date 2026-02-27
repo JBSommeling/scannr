@@ -37,6 +37,14 @@ class ScannerService
     protected string $baseHost = '';
 
     /**
+    * List of tracking parameters to strip from URLs.
+    *
+    * Supports exact matches (e.g., 'fbclid') and prefix matches with '*' suffix (e.g., 'utm_*').
+    * Matching is case-insensitive.
+    */
+    protected array $trackingParams = [];
+
+    /**
      * Create a new ScannerService instance.
      *
      * @param  Client|null  $client  Optional Guzzle HTTP client instance. If not provided, a default client will be created.
@@ -53,6 +61,22 @@ class ScannerService
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ],
         ]);
+
+        // Default tracking params
+        $defaults = [
+            'utm_*',
+            'fbclid',
+            'gclid',
+            'ref',
+            'source',
+        ];
+
+        // Load from config if Laravel is bootstrapped, otherwise use defaults
+        try {
+            $this->trackingParams = config('scanner.tracking_params') ?? $defaults;
+        } catch (\Throwable) {
+            $this->trackingParams = $defaults;
+        }
     }
 
     /**
@@ -116,14 +140,48 @@ class ScannerService
     }
 
     /**
+     * Set the tracking parameters to strip from URLs.
+     *
+     * @param  array<string>  $params  Array of parameter names. Use '*' suffix for prefix matching.
+     * @return $this
+     */
+    public function setTrackingParams(array $params): self
+    {
+        $this->trackingParams = $params;
+        return $this;
+    }
+
+    /**
+     * Add additional tracking parameters to strip from URLs.
+     *
+     * @param  array<string>  $params  Array of parameter names to add. Use '*' suffix for prefix matching.
+     * @return $this
+     */
+    public function addTrackingParams(array $params): self
+    {
+        $this->trackingParams = array_unique(array_merge($this->trackingParams, $params));
+        return $this;
+    }
+
+    /**
+     * Get the current tracking parameters.
+     *
+     * @return array<string> The tracking parameters.
+     */
+    public function getTrackingParams(): array
+    {
+        return $this->trackingParams;
+    }
+
+    /**
      * Check the status of a URL by following redirects.
      *
      * Performs an HTTP request and follows any redirect chains up to the
      * configured maximum. Returns detailed information about the final
      * response and any redirects encountered.
      *
-     * @param  string  $url     The URL to check.
-     * @param  string  $method  HTTP method to use ('GET' or 'HEAD'). Default: 'GET'.
+     * @param string $url The URL to check.
+     * @param string $method HTTP method to use ('GET' or 'HEAD'). Default: 'GET'.
      * @return array{
      *     finalStatus: int|string,
      *     chain: array<string>,
@@ -131,6 +189,7 @@ class ScannerService
      *     body: string|null,
      *     hasHttpsDowngrade: bool
      * } Result array containing final status, redirect chain, loop detection, response body (for GET), and HTTPS downgrade flag.
+     * @throws GuzzleException
      */
     public function checkUrl(string $url, string $method = 'GET'): array
     {
@@ -408,7 +467,8 @@ class ScannerService
      * Normalize a URL relative to a base URL.
      *
      * Handles protocol-relative URLs, absolute paths, and relative paths.
-     * Removes URL fragments and trailing slashes.
+     * Removes URL fragments, trailing slashes, and known tracking parameters
+     * (utm_*, fbclid, gclid, ref, source) in a case-insensitive manner.
      *
      * @param  string|null  $url      The URL to normalize.
      * @param  string       $baseUrl  The base URL for resolving relative URLs.
@@ -435,7 +495,7 @@ class ScannerService
 
         // Handle absolute URLs
         if (preg_match('/^https?:\/\//', $url)) {
-            return rtrim($url, '/');
+            return $this->stripTrackingParams(rtrim($url, '/'));
         }
 
         // Handle relative URLs
@@ -446,14 +506,83 @@ class ScannerService
 
         if (str_starts_with($url, '/')) {
             // Absolute path
-            return rtrim("{$scheme}://{$host}{$port}{$url}", '/');
+            return $this->stripTrackingParams(rtrim("{$scheme}://{$host}{$port}{$url}", '/'));
         }
 
         // Relative path
         $basePath = $parsedBase['path'] ?? '/';
         $basePath = preg_replace('/\/[^\/]*$/', '/', $basePath);
 
-        return rtrim("{$scheme}://{$host}{$port}{$basePath}{$url}", '/');
+        return $this->stripTrackingParams(rtrim("{$scheme}://{$host}{$port}{$basePath}{$url}", '/'));
+    }
+
+    /**
+     * Strip tracking parameters from a URL.
+     *
+     * Removes known tracking parameters (utm_*, fbclid, gclid, ref, source)
+     * in a case-insensitive manner. Supports prefix matching with '*' suffix.
+     *
+     * @param  string  $url  The URL to strip tracking parameters from.
+     * @return string The URL without tracking parameters.
+     */
+    protected function stripTrackingParams(string $url): string
+    {
+        $parsed = parse_url($url);
+
+        if (!isset($parsed['query'])) {
+            return $url;
+        }
+
+        parse_str($parsed['query'], $queryParams);
+
+        $filteredParams = [];
+        foreach ($queryParams as $key => $value) {
+            if (!$this->isTrackingParam($key)) {
+                $filteredParams[$key] = $value;
+            }
+        }
+
+        // Rebuild URL without tracking params
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host = $parsed['host'] ?? '';
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = $parsed['path'] ?? '';
+
+        $newUrl = "{$scheme}://{$host}{$port}{$path}";
+
+        if (!empty($filteredParams)) {
+            $newUrl .= '?' . http_build_query($filteredParams);
+        }
+
+        return $newUrl;
+    }
+
+    /**
+     * Check if a parameter name matches a tracking parameter pattern.
+     *
+     * @param  string  $paramName  The parameter name to check.
+     * @return bool True if the parameter is a tracking parameter.
+     */
+    protected function isTrackingParam(string $paramName): bool
+    {
+        $paramNameLower = strtolower($paramName);
+
+        foreach ($this->trackingParams as $pattern) {
+            $patternLower = strtolower($pattern);
+
+            // Check for prefix wildcard (e.g., 'utm_*')
+            if (str_ends_with($patternLower, '*')) {
+                $prefix = substr($patternLower, 0, -1);
+                if (str_starts_with($paramNameLower, $prefix)) {
+                    return true;
+                }
+            } elseif ($paramNameLower === $patternLower) {
+                // Exact match (case-insensitive)
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

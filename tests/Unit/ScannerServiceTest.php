@@ -128,6 +128,59 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('https://example.com/page?foo=bar', $result);
     }
 
+    public function test_normalize_url_strips_utm_parameters(): void
+    {
+        $result = $this->service->normalizeUrl('/page?utm_source=google&utm_medium=cpc&utm_campaign=test', 'https://example.com');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_normalize_url_strips_utm_with_mixed_case(): void
+    {
+        $result = $this->service->normalizeUrl('/page?UTM_SOURCE=google&Utm_Medium=cpc', 'https://example.com');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_normalize_url_strips_fbclid_gclid_ref_source(): void
+    {
+        $result = $this->service->normalizeUrl('/page?fbclid=abc&gclid=123&ref=twitter&source=newsletter', 'https://example.com');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_normalize_url_preserves_non_tracking_query_params(): void
+    {
+        $result = $this->service->normalizeUrl('/page?id=123&utm_source=google&category=books', 'https://example.com');
+        $this->assertEquals('https://example.com/page?id=123&category=books', $result);
+    }
+
+    public function test_normalize_url_removes_empty_query_string_after_stripping(): void
+    {
+        $result = $this->service->normalizeUrl('/page?utm_source=google', 'https://example.com');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_set_tracking_params_overrides_defaults(): void
+    {
+        $this->service->setTrackingParams(['custom_*']);
+        $result = $this->service->normalizeUrl('/page?custom_param=test&utm_source=google', 'https://example.com');
+        // utm_source should be preserved since we replaced the defaults
+        $this->assertEquals('https://example.com/page?utm_source=google', $result);
+    }
+
+    public function test_add_tracking_params_extends_defaults(): void
+    {
+        $this->service->addTrackingParams(['custom_*']);
+        $result = $this->service->normalizeUrl('/page?custom_param=test&utm_source=google', 'https://example.com');
+        // Both should be stripped
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_get_tracking_params_returns_current_params(): void
+    {
+        $params = $this->service->getTrackingParams();
+        $this->assertContains('utm_*', $params);
+        $this->assertContains('fbclid', $params);
+    }
+
     // ====================
     // isInternalUrl tests
     // ====================

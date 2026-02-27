@@ -8,6 +8,8 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Broken Link Detection**: Identifies links returning 4xx/5xx status codes
 - **Multi-Element Scanning**: Extracts and scans URLs from `<a>`, `<link>`, `<script>`, and `<img>` elements
 - **Element Type Filtering**: Filter results by element type (anchors, images, scripts, stylesheets)
+- **URL Normalization**: Normalizes URLs by removing fragments, trailing slashes, and tracking parameters
+- **Tracking Parameter Stripping**: Automatically removes common tracking params (utm_*, fbclid, gclid, ref, source)
 - **Redirect Chain Tracking**: Follows and reports redirect chains, including loop detection
 - **HTTPS Downgrade Detection**: Warns when redirects downgrade from HTTPS to HTTP
 - **Sitemap Integration**: Discover URLs from XML, HTML, or plain text sitemaps
@@ -15,7 +17,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **robots.txt Support**: Automatically discovers sitemaps from robots.txt
 - **Internal & External Links**: Scans both internal pages and external links
 - **Multiple Output Formats**: Table, JSON, or CSV output
-- **Configurable**: Adjustable depth, max URLs, and timeout settings
+- **Configurable**: Adjustable depth, max URLs, timeout, and tracking parameters
 
 ## Usage
 
@@ -51,6 +53,7 @@ php artisan site:scan {url} [options]
 | `--filter=TYPE` | all | Filter displayed results by element type: `all`, `a`, `link`, `script`, or `img` |
 | `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated list (e.g., `a,img`) |
 | `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
+| `--strip-params=PARAMS` | - | Additional tracking parameters to strip (comma-separated, e.g., `ref,tracker_*`) |
 
 ### Examples
 
@@ -124,6 +127,12 @@ php artisan site:scan https://example.com --sitemap
 
 ```bash
 php artisan site:scan https://example.com --sitemap --depth=2 --max=500 --format=json
+```
+
+**Strip additional tracking parameters:**
+
+```bash
+php artisan site:scan https://example.com --strip-params=tracker_*,campaign_id
 ```
 
 **Verbose output with redirect chains:**
@@ -301,3 +310,56 @@ When using `--sitemap`, the scanner checks for sitemaps in this order:
 4. `/sitemap/`
 
 The first working sitemap found is used, and discovered URLs are added to the crawl queue with depth=0, so the crawler will also find and scan any links on those pages.
+
+## URL Normalization
+
+The scanner normalizes all URLs to ensure consistent deduplication and cleaner results:
+
+### Normalization Rules
+
+- **Fragment Removal**: URL fragments (`#anchor`) are stripped
+- **Trailing Slash Removal**: Trailing slashes are removed for consistency
+- **Absolute URLs**: Relative URLs are converted to absolute URLs
+- **Tracking Parameter Stripping**: Common tracking parameters are removed (case-insensitive)
+
+### Default Tracking Parameters
+
+The following tracking parameters are stripped by default:
+
+| Parameter | Description |
+|-----------|-------------|
+| `utm_*` | All UTM parameters (utm_source, utm_medium, utm_campaign, etc.) |
+| `fbclid` | Facebook click identifier |
+| `gclid` | Google Ads click identifier |
+| `ref` | Referral tracking |
+| `source` | Source tracking |
+
+### Custom Tracking Parameters
+
+You can add additional tracking parameters to strip using the `--strip-params` option:
+
+```bash
+# Strip additional tracking parameters
+php artisan site:scan https://example.com --strip-params=tracker_*,campaign_id,affiliate
+
+# Use prefix wildcard to match multiple parameters
+php artisan site:scan https://example.com --strip-params=tracking_*,promo_*
+```
+
+### Configuration
+
+Default tracking parameters can be configured in `config/scanner.php`:
+
+```php
+return [
+    'tracking_params' => [
+        'utm_*',
+        'fbclid',
+        'gclid',
+        'ref',
+        'source',
+        // Add your custom tracking parameters here
+    ],
+];
+```
+
