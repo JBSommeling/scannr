@@ -86,7 +86,9 @@ class RobotsService
         $robotsUrl = $baseUrl . '/robots.txt';
 
         try {
-            $response = $this->client->request('GET', $robotsUrl);
+            $response = $this->client->request('GET', $robotsUrl, [
+                'allow_redirects' => true,
+            ]);
 
             if ($response->getStatusCode() !== 200) {
                 return $this;
