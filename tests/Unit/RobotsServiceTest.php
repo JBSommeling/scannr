@@ -344,6 +344,63 @@ class RobotsServiceTest extends TestCase
         $this->assertEquals(5.0, $this->service->getCrawlDelay());
     }
 
+    public function test_get_crawl_delay_does_not_pick_up_later_agent_delays(): void
+    {
+        // This is a regression test for a bug where Crawl-delay from later
+        // User-agent blocks (like AhrefsBot: 5) was incorrectly used instead
+        // of the wildcard block's Crawl-delay: 1
+        $content = <<<'ROBOTS'
+User-agent: *
+Allow: /
+Disallow: /api/
+Crawl-delay: 1
+
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+User-agent: AhrefsBot
+Crawl-delay: 5
+
+User-agent: SemrushBot
+Crawl-delay: 5
+
+Sitemap: https://example.com/sitemap.xml
+ROBOTS;
+
+        $this->service->parseContent($content);
+
+        // Should be 1 (from User-agent: *), NOT 5 (from AhrefsBot)
+        $this->assertEquals(1.0, $this->service->getCrawlDelay());
+    }
+
+    public function test_disallow_rules_not_picked_up_from_other_agents(): void
+    {
+        // Ensure Disallow rules from other agents are also not picked up
+        $content = <<<'ROBOTS'
+User-agent: *
+Disallow: /admin/
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+ROBOTS;
+
+        $this->service->parseContent($content);
+
+        $rules = $this->service->getRules();
+
+        // Should only have 1 rule (from *), not 3
+        $this->assertCount(1, $rules);
+        $this->assertEquals('/admin/', $rules[0]['pattern']);
+
+        // Root should be allowed (only blocked for MJ12bot/DotBot)
+        $this->assertTrue($this->service->isAllowed('https://example.com/'));
+        $this->assertFalse($this->service->isAllowed('https://example.com/admin/page'));
+    }
+
     // ===================
     // Sitemap URL extraction tests
     // ===================

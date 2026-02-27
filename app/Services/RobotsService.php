@@ -117,6 +117,7 @@ class RobotsService
         $lines = preg_split("/\r\n|\r|\n/", $content);
         $currentAgents = [];
         $inRelevantBlock = false;
+        $hasSeenDirective = false;
         $scannrBotRules = [];
         $scannrBotDelay = null;
         $wildcardRules = [];
@@ -145,14 +146,18 @@ class RobotsService
             if (preg_match('/^User-agent:\s*(.+)/i', $line, $matches)) {
                 $agent = trim($matches[1]);
 
-                if (!empty($currentAgents) && !$inRelevantBlock) {
+                // If we've seen directives, this is a NEW block - reset
+                if ($hasSeenDirective) {
                     $currentAgents = [$agent];
+                    $hasSeenDirective = false;
                 } elseif (empty($currentAgents)) {
                     $currentAgents = [$agent];
                 } else {
+                    // Multiple User-agent lines in a row = same block
                     $currentAgents[] = $agent;
                 }
 
+                // Determine if this block is relevant
                 $inRelevantBlock = false;
                 foreach ($currentAgents as $a) {
                     if ($a === '*' || strcasecmp($a, 'ScannrBot') === 0) {
@@ -166,6 +171,8 @@ class RobotsService
 
             // Parse directives within a relevant block
             if ($inRelevantBlock) {
+                $hasSeenDirective = true;
+
                 $isScannrBot = false;
                 $isWildcard = false;
                 foreach ($currentAgents as $a) {
@@ -208,6 +215,12 @@ class RobotsService
                     if ($isWildcard) {
                         $wildcardDelay = $delay;
                     }
+                }
+            } else {
+                // Track that we've seen a directive even in non-relevant blocks
+                // so the next User-agent starts a fresh block
+                if (preg_match('/^(Disallow|Allow|Crawl-delay):/i', $line)) {
+                    $hasSeenDirective = true;
                 }
             }
         }
