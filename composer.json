@@ -10,12 +10,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "ext-libxml": "*",
+        "ext-simplexml": "*",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
+        "spatie/browsershot": "^5.2",
         "symfony/css-selector": "^8.0",
-        "symfony/dom-crawler": "^8.0",
-        "ext-libxml": "*",
-        "ext-simplexml": "*"
+        "symfony/dom-crawler": "^8.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

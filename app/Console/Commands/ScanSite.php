@@ -26,7 +26,8 @@ class ScanSite extends Command
         {--filter=all : Filter displayed results by element type (all, a, link, script, img)}
         {--scan-elements=all : Element types to scan (all, or comma-separated: a,img,link,script)}
         {--sitemap : Use sitemap.xml to discover URLs}
-        {--strip-params= : Additional tracking parameters to strip (comma-separated, e.g., ref,tracker_*)}';
+        {--strip-params= : Additional tracking parameters to strip (comma-separated, e.g., ref,tracker_*)}
+        {--js : Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer)}';
 
 
     /**

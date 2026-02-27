@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\DTO\ScanConfig;
+use App\Services\BrowsershotFetcher;
 use App\Services\CrawlerService;
 use App\Services\ScannerService;
 use App\Services\SitemapService;
@@ -11,8 +12,8 @@ use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
-use PHPUnit\Framework\TestCase;
 use Random\RandomException;
+use Tests\TestCase;
 
 class CrawlerServiceTest extends TestCase
 {
@@ -42,6 +43,7 @@ class CrawlerServiceTest extends TestCase
             delayMax: $overrides['delayMax'] ?? 0,
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
+            useJsRendering: $overrides['useJsRendering'] ?? false,
         );
     }
 
@@ -460,6 +462,209 @@ class CrawlerServiceTest extends TestCase
         });
 
         $this->assertCount(1, $homepageResults, 'Homepage should only appear once in results');
+    }
+
+    // ==================
+    // JavaScript rendering tests
+    // ==================
+
+    public function test_crawl_with_js_rendering_shows_enabled_message(): void
+    {
+        $html = '<html><body><div id="root"></div></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $messages = [];
+        $config = $this->createConfig(['useJsRendering' => true, 'maxUrls' => 1]);
+
+        $crawler->crawl(
+            $config,
+            null,
+            function (string $message) use (&$messages) {
+                $messages[] = $message;
+            }
+        );
+
+        // When JS rendering is enabled, the callback should receive a message
+        // about either successful enablement or a fallback warning
+        $jsMessages = array_filter($messages, fn($m) =>
+            stripos($m, 'javascript') !== false || stripos($m, 'puppeteer') !== false
+        );
+        $this->assertNotEmpty($jsMessages, 'Should display a JS rendering status message');
+    }
+
+    public function test_crawl_without_js_rendering_does_not_show_js_message(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $messages = [];
+        $config = $this->createConfig(['useJsRendering' => false, 'maxUrls' => 2]);
+
+        $crawler->crawl(
+            $config,
+            null,
+            function (string $message) use (&$messages) {
+                $messages[] = $message;
+            }
+        );
+
+        $jsMessages = array_filter($messages, fn($m) => stripos($m, 'javascript') !== false);
+        $this->assertEmpty($jsMessages, 'Should NOT display JS rendering message when disabled');
+    }
+
+    public function test_crawl_with_js_rendering_extracts_js_rendered_links(): void
+    {
+        // Simulate SPA: raw HTML is just a shell, JS renders the actual content
+        $spaShell = '<html><body><div id="root"></div></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+            // The image discovered by Browsershot
+            new Response(200, [], ''),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+
+        // Inject a mock BrowsershotFetcher directly into the scanner service
+        $renderedHtml = '<html><body><div id="root"><img src="https://cdn.example.com/hero.webp" /></div></body></html>';
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => $renderedHtml,
+            'finalUrl' => 'https://example.com',
+        ]);
+        $scannerService->setBrowsershotFetcher($mockFetcher);
+
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 5, 'scanElements' => ['a', 'img']]);
+        $results = $crawler->crawl($config);
+
+        // Should find the image from JS-rendered content
+        $urls = array_column($results, 'url');
+        $this->assertContains('https://cdn.example.com/hero.webp', $urls);
+    }
+
+    public function test_crawl_with_js_rendering_disabled_does_not_find_js_content(): void
+    {
+        // Simulate SPA: raw HTML is just a shell with no content
+        $spaShell = '<html><body><div id="root"></div></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // No JS rendering, no BrowsershotFetcher
+        $config = $this->createConfig(['maxUrls' => 5]);
+        $results = $crawler->crawl($config);
+
+        // Only the base URL itself should appear - no links extracted from SPA shell
+        $this->assertCount(1, $results);
+        $this->assertEquals('https://example.com', $results[0]['url']);
+    }
+
+    public function test_crawl_with_js_rendering_falls_back_on_browsershot_failure(): void
+    {
+        // Raw HTML has a link (fallback content)
+        $html = '<html><body><a href="/static-link">Static Link</a></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+
+        // Browsershot fails
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 'Error',
+            'body' => null,
+            'finalUrl' => 'https://example.com',
+            'error' => 'Chrome crashed',
+        ]);
+        $scannerService->setBrowsershotFetcher($mockFetcher);
+
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 5]);
+        $results = $crawler->crawl($config);
+
+        // Should still find the static link from Guzzle response
+        $urls = array_column($results, 'url');
+        $this->assertContains('https://example.com/static-link', $urls);
+    }
+
+    // ===================
+    // User-Agent tests
+    // ===================
+
+    public function test_crawler_sends_scannrbot_user_agent(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $history = [];
+        $historyMiddleware = \GuzzleHttp\Middleware::history($history);
+
+        $mock = new \GuzzleHttp\Handler\MockHandler([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $handlerStack = \GuzzleHttp\HandlerStack::create($mock);
+        $handlerStack->push($historyMiddleware);
+
+        $client = new Client([
+            'handler' => $handlerStack,
+            'allow_redirects' => false,
+            'http_errors' => false,
+            'headers' => [
+                'User-Agent' => config('scanner.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
+            ],
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawler->crawl($config);
+
+        $this->assertNotEmpty($history, 'Expected at least one HTTP request');
+
+        foreach ($history as $transaction) {
+            $userAgent = $transaction['request']->getHeaderLine('User-Agent');
+            $this->assertStringContainsString('ScannrBot', $userAgent);
+            $this->assertStringNotContainsString('Mozilla', $userAgent);
+            $this->assertStringNotContainsString('Chrome', $userAgent);
+        }
     }
 }
 

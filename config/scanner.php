@@ -13,6 +13,19 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | User Agent
+    |--------------------------------------------------------------------------
+    |
+    | The User-Agent header sent with all HTTP requests. This identifies the
+    | crawler to web servers. Using a transparent bot identifier is more
+    | ethical than impersonating a regular browser.
+    |
+    */
+
+    'user_agent' => 'ScannrBot/1.0 (+https://scannr.io)',
+
     'tracking_params' => [
         'utm_*',
         'fbclid',
@@ -60,6 +73,33 @@ return [
 
     'hard_max_depth' => 10,
     'hard_max_urls' => 2000,
+
+    /*
+    |--------------------------------------------------------------------------
+    | JavaScript Rendering
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for headless browser rendering (--js flag).
+    | This uses Puppeteer via spatie/browsershot to render JavaScript
+    | content, enabling scanning of SPAs (React, Vue, Angular, etc.).
+    |
+    | Requirements: Node.js + Puppeteer (npm install puppeteer)
+    |
+    */
+
+    'js_rendering' => [
+        // Path to node binary (null = auto-detect)
+        'node_binary' => null,
+
+        // Path to npm binary (null = auto-detect)
+        'npm_binary' => null,
+
+        // Path to Chrome/Chromium binary (null = use Puppeteer's bundled Chrome)
+        'chrome_path' => null,
+
+        // Timeout for browser rendering in seconds
+        'timeout' => 30,
+    ],
 
 ];
 

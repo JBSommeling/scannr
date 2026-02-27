@@ -383,6 +383,93 @@ class ScanConfigTest extends TestCase
         $this->assertEquals('https://example.com', $result['config']->baseUrl);
     }
 
+    // ==================
+    // useJsRendering tests
+    // ==================
+
+    public function test_scan_config_defaults_use_js_rendering_to_false(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertFalse($config->useJsRendering);
+    }
+
+    public function test_scan_config_use_js_rendering_can_be_enabled(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            useJsRendering: true,
+        );
+
+        $this->assertTrue($config->useJsRendering);
+    }
+
+    public function test_from_command_options_js_flag_disabled_by_default(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertFalse($result['config']->useJsRendering);
+    }
+
+    public function test_from_command_options_js_flag_enabled(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => true,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertTrue($result['config']->useJsRendering);
+    }
+
     private function createMockCommand(array $options): Command
     {
         $command = $this->createMock(Command::class);

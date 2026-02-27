@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\BrowsershotFetcher;
 use App\Services\ScannerService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
@@ -1014,6 +1015,263 @@ class ScannerServiceTest extends TestCase
         $result = $this->service->setClient($mockClient);
 
         $this->assertSame($this->service, $result); // Fluent interface
+    }
+
+    // ================================
+    // setBrowsershotFetcher tests
+    // ================================
+
+    public function test_set_browsershot_fetcher_returns_fluent_interface(): void
+    {
+        $fetcher = $this->createMock(BrowsershotFetcher::class);
+        $result = $this->service->setBrowsershotFetcher($fetcher);
+
+        $this->assertSame($this->service, $result);
+    }
+
+    public function test_set_browsershot_fetcher_accepts_null(): void
+    {
+        $result = $this->service->setBrowsershotFetcher(null);
+
+        $this->assertSame($this->service, $result);
+    }
+
+    // ==========================================
+    // processInternalUrl with JS rendering tests
+    // ==========================================
+
+    public function test_process_internal_url_uses_browsershot_when_set(): void
+    {
+        // Guzzle returns a minimal SPA shell (no links in raw HTML)
+        $spaShell = '<html><body><div id="root"></div></body></html>';
+        $mockClient = $this->createMockClient(200, $spaShell);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // Browsershot returns the rendered HTML with actual content
+        $renderedHtml = '<html><body><div id="root"><a href="/about">About</a><img src="/logo.png" /></div></body></html>';
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => $renderedHtml,
+            'finalUrl' => 'https://example.com',
+        ]);
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['isOk']);
+
+        // Should have extracted links from the rendered HTML, not the SPA shell
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/about', $extractedUrls);
+        $this->assertContains('https://example.com/logo.png', $extractedUrls);
+    }
+
+    public function test_process_internal_url_without_browsershot_uses_guzzle_body(): void
+    {
+        // Guzzle returns HTML with links
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // No BrowsershotFetcher set (default behavior)
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/page1', $extractedUrls);
+    }
+
+    public function test_process_internal_url_falls_back_to_guzzle_when_browsershot_fails(): void
+    {
+        // Guzzle returns HTML with a link
+        $html = '<html><body><a href="/fallback-page">Fallback</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // Browsershot returns an error
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 'Error',
+            'body' => null,
+            'finalUrl' => 'https://example.com',
+            'error' => 'Chrome not found',
+        ]);
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        // Should fall back to Guzzle body and still extract links
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/fallback-page', $extractedUrls);
+    }
+
+    public function test_process_internal_url_falls_back_when_browsershot_returns_empty_body(): void
+    {
+        // Guzzle returns HTML with a link
+        $html = '<html><body><a href="/guzzle-link">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // Browsershot returns 200 but empty body
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => '',
+            'finalUrl' => 'https://example.com',
+        ]);
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        // Should fall back to Guzzle body
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/guzzle-link', $extractedUrls);
+    }
+
+    public function test_process_internal_url_browsershot_not_called_on_non_200(): void
+    {
+        // Guzzle returns 404
+        $mockClient = $this->createMockClient(404);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // Browsershot should NOT be called for non-200 responses
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->expects($this->never())->method('fetch');
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com/missing', 'start');
+
+        $this->assertEquals(404, $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertEmpty($result['extractedLinks']);
+    }
+
+    public function test_process_internal_url_browsershot_receives_final_url(): void
+    {
+        // Simulate a redirect: Guzzle follows to a final URL
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('<html><body></body></html>');
+
+        // First response: redirect
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/final-page' : '';
+        });
+
+        // Second response: 200 at final URL
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($mockStream);
+        $response2->method('getHeaderLine')->willReturn('');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // Verify Browsershot receives the final URL after redirect
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->expects($this->once())
+            ->method('fetch')
+            ->with('https://example.com/final-page')
+            ->willReturn([
+                'status' => 200,
+                'body' => '<html><body><a href="/rendered-link">Link</a></body></html>',
+                'finalUrl' => 'https://example.com/final-page',
+            ]);
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com/old-page', 'start');
+
+        $this->assertEquals(200, $result['status']);
+    }
+
+    public function test_process_internal_url_browsershot_extracts_js_rendered_images(): void
+    {
+        // Simulate a React SPA: raw HTML has no images
+        $spaShell = '<html><head></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
+        $mockClient = $this->createMockClient(200, $spaShell);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        // After JS execution, images appear
+        $renderedHtml = '<html><body><div id="root">
+            <img src="https://cdn.example.com/hero.webp" alt="Hero" />
+            <img src="/assets/logo.png" alt="Logo" />
+            <a href="/about">About Us</a>
+        </div></body></html>';
+
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => $renderedHtml,
+            'finalUrl' => 'https://example.com',
+        ]);
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://cdn.example.com/hero.webp', $extractedUrls);
+        $this->assertContains('https://example.com/assets/logo.png', $extractedUrls);
+        $this->assertContains('https://example.com/about', $extractedUrls);
+    }
+
+    public function test_process_internal_url_browsershot_disabled_after_setting_null(): void
+    {
+        // Set a fetcher, then disable it
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->expects($this->never())->method('fetch');
+
+        $this->service->setBrowsershotFetcher($mockFetcher);
+        $this->service->setBrowsershotFetcher(null); // Disable
+
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com', 'start');
+
+        // Should use Guzzle body since fetcher was disabled
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/page1', $extractedUrls);
+    }
+
+    // ===================
+    // User-Agent tests
+    // ===================
+
+    public function test_default_client_uses_scannrbot_user_agent(): void
+    {
+        $service = new ScannerService();
+
+        $reflection = new \ReflectionClass($service);
+        $clientProperty = $reflection->getProperty('client');
+        $client = $clientProperty->getValue($service);
+
+        $config = $client->getConfig('headers');
+        $userAgent = $config['User-Agent'] ?? '';
+
+        $this->assertStringContainsString('ScannrBot', $userAgent);
+        $this->assertStringNotContainsString('Mozilla', $userAgent);
+        $this->assertStringNotContainsString('Chrome', $userAgent);
+        $this->assertStringNotContainsString('Safari', $userAgent);
     }
 }
 

@@ -24,6 +24,7 @@ readonly class ScanConfig
         public int $delayMax,
         public bool $useSitemap,
         public array $customTrackingParams,
+        public bool $useJsRendering = false,
     ) {}
 
     /**
@@ -88,6 +89,7 @@ readonly class ScanConfig
             delayMax: $delayMax,
             useSitemap: (bool) $command->option('sitemap'),
             customTrackingParams: $customTrackingParams,
+            useJsRendering: (bool) $command->option('js'),
         );
 
         return ['config' => $config, 'warnings' => $warnings];
