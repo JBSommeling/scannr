@@ -7,10 +7,12 @@ use App\Services\CrawlerService;
 use App\Services\ScannerService;
 use App\Services\SitemapService;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Random\RandomException;
 
 class CrawlerServiceTest extends TestCase
 {
@@ -18,7 +20,11 @@ class CrawlerServiceTest extends TestCase
     {
         $mock = new MockHandler($responses);
         $handlerStack = HandlerStack::create($mock);
-        return new Client(['handler' => $handlerStack]);
+        return new Client([
+            'handler' => $handlerStack,
+            'allow_redirects' => false,
+            'http_errors' => false,
+        ]);
     }
 
     private function createConfig(array $overrides = []): ScanConfig
@@ -384,6 +390,10 @@ class CrawlerServiceTest extends TestCase
         $this->assertArrayHasKey('https://example.com', $visited);
     }
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_www_to_non_www_redirect_marks_canonical_as_visited(): void
     {
         // Start URL (www) redirects to non-www
