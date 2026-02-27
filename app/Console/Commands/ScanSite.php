@@ -58,7 +58,7 @@ class ScanSite extends Command
         }
 
         // Create configuration from command options
-        $result = ScanConfig::fromCommandOptionsWithWarnings($this);
+        $result = ScanConfig::fromCommandOptions($this);
         $config = $result['config'];
 
         // Display any warnings

@@ -251,7 +251,8 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $config = ScanConfig::fromCommandOptions($command);
+        $result = ScanConfig::fromCommandOptions($command);
+        $config = $result['config'];
 
         $this->assertInstanceOf(ScanConfig::class, $config);
         $this->assertEquals('https://example.com', $config->baseUrl);
@@ -273,9 +274,9 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $config = ScanConfig::fromCommandOptions($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals(['a', 'link', 'script', 'img'], $config->scanElements);
+        $this->assertEquals(['a', 'link', 'script', 'img'], $result['config']->scanElements);
     }
 
     public function test_from_command_options_parses_scan_elements_comma_separated(): void
@@ -293,9 +294,9 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $config = ScanConfig::fromCommandOptions($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals(['a', 'img'], $config->scanElements);
+        $this->assertEquals(['a', 'img'], $result['config']->scanElements);
     }
 
     public function test_from_command_options_parses_custom_tracking_params(): void
@@ -313,12 +314,12 @@ class ScanConfigTest extends TestCase
             'strip-params' => 'ref,tracker_*',
         ]);
 
-        $config = ScanConfig::fromCommandOptions($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals(['ref', 'tracker_*'], $config->customTrackingParams);
+        $this->assertEquals(['ref', 'tracker_*'], $result['config']->customTrackingParams);
     }
 
-    public function test_from_command_options_with_warnings_returns_warnings(): void
+    public function test_from_command_options_returns_warnings_for_depth(): void
     {
         $command = $this->createMockCommand([
             'url' => 'https://example.com',
@@ -333,7 +334,7 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $result = ScanConfig::fromCommandOptionsWithWarnings($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
         $this->assertArrayHasKey('config', $result);
         $this->assertArrayHasKey('warnings', $result);
@@ -341,7 +342,7 @@ class ScanConfigTest extends TestCase
         $this->assertStringContainsString('Depth', $result['warnings'][0]);
     }
 
-    public function test_from_command_options_with_warnings_caps_max_urls(): void
+    public function test_from_command_options_caps_max_urls(): void
     {
         $command = $this->createMockCommand([
             'url' => 'https://example.com',
@@ -356,7 +357,7 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $result = ScanConfig::fromCommandOptionsWithWarnings($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
         $this->assertNotEmpty($result['warnings']);
         $this->assertStringContainsString('Max URLs', $result['warnings'][0]);
@@ -377,9 +378,9 @@ class ScanConfigTest extends TestCase
             'strip-params' => null,
         ]);
 
-        $config = ScanConfig::fromCommandOptions($command);
+        $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals('https://example.com', $config->baseUrl);
+        $this->assertEquals('https://example.com', $result['config']->baseUrl);
     }
 
     private function createMockCommand(array $options): Command
