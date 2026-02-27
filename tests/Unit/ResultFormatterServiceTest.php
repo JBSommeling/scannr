@@ -116,7 +116,7 @@ class ResultFormatterServiceTest extends TestCase
                 'sourcePage' => 'https://example.com',
                 'status' => 200,
                 'type' => 'internal',
-                'redirectChain' => ['https://example.com/redirected'],
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/redirected'],
                 'isOk' => true,
                 'isLoop' => false,
                 'hasHttpsDowngrade' => false,

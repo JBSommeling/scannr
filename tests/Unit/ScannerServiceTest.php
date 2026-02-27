@@ -354,7 +354,7 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals(1, $stats['redirects']); // 200 with redirects
         $this->assertEquals(2, $stats['broken']);    // 404 + 500
         $this->assertEquals(1, $stats['timeouts']);  // Timeout
-        $this->assertEquals(1, $stats['redirectChainCount']); // 1 chain
+        $this->assertEquals(0, $stats['redirectChainCount']); // single redirect is not a chain
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
     }
@@ -385,7 +385,7 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals(2, $stats['total']);
         $this->assertEquals(0, $stats['ok']);
         $this->assertEquals(2, $stats['redirects']);
-        $this->assertEquals(2, $stats['redirectChainCount']); // 2 chains
+        $this->assertEquals(1, $stats['redirectChainCount']); // only 1 has 2+ hops
         $this->assertEquals(3, $stats['totalRedirectHops']); // 2 + 1 hops
     }
 
@@ -401,7 +401,7 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(3, $stats['total']);
         $this->assertEquals(2, $stats['httpsDowngrades']);
-        $this->assertEquals(3, $stats['redirectChainCount']);
+        $this->assertEquals(0, $stats['redirectChainCount']);
         $this->assertEquals(3, $stats['totalRedirectHops']);
     }
 

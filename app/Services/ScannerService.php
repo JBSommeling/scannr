@@ -848,9 +848,9 @@ class ScannerService
         $broken = count(array_filter($results, fn($r) => !$r['isOk'] && $r['status'] !== 'Timeout'));
         $timeouts = count(array_filter($results, fn($r) => $r['status'] === 'Timeout'));
 
-        // Redirect chain statistics
-        $redirectChainCount = count(array_filter($results, fn($r) => !empty($r['redirectChain'])));
-        $totalRedirectHops = array_sum(array_map(fn($r) => count($r['redirectChain']), $results));
+        // Redirect chain statistics (a "chain" is 2+ hops; single redirects are just redirects)
+        $redirectChainCount = count(array_filter($results, fn($r) => count($r['redirectChain'] ?? []) >= 2));
+        $totalRedirectHops = array_sum(array_map(fn($r) => count($r['redirectChain'] ?? []), $results));
 
         // HTTPS downgrade count
         $httpsDowngrades = count(array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false));
