@@ -115,12 +115,24 @@ class CrawlerService
                 // the same redirect (e.g., www -> non-www) for every resource
                 if (!$canonicalBaseResolved && $source === 'start' && !empty($this->results)) {
                     $firstResult = end($this->results);
-                    if (!empty($firstResult['redirectChain'])) {
-                        $canonicalUrl = rtrim(end($firstResult['redirectChain']), '/');
-                        $this->canonicalHost = parse_url($canonicalUrl, PHP_URL_HOST);
-                        $this->scannerService->setBaseUrl($canonicalUrl);
+                    $finalUrl = rtrim($firstResult['finalUrl'] ?? $url, '/');
+                    $finalHost = parse_url($finalUrl, PHP_URL_HOST);
+
+                    // Check if the final URL has a different host than the original
+                    // This catches www-only redirects that aren't in the redirectChain
+                    if ($finalHost !== null && $finalHost !== $this->originalHost) {
+                        $this->canonicalHost = $finalHost;
+                        $this->scannerService->setBaseUrl($finalUrl);
+
                         // Clear the redirect chain for the start URL since it's expected
-                        $this->results[array_key_last($this->results)]['redirectChain'] = [];
+                        if (!empty($firstResult['redirectChain'])) {
+                            $this->results[array_key_last($this->results)]['redirectChain'] = [];
+                        }
+
+                        // Mark the canonical URL as visited to prevent duplicates
+                        // when sitemap contains the canonical URL (e.g., non-www)
+                        // while we started with the original URL (e.g., www)
+                        $this->visited[$finalUrl] = true;
 
                         // Rewrite all URLs currently in the queue to use canonical host
                         $this->rewriteQueueToCanonicalHost();
@@ -307,14 +319,20 @@ class CrawlerService
      * Rewrite all URLs in the queue to use the canonical host.
      *
      * Called after discovering the canonical host to ensure all queued
-     * URLs use the correct host.
+     * URLs use the correct host. Also removes URLs that are already visited
+     * (which can happen when sitemap URLs match the canonical URL of the start page).
      */
     protected function rewriteQueueToCanonicalHost(): void
     {
-        foreach ($this->queue as &$item) {
+        $filteredQueue = [];
+        foreach ($this->queue as $item) {
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
+            // Skip if this URL is already visited (e.g., sitemap homepage matching canonical start URL)
+            if (!isset($this->visited[$item['url']])) {
+                $filteredQueue[] = $item;
+            }
         }
-        unset($item);
+        $this->queue = $filteredQueue;
     }
 }
 

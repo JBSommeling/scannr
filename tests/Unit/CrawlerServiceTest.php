@@ -383,5 +383,73 @@ class CrawlerServiceTest extends TestCase
         $this->assertIsArray($visited);
         $this->assertArrayHasKey('https://example.com', $visited);
     }
+
+    public function test_www_to_non_www_redirect_marks_canonical_as_visited(): void
+    {
+        // Start URL (www) redirects to non-www
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $client = $this->createMockClient([
+            // www.example.com redirects to example.com
+            new Response(301, ['Location' => 'https://example.com']),
+            // example.com (canonical) returns HTML
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            // /page1
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig([
+            'baseUrl' => 'https://www.example.com',
+            'maxUrls' => 10
+        ]);
+        $crawler->crawl($config);
+
+        $visited = $crawler->getVisited();
+        // Both the original URL and the canonical URL should be marked as visited
+        $this->assertArrayHasKey('https://www.example.com', $visited);
+        $this->assertArrayHasKey('https://example.com', $visited);
+    }
+
+    public function test_sitemap_homepage_is_deduplicated_after_www_redirect(): void
+    {
+        // This tests the specific scenario where:
+        // 1. Start URL is www.example.com
+        // 2. www.example.com redirects to example.com
+        // 3. Sitemap contains example.com (which should be deduplicated)
+        $html = '<html><body><a href="/about">About</a></body></html>';
+
+        $client = $this->createMockClient([
+            // www.example.com redirects to example.com
+            new Response(301, ['Location' => 'https://example.com']),
+            // example.com (canonical) returns HTML
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            // /about page
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig([
+            'baseUrl' => 'https://www.example.com',
+            'maxUrls' => 10
+        ]);
+        $results = $crawler->crawl($config);
+
+        // Should only have one result for the homepage (not two for www and non-www)
+        $homepageResults = array_filter($results, function ($r) {
+            $url = $r['url'] ?? '';
+            return $url === 'https://www.example.com' || $url === 'https://example.com';
+        });
+
+        $this->assertCount(1, $homepageResults, 'Homepage should only appear once in results');
+    }
 }
 

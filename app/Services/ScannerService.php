@@ -218,6 +218,7 @@ class ScannerService
      * @param string $method HTTP method ('GET' or 'HEAD').
      * @return array{
      *     finalStatus: int|string,
+     *     finalUrl: string,
      *     chain: array<string>,
      *     loop: bool,
      *     body: string|null,
@@ -307,6 +308,7 @@ class ScannerService
 
         return [
             'finalStatus' => $finalStatus,
+            'finalUrl' => $currentUrl,
             'chain' => $chain,
             'loop' => $loop,
             'body' => $body,
@@ -744,6 +746,7 @@ class ScannerService
      * @param string $source The source page where this URL was found.
      * @return array{
      *     url: string,
+     *     finalUrl: string,
      *     sourcePage: string,
      *     status: int|string,
      *     type: string,
@@ -767,6 +770,7 @@ class ScannerService
 
         return [
             'url' => $url,
+            'finalUrl' => $result['finalUrl'],
             'sourcePage' => $source,
             'status' => $result['finalStatus'],
             'type' => 'internal',
