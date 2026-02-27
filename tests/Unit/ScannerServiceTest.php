@@ -1252,5 +1252,26 @@ class ScannerServiceTest extends TestCase
         $extractedUrls = array_column($result['extractedLinks'], 'url');
         $this->assertContains('https://example.com/page1', $extractedUrls);
     }
+
+    // ===================
+    // User-Agent tests
+    // ===================
+
+    public function test_default_client_uses_scannrbot_user_agent(): void
+    {
+        $service = new ScannerService();
+
+        $reflection = new \ReflectionClass($service);
+        $clientProperty = $reflection->getProperty('client');
+        $client = $clientProperty->getValue($service);
+
+        $config = $client->getConfig('headers');
+        $userAgent = $config['User-Agent'] ?? '';
+
+        $this->assertStringContainsString('ScannrBot', $userAgent);
+        $this->assertStringNotContainsString('Mozilla', $userAgent);
+        $this->assertStringNotContainsString('Chrome', $userAgent);
+        $this->assertStringNotContainsString('Safari', $userAgent);
+    }
 }
 

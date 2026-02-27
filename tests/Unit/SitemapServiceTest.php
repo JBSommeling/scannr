@@ -4,6 +4,11 @@ namespace Tests\Unit;
 
 use App\Services\SitemapService;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -639,6 +644,69 @@ class SitemapServiceTest extends TestCase
         // Should find the non-www URLs as internal (they're the same domain)
         $this->assertEquals(2, $result['count']);
         $this->assertCount(2, $result['urls']);
+    }
+
+    // ===================
+    // User-Agent tests
+    // ===================
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_default_client_sends_scannrbot_user_agent(): void
+    {
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url><loc>https://example.com/page1</loc></url>
+            </urlset>';
+
+        $history = [];
+        $historyMiddleware = Middleware::history($history);
+
+        $mock = new MockHandler([
+            new Response(404, [], ''),  // robots.txt
+            new Response(200, ['Content-Type' => 'application/xml'], $sitemapXml),
+        ]);
+
+        $handlerStack = HandlerStack::create($mock);
+        $handlerStack->push($historyMiddleware);
+
+        $client = new Client([
+            'handler' => $handlerStack,
+            'headers' => [
+                'User-Agent' => 'ScannrBot/1.0 (+https://scannr.io)',
+            ],
+        ]);
+
+        $service = new SitemapService($client);
+        $service->discoverUrls('https://example.com');
+
+        $this->assertNotEmpty($history, 'Expected at least one HTTP request');
+
+        foreach ($history as $transaction) {
+            $userAgent = $transaction['request']->getHeaderLine('User-Agent');
+            $this->assertEquals('ScannrBot/1.0 (+https://scannr.io)', $userAgent);
+            $this->assertStringNotContainsString('Mozilla', $userAgent);
+            $this->assertStringNotContainsString('Chrome', $userAgent);
+        }
+    }
+
+    public function test_user_agent_does_not_impersonate_browser(): void
+    {
+        $service = new SitemapService();
+
+        // Use reflection to access the client's default headers
+        $reflection = new \ReflectionClass($service);
+        $clientProperty = $reflection->getProperty('client');
+        $client = $clientProperty->getValue($service);
+
+        $config = $client->getConfig('headers');
+        $userAgent = $config['User-Agent'] ?? '';
+
+        $this->assertStringContainsString('ScannrBot', $userAgent);
+        $this->assertStringNotContainsString('Mozilla', $userAgent);
+        $this->assertStringNotContainsString('Chrome', $userAgent);
+        $this->assertStringNotContainsString('Safari', $userAgent);
     }
 }
 

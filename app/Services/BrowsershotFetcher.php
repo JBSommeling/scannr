@@ -49,11 +49,19 @@ class BrowsershotFetcher
     public function fetch(string $url): array
     {
         try {
+            $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
+            try {
+                $userAgent = config('scanner.user_agent', $defaultUserAgent) ?? $defaultUserAgent;
+            } catch (\Throwable) {
+                $userAgent = $defaultUserAgent;
+            }
+
             $browsershot = Browsershot::url($url)
                 ->noSandbox()
                 ->dismissDialogs()
                 ->waitUntilNetworkIdle()
                 ->timeout($this->timeout)
+                ->userAgent($userAgent)
                 ->setOption('args', ['--disable-web-security']);
 
             if ($this->nodeBinary) {

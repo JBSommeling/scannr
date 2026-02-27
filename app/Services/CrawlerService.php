@@ -186,17 +186,21 @@ class CrawlerService
      */
     protected function createHttpClient(int $timeout): Client
     {
+        $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
+        try {
+            $userAgent = config('scanner.user_agent', $defaultUserAgent) ?? $defaultUserAgent;
+        } catch (\Throwable) {
+            $userAgent = $defaultUserAgent;
+        }
+
         return new Client([
             'timeout' => $timeout,
             'allow_redirects' => false,
             'http_errors' => false,
             'verify' => false,
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language' => 'en-US,en;q=0.5',
-                'Accept-Encoding' => 'gzip, deflate, br',
-                'Connection' => 'keep-alive',
+                'User-Agent' => $userAgent,
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ],
         ]);
     }

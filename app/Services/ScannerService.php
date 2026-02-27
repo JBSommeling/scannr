@@ -56,13 +56,20 @@ class ScannerService
      */
     public function __construct(?Client $client = null)
     {
+        $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
+        try {
+            $userAgent = config('scanner.user_agent', $defaultUserAgent) ?? $defaultUserAgent;
+        } catch (\Throwable) {
+            $userAgent = $defaultUserAgent;
+        }
+
         $this->client = $client ?? new Client([
             'timeout' => 5,
             'allow_redirects' => false,
             'http_errors' => false,
             'verify' => false,
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (compatible; SiteScanner/1.0)',
+                'User-Agent' => $userAgent,
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ],
         ]);

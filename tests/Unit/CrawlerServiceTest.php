@@ -620,5 +620,51 @@ class CrawlerServiceTest extends TestCase
         $urls = array_column($results, 'url');
         $this->assertContains('https://example.com/static-link', $urls);
     }
+
+    // ===================
+    // User-Agent tests
+    // ===================
+
+    public function test_crawler_sends_scannrbot_user_agent(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $history = [];
+        $historyMiddleware = \GuzzleHttp\Middleware::history($history);
+
+        $mock = new \GuzzleHttp\Handler\MockHandler([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $handlerStack = \GuzzleHttp\HandlerStack::create($mock);
+        $handlerStack->push($historyMiddleware);
+
+        $client = new Client([
+            'handler' => $handlerStack,
+            'allow_redirects' => false,
+            'http_errors' => false,
+            'headers' => [
+                'User-Agent' => config('scanner.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
+            ],
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawler->crawl($config);
+
+        $this->assertNotEmpty($history, 'Expected at least one HTTP request');
+
+        foreach ($history as $transaction) {
+            $userAgent = $transaction['request']->getHeaderLine('User-Agent');
+            $this->assertStringContainsString('ScannrBot', $userAgent);
+            $this->assertStringNotContainsString('Mozilla', $userAgent);
+            $this->assertStringNotContainsString('Chrome', $userAgent);
+        }
+    }
 }
 

@@ -49,13 +49,20 @@ class SitemapService
      */
     public function __construct(?Client $client = null, ?ScannerService $scannerService = null)
     {
+        $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
+        try {
+            $userAgent = config('scanner.user_agent', $defaultUserAgent) ?? $defaultUserAgent;
+        } catch (\Throwable) {
+            $userAgent = $defaultUserAgent;
+        }
+
         $this->client = $client ?? new Client([
             'timeout' => 10,
             'allow_redirects' => true,
             'http_errors' => false,
             'verify' => false,
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (compatible; SitemapScanner/1.0)',
+                'User-Agent' => $userAgent,
                 'Accept' => 'text/xml,application/xml,text/html,text/plain,*/*',
             ],
         ]);

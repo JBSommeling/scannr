@@ -13,6 +13,19 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | User Agent
+    |--------------------------------------------------------------------------
+    |
+    | The User-Agent header sent with all HTTP requests. This identifies the
+    | crawler to web servers. Using a transparent bot identifier is more
+    | ethical than impersonating a regular browser.
+    |
+    */
+
+    'user_agent' => 'ScannrBot/1.0 (+https://scannr.io)',
+
     'tracking_params' => [
         'utm_*',
         'fbclid',
