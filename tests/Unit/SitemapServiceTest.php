@@ -463,10 +463,8 @@ class SitemapServiceTest extends TestCase
         $reflection = new \ReflectionClass($this->service);
 
         $baseUrlProp = $reflection->getProperty('baseUrl');
-        $baseUrlProp->setAccessible(true);
 
         $baseHostProp = $reflection->getProperty('baseHost');
-        $baseHostProp->setAccessible(true);
 
         // Should be normalized to non-www
         $this->assertEquals('https://example.com', $baseUrlProp->getValue($this->service));
