@@ -2,26 +2,28 @@
 
 namespace Tests\Unit;
 
-use App\Console\Commands\ScanSite;
+use App\Services\ResultFormatterService;
+use App\Services\ScannerService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
 class ScanSiteTest extends TestCase
 {
-    private ScanSite $command;
+    private ResultFormatterService $formatter;
     private ReflectionClass $reflection;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->command = new ScanSite();
-        $this->reflection = new ReflectionClass($this->command);
+        $scannerService = new ScannerService();
+        $this->formatter = new ResultFormatterService($scannerService);
+        $this->reflection = new ReflectionClass($this->formatter);
     }
 
     private function invokeMethod(string $methodName, array $parameters = []): mixed
     {
         $method = $this->reflection->getMethod($methodName);
-        return $method->invokeArgs($this->command, $parameters);
+        return $method->invokeArgs($this->formatter, $parameters);
     }
 
     // ==================
