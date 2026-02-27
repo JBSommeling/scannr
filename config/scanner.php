@@ -101,5 +101,31 @@ return [
         'timeout' => 30,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Downloadable File Extensions
+    |--------------------------------------------------------------------------
+    |
+    | File extensions considered "downloadable" when scanning inline <script>
+    | content for download URLs (requires --js flag). Only string literals
+    | ending in one of these extensions and starting with "/" or "http" will
+    | be extracted. This prevents false positives from random JS strings.
+    |
+    */
+
+    'download_extensions' => [
+        // Documents
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx',
+        'rtf', 'txt', 'odt', 'ods', 'odp', 'epub',
+        // Archives
+        'zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz',
+        // Media
+        'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'webm', 'ogg', 'mkv',
+        // Installers
+        'dmg', 'exe', 'msi', 'deb', 'rpm', 'apk', 'ipa',
+        // Images (download context)
+        'svg', 'psd', 'ai', 'eps',
+    ],
+
 ];
 

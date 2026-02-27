@@ -725,6 +725,344 @@ class ScannerServiceTest extends TestCase
         }
     }
 
+    public function test_extract_links_finds_a_download(): void
+    {
+        $html = '<html><body><a href="/report.pdf" download>Download Report</a></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        // Should appear as both 'a' (from a[href]) and 'media' (from a[download][href])
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertNotEmpty($mediaLinks);
+        $this->assertEquals('https://example.com/report.pdf', array_values($mediaLinks)[0]['url']);
+    }
+
+    public function test_extract_links_finds_button_data_href(): void
+    {
+        $html = '<html><body><button data-href="/download/file.zip">Download</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/download/file.zip', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_data_url(): void
+    {
+        $html = '<html><body><div data-url="/assets/brochure.pdf" class="download-btn">Get PDF</div></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/assets/brochure.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_data_download(): void
+    {
+        $html = '<html><body><button data-download="/files/report.xlsx">Export</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/files/report.xlsx', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_data_file(): void
+    {
+        $html = '<html><body><span data-file="/docs/manual.pdf">Manual</span></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/docs/manual.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_does_not_double_classify_img_data_src(): void
+    {
+        $html = '<html><body><img data-src="/images/lazy.jpg" class="lazy"></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        // Should only appear once as 'img', not also as 'media'
+        $this->assertCount(1, $links);
+        $this->assertEquals('img', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_onclick_window_location_href(): void
+    {
+        $html = '<html><body><button onclick="window.location.href=\'/downloads/report.pdf\'">Download</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/downloads/report.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_onclick_location_href(): void
+    {
+        $html = '<html><body><button onclick="location.href=\'/file.zip\'">Download</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/file.zip', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_onclick_window_open(): void
+    {
+        $html = '<html><body><button onclick="window.open(\'/docs/manual.pdf\')">Open</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/docs/manual.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_finds_onclick_download_function(): void
+    {
+        $html = '<html><body><button onclick="download(\'/assets/cv.pdf\')">Download CV</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/assets/cv.pdf', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    public function test_extract_links_onclick_skips_javascript_urls(): void
+    {
+        $html = '<html><body><button onclick="javascript:void(0)">No-op</button></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(0, $links);
+    }
+
+    public function test_extract_links_finds_onclick_with_double_quotes(): void
+    {
+        $html = "<html><body><button onclick='window.location.href=\"/report.xlsx\"'>Export</button></body></html>";
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/report.xlsx', $links[0]['url']);
+        $this->assertEquals('media', $links[0]['element']);
+    }
+
+    // ==========================================
+    // extractLinks inline script scanning tests
+    // ==========================================
+
+    public function test_extract_links_finds_download_url_in_inline_script_when_enabled(): void
+    {
+        $html = '<html><body><script>var cv = "/files/cv.pdf";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(1, $mediaLinks);
+        $this->assertEquals('https://example.com/files/cv.pdf', array_values($mediaLinks)[0]['url']);
+    }
+
+    public function test_extract_links_ignores_inline_script_when_disabled(): void
+    {
+        $html = '<html><body><script>var cv = "/files/cv.pdf";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', false);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_ignores_inline_script_by_default(): void
+    {
+        $html = '<html><body><script>var cv = "/files/cv.pdf";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_finds_download_url_in_next_data_script(): void
+    {
+        $html = '<html><body><script id="__NEXT_DATA__" type="application/json">{"props":{"downloadUrl":"/docs/report.xlsx"}}</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(1, $mediaLinks);
+        $this->assertEquals('https://example.com/docs/report.xlsx', array_values($mediaLinks)[0]['url']);
+    }
+
+    public function test_extract_links_inline_script_ignores_non_download_paths(): void
+    {
+        $html = '<html><body><script>var api = "/api/users"; var page = "/about";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_inline_script_requires_path_prefix(): void
+    {
+        $html = '<html><body><script>var x = "version.pdf"; var y = "file.zip";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_inline_script_finds_multiple_files(): void
+    {
+        $html = '<html><body><script>
+            var cv = "/files/cv.pdf";
+            var brochure = "/downloads/brochure.docx";
+            var archive = "/assets/data.zip";
+        </script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $urls = array_column($mediaLinks, 'url');
+        $this->assertCount(3, $mediaLinks);
+        $this->assertContains('https://example.com/files/cv.pdf', $urls);
+        $this->assertContains('https://example.com/downloads/brochure.docx', $urls);
+        $this->assertContains('https://example.com/assets/data.zip', $urls);
+    }
+
+    public function test_extract_links_inline_script_finds_absolute_urls(): void
+    {
+        $html = '<html><body><script>var file = "https://cdn.example.com/files/report.pdf";</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(1, $mediaLinks);
+        $this->assertEquals('https://cdn.example.com/files/report.pdf', array_values($mediaLinks)[0]['url']);
+    }
+
+    public function test_extract_links_inline_script_deduplicates_urls(): void
+    {
+        $html = '<html><body><script>
+            var a = "/files/cv.pdf";
+            var b = "/files/cv.pdf";
+        </script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(1, $mediaLinks);
+    }
+
+    public function test_extract_links_inline_script_skips_script_with_src(): void
+    {
+        $html = '<html><head><script src="/app.js">var cv = "/files/cv.pdf";</script></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        // Should find the src as 'script' element, but NOT the inline content
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+
+        $scriptLinks = array_filter($links, fn($l) => $l['element'] === 'script');
+        $this->assertCount(1, $scriptLinks);
+    }
+
+    public function test_extract_links_inline_script_finds_json_escaped_urls(): void
+    {
+        // Real-world pattern: JSON with forward-slash escaping (common in JSON-LD and __NEXT_DATA__)
+        $html = '<html><body><script type="application/json">{"file":"\/downloads\/report.pdf"}</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(1, $mediaLinks);
+        $this->assertEquals('https://example.com/downloads/report.pdf', array_values($mediaLinks)[0]['url']);
+    }
+
+    // ============================================
+    // extractLinks external JS bundle scan tests
+    // ============================================
+
+    public function test_extract_links_scans_external_js_bundle_when_enabled(): void
+    {
+        // Simulate a React app where the download URL is inside the compiled JS bundle
+        $bundleContent = 'onClick:()=>{const e=document.createElement("a");e.href="/cv.pdf",e.download="CV.pdf",e.click()}';
+
+        $mockClient = $this->createMockClient(200, $bundleContent);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $html = '<html><head><script src="/assets/bundle.js"></script></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $this->assertNotEmpty($mediaLinks);
+        $urls = array_column($mediaLinks, 'url');
+        $this->assertContains('https://example.com/cv.pdf', $urls);
+    }
+
+    public function test_extract_links_does_not_scan_external_js_bundle_when_disabled(): void
+    {
+        $bundleContent = 'var file = "/downloads/report.pdf";';
+
+        $mockClient = $this->createMockClient(200, $bundleContent);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $html = '<html><head><script src="/assets/bundle.js"></script></head><body></body></html>';
+
+        // scanScriptContent = false (default)
+        $links = $this->service->extractLinks($html, 'https://example.com', false);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_skips_external_js_bundle_from_other_domains(): void
+    {
+        // External CDN script should NOT be fetched
+        $this->service->setBaseUrl('https://example.com');
+
+        $html = '<html><head><script src="https://cdn.other.com/vendor.js"></script></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $this->assertCount(0, $mediaLinks);
+    }
+
+    public function test_extract_links_external_bundle_finds_multiple_download_urls(): void
+    {
+        $bundleContent = 'var cv="/files/cv.pdf"; var brochure="/docs/brochure.docx"; var api="/api/users";';
+
+        $mockClient = $this->createMockClient(200, $bundleContent);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $html = '<html><head><script src="/app.js"></script></head><body></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $urls = array_column($mediaLinks, 'url');
+        $this->assertContains('https://example.com/files/cv.pdf', $urls);
+        $this->assertContains('https://example.com/docs/brochure.docx', $urls);
+        // /api/users should NOT be found (no download extension)
+        $this->assertNotContains('https://example.com/api/users', $urls);
+    }
+
     // ======================
     // followRedirects tests
     // ======================

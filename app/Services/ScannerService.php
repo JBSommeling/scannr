@@ -389,15 +389,21 @@ class ScannerService
      * - <script src=""> (JavaScript files)
      * - <img src=""> (images)
      * - <video>, <audio>, <source>, <object>, <embed> (media/downloads)
+     * - <a download> (explicit download links)
+     * - Elements with data-href, data-url, data-download, data-src, data-file (JS-triggered downloads)
+     * - onclick attributes containing window.location, window.open, or download() calls
+     * - Inline <script> contents referencing downloadable file URLs (when --js is enabled)
+     * - External <script src=""> JS bundles for downloadable file URLs (when --js is enabled, internal only)
      *
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
      * Normalizes relative URLs to absolute URLs.
      *
-     * @param  string  $html       The HTML content to parse.
-     * @param  string  $sourceUrl  The URL the HTML was fetched from (for resolving relative URLs).
+     * @param  string  $html               The HTML content to parse.
+     * @param  string  $sourceUrl          The URL the HTML was fetched from (for resolving relative URLs).
+     * @param  bool    $scanScriptContent  Whether to scan inline <script> contents for download URLs (requires --js).
      * @return array<array{url: string, source: string, element: string}> Array of extracted links with URL, source page, and element type.
      */
-    public function extractLinks(string $html, string $sourceUrl): array
+    public function extractLinks(string $html, string $sourceUrl, bool $scanScriptContent = false): array
     {
         $links = [];
 
@@ -476,6 +482,72 @@ class ScannerService
             $crawler->filter('embed[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                 $this->addLinkFromAttribute($node, 'src', $sourceUrl, 'media', $links);
             });
+
+            // Extract from <a download> (explicit download links, classified as media)
+            $crawler->filter('a[download][href]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'href', $sourceUrl, 'media', $links);
+            });
+
+            // Extract from elements with data attributes commonly used for JS-triggered downloads
+            // e.g., <button data-href="/file.pdf">, <div data-download="/report.xlsx">
+            foreach (['data-href', 'data-url', 'data-download', 'data-src', 'data-file'] as $attr) {
+                $crawler->filter("[{$attr}]")->each(function (Crawler $node) use ($attr, $sourceUrl, &$links) {
+                    // Skip img[data-src] — already handled above as 'img' element
+                    if ($attr === 'data-src' && strtolower($node->nodeName()) === 'img') {
+                        return;
+                    }
+                    $this->addLinkFromAttribute($node, $attr, $sourceUrl, 'media', $links);
+                });
+            }
+
+            // Extract download URLs from onclick attributes
+            // Matches patterns like: onclick="window.location.href='/file.pdf'"
+            //                        onclick="window.open('/file.pdf')"
+            //                        onclick="location.href='/file.pdf'"
+            //                        onclick="download('/file.pdf')"
+            $crawler->filter('[onclick]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $onclick = $node->attr('onclick');
+                if ($onclick === null) {
+                    return;
+                }
+                $this->addLinksFromInlineJs($onclick, $sourceUrl, $links);
+            });
+
+            // Extract downloadable file URLs from inline <script> contents.
+            // Only enabled with --js flag to avoid false positives.
+            // Catches URLs in React/Next.js/Nuxt data blobs, JSON config,
+            // and JS string literals that reference downloadable files.
+            if ($scanScriptContent) {
+                $crawler->filter('script:not([src])')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                    $content = $node->text('', false);
+                    if ($content === '') {
+                        return;
+                    }
+                    $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
+                });
+
+                // Also fetch and scan external JS bundles for download URLs.
+                // Only scans internal scripts (same domain) to avoid fetching
+                // third-party CDN bundles. This catches React/Vue/Svelte apps
+                // where download URLs are compiled into the JS bundle
+                // (e.g., onClick handlers with document.createElement("a").href="/cv.pdf").
+                $crawler->filter('script[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                    $src = $node->attr('src');
+                    if ($src === null || $src === '') {
+                        return;
+                    }
+
+                    $scriptUrl = $this->normalizeUrl($src, $sourceUrl);
+                    if ($scriptUrl === null || !$this->isInternalUrl($scriptUrl)) {
+                        return;
+                    }
+
+                    $content = $this->fetchScriptContent($scriptUrl);
+                    if ($content !== null) {
+                        $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
+                    }
+                });
+            }
         } catch (\Exception $e) {
             // Silently handle parsing errors
         }
@@ -517,6 +589,164 @@ class ScannerService
             'source' => $sourceUrl,
             'element' => $element,
         ];
+    }
+
+    /**
+     * Extract URLs from inline JavaScript code (e.g., onclick attributes).
+     *
+     * Matches common patterns:
+     * - window.location.href = '/file.pdf'
+     * - window.location = '/file.pdf'
+     * - location.href = '/file.pdf'
+     * - window.open('/file.pdf')
+     * - window.open("/file.pdf")
+     *
+     * @param  string  $js         The inline JavaScript code.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  array   &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addLinksFromInlineJs(string $js, string $sourceUrl, array &$links): void
+    {
+        // Match: window.location.href = '...', window.location = '...', location.href = '...'
+        // Match: window.open('...'), window.open("...")
+        // Match: download('...'), download("...")
+        $patterns = [
+            '/(?:window\.)?location(?:\.href)?\s*=\s*[\'"]([^\'"]+)[\'"]/i',
+            '/window\.open\s*\(\s*[\'"]([^\'"]+)[\'"]/i',
+            '/download\s*\(\s*[\'"]([^\'"]+)[\'"]/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match_all($pattern, $js, $matches)) {
+                foreach ($matches[1] as $url) {
+                    // Skip javascript:, mailto:, tel:, data: URLs
+                    if (preg_match('/^(javascript|mailto|tel|data|#)/', $url)) {
+                        continue;
+                    }
+
+                    $normalizedUrl = $this->normalizeUrl($url, $sourceUrl);
+                    if ($normalizedUrl !== null) {
+                        $links[] = [
+                            'url' => $normalizedUrl,
+                            'source' => $sourceUrl,
+                            'element' => 'media',
+                        ];
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Extract downloadable file URLs from inline script content.
+     *
+     * Scans JavaScript/JSON content for quoted string literals that look like
+     * paths to downloadable files. Only matches strings that:
+     * - Start with "/" or "http" (to avoid matching random JS identifiers)
+     * - End with a known downloadable file extension (from config)
+     *
+     * This catches download URLs embedded in:
+     * - React/Next.js data blobs (__NEXT_DATA__, __NUXT__)
+     * - JSON configuration objects
+     * - JavaScript string literals referencing file downloads
+     *
+     * @param  string  $content    The inline script content.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  array   &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addDownloadUrlsFromScriptContent(string $content, string $sourceUrl, array &$links): void
+    {
+        $extensions = $this->getDownloadExtensions();
+
+        if (empty($extensions)) {
+            return;
+        }
+
+        // Unescape JSON forward-slash escaping (e.g., "\/downloads\/file.pdf" → "/downloads/file.pdf")
+        $content = str_replace('\\/', '/', $content);
+
+        $extPattern = implode('|', array_map('preg_quote', $extensions));
+
+        // Match quoted strings (single or double) that:
+        // 1. Start with "/" or "http" (path or absolute URL)
+        // 2. End with a downloadable file extension
+        // 3. Don't contain whitespace (URLs don't have spaces)
+        // 4. Don't contain quotes (prevent greedy matching)
+        $pattern = '/[\'\"]((?:\/|https?:\/\/)[^\s\'"]*\.(?:' . $extPattern . '))[\'\"]/i';
+
+        if (preg_match_all($pattern, $content, $matches)) {
+            $seen = [];
+            foreach ($matches[1] as $url) {
+                // Deduplicate within this script block
+                if (isset($seen[$url])) {
+                    continue;
+                }
+                $seen[$url] = true;
+
+                // Skip data: URIs and fragments
+                if (preg_match('/^(data|#)/', $url)) {
+                    continue;
+                }
+
+                $normalizedUrl = $this->normalizeUrl($url, $sourceUrl);
+                if ($normalizedUrl !== null) {
+                    $links[] = [
+                        'url' => $normalizedUrl,
+                        'source' => $sourceUrl,
+                        'element' => 'media',
+                    ];
+                }
+            }
+        }
+    }
+
+    /**
+     * Get the list of downloadable file extensions from config.
+     *
+     * @return array<string>
+     */
+    protected function getDownloadExtensions(): array
+    {
+        try {
+            return config('scanner.download_extensions', []);
+        } catch (\Throwable) {
+            return [
+                'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx',
+                'rtf', 'txt', 'odt', 'ods', 'odp', 'epub',
+                'zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz',
+                'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'webm', 'ogg', 'mkv',
+                'dmg', 'exe', 'msi', 'deb', 'rpm', 'apk', 'ipa',
+                'svg', 'psd', 'ai', 'eps',
+            ];
+        }
+    }
+
+    /**
+     * Fetch the content of an external script file.
+     *
+     * Makes a GET request to retrieve the JavaScript bundle content.
+     * Used when --js is enabled to scan external bundles for download URLs.
+     *
+     * @param  string  $url  The absolute URL of the script file.
+     * @return string|null   The script content, or null on failure.
+     */
+    protected function fetchScriptContent(string $url): ?string
+    {
+        try {
+            $response = $this->client->request('GET', $url, [
+                'allow_redirects' => true,
+            ]);
+
+            if ($response->getStatusCode() !== 200) {
+                return null;
+            }
+
+            return (string) $response->getBody();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**
@@ -839,7 +1069,11 @@ class ScannerService
             }
 
             if ($htmlForExtraction !== null) {
-                $extractedLinks = $this->extractLinks($htmlForExtraction, $url);
+                $extractedLinks = $this->extractLinks(
+                    $htmlForExtraction,
+                    $url,
+                    $this->browsershotFetcher !== null,
+                );
             }
         }
 
