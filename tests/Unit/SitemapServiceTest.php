@@ -455,6 +455,24 @@ class SitemapServiceTest extends TestCase
         $this->assertTrue($result);
     }
 
+    public function test_set_base_url_normalizes_www(): void
+    {
+        $this->service->setBaseUrl('https://www.example.com');
+
+        // Use reflection to check the internal baseUrl and baseHost
+        $reflection = new \ReflectionClass($this->service);
+
+        $baseUrlProp = $reflection->getProperty('baseUrl');
+        $baseUrlProp->setAccessible(true);
+
+        $baseHostProp = $reflection->getProperty('baseHost');
+        $baseHostProp->setAccessible(true);
+
+        // Should be normalized to non-www
+        $this->assertEquals('https://example.com', $baseUrlProp->getValue($this->service));
+        $this->assertEquals('example.com', $baseHostProp->getValue($this->service));
+    }
+
     // ===================
     // discoverUrls tests
     // ===================
@@ -586,6 +604,43 @@ class SitemapServiceTest extends TestCase
 
         $this->assertEquals(0, $result['count']);
         $this->assertEmpty($result['urls']);
+    }
+
+    public function test_discover_urls_finds_non_www_urls_when_base_has_www(): void
+    {
+        // This tests the exact scenario: scanning www.sommeling.dev but sitemap has sommeling.dev URLs
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url><loc>https://example.com/page1</loc></url>
+                <url><loc>https://example.com/page2</loc></url>
+            </urlset>';
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnCallback(function ($method, $url) use ($sitemapXml) {
+                $mockStream = $this->createMock(StreamInterface::class);
+                $mockResponse = $this->createMock(ResponseInterface::class);
+
+                if (str_contains($url, 'robots.txt')) {
+                    $mockResponse->method('getStatusCode')->willReturn(404);
+                    return $mockResponse;
+                }
+
+                $mockStream->method('__toString')->willReturn($sitemapXml);
+                $mockResponse->method('getStatusCode')->willReturn(200);
+                $mockResponse->method('getBody')->willReturn($mockStream);
+                $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+                return $mockResponse;
+            });
+
+        $this->service->setClient($mockClient);
+
+        // Use www version as base URL
+        $result = $this->service->discoverUrls('https://www.example.com');
+
+        // Should find the non-www URLs as internal (they're the same domain)
+        $this->assertEquals(2, $result['count']);
+        $this->assertCount(2, $result['urls']);
     }
 }
 

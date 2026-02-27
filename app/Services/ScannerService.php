@@ -107,6 +107,7 @@ class ScannerService
      * Set the base URL for scanning.
      *
      * This determines which URLs are considered internal vs external.
+     * The www. prefix is normalized (removed) for consistent matching.
      *
      * @param  string  $baseUrl  The base URL of the website (e.g., 'https://example.com').
      * @return $this
@@ -115,7 +116,16 @@ class ScannerService
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $parsed = parse_url($this->baseUrl);
-        $this->baseHost = $parsed['host'] ?? '';
+        $host = $parsed['host'] ?? '';
+
+        // Normalize host by removing www. prefix for consistent matching
+        $this->baseHost = preg_replace('/^www\./i', '', $host);
+
+        // Also normalize the baseUrl to use the non-www version
+        if (stripos($host, 'www.') === 0) {
+            $this->baseUrl = str_ireplace('://www.', '://', $this->baseUrl);
+        }
+
         return $this;
     }
 
@@ -201,6 +211,8 @@ class ScannerService
      *
      * Handles 3xx redirect responses by following the Location header.
      * Detects redirect loops and HTTPS to HTTP downgrades.
+     * www-to-non-www redirects (and vice versa) are not counted as hops
+     * and are excluded from the redirect chain.
      *
      * @param string $url The URL to request.
      * @param string $method HTTP method ('GET' or 'HEAD').
@@ -262,9 +274,14 @@ class ScannerService
                     }
 
                     $visitedUrls[$location] = true;
-                    $chain[] = $location;
+
+                    // Skip www-only redirects from the chain (but still follow them)
+                    if (!$this->isWwwOnlyRedirect($currentUrl, $location)) {
+                        $chain[] = $location;
+                        $hops++;
+                    }
+
                     $currentUrl = $location;
-                    $hops++;
                     continue;
                 }
 
@@ -295,6 +312,43 @@ class ScannerService
             'body' => $body,
             'hasHttpsDowngrade' => $hasHttpsDowngrade,
         ];
+    }
+
+    /**
+     * Check if a redirect is only a www normalization (www to non-www or vice versa).
+     *
+     * @param string $fromUrl The original URL.
+     * @param string $toUrl The redirect target URL.
+     * @return bool True if the redirect only changes the www prefix.
+     */
+    protected function isWwwOnlyRedirect(string $fromUrl, string $toUrl): bool
+    {
+        $fromParsed = parse_url($fromUrl);
+        $toParsed = parse_url($toUrl);
+
+        if (!isset($fromParsed['host']) || !isset($toParsed['host'])) {
+            return false;
+        }
+
+        // Normalize both hosts by removing www prefix
+        $fromHost = preg_replace('/^www\./i', '', $fromParsed['host']);
+        $toHost = preg_replace('/^www\./i', '', $toParsed['host']);
+
+        // If hosts are different after normalization, it's not a www-only redirect
+        if ($fromHost !== $toHost) {
+            return false;
+        }
+
+        // Check if the only difference is the www prefix
+        $fromWithoutHost = ($fromParsed['scheme'] ?? '') . '://' .
+                          ($fromParsed['path'] ?? '/') .
+                          (isset($fromParsed['query']) ? '?' . $fromParsed['query'] : '');
+        $toWithoutHost = ($toParsed['scheme'] ?? '') . '://' .
+                        ($toParsed['path'] ?? '/') .
+                        (isset($toParsed['query']) ? '?' . $toParsed['query'] : '');
+
+        // Same scheme, path, and query = www-only redirect
+        return $fromWithoutHost === $toWithoutHost;
     }
 
     /**
@@ -650,7 +704,8 @@ class ScannerService
      * Check if a URL is internal to the base host.
      *
      * A URL is considered internal if its host matches the base host
-     * or is a subdomain of the base host.
+     * or is a subdomain of the base host. Handles www/non-www equivalence
+     * by normalizing both hosts.
      *
      * @param  string  $url  The URL to check.
      * @return bool True if the URL is internal.
@@ -663,8 +718,20 @@ class ScannerService
             return true;
         }
 
-        return $parsed['host'] === $this->baseHost
-            || str_ends_with($parsed['host'], '.' . $this->baseHost);
+        // Normalize URL host by removing www. prefix
+        $urlHost = preg_replace('/^www\./i', '', $parsed['host']);
+
+        // Exact match (both are now normalized without www)
+        if ($urlHost === $this->baseHost) {
+            return true;
+        }
+
+        // Check if URL host is a subdomain of base host
+        if (str_ends_with($urlHost, '.' . $this->baseHost)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

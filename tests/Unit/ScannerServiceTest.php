@@ -844,6 +844,163 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('example.com', $this->service->getBaseHost());
     }
 
+    public function test_set_base_url_normalizes_www(): void
+    {
+        $this->service->setBaseUrl('https://www.example.com/path/');
+
+        // Should normalize to non-www version
+        $this->assertEquals('https://example.com/path', $this->service->getBaseUrl());
+        $this->assertEquals('example.com', $this->service->getBaseHost());
+    }
+
+    public function test_is_internal_url_matches_www_and_non_www(): void
+    {
+        $this->service->setBaseUrl('https://www.example.com');
+
+        // Both www and non-www should be considered internal
+        $this->assertTrue($this->service->isInternalUrl('https://example.com/page'));
+        $this->assertTrue($this->service->isInternalUrl('https://www.example.com/page'));
+    }
+
+    public function test_is_internal_url_matches_non_www_base_with_www_url(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        // www version should also be considered internal
+        $this->assertTrue($this->service->isInternalUrl('https://www.example.com/page'));
+        $this->assertTrue($this->service->isInternalUrl('https://example.com/page'));
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_excludes_www_only_redirect_from_chain(): void
+    {
+        // Simulate www to non-www redirect
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/' : '';
+        });
+
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('<html></html>');
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($mockStream);
+        $response2->method('getHeaderLine')->willReturn('');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://www.example.com/', 'GET');
+
+        // www-only redirect should NOT be in the chain
+        $this->assertEmpty($result['chain']);
+        $this->assertEquals(200, $result['finalStatus']);
+        $this->assertFalse($result['loop']); // Should NOT be detected as a loop
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_excludes_non_www_to_www_redirect_from_chain(): void
+    {
+        // Simulate non-www to www redirect (reverse direction)
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://www.example.com/' : '';
+        });
+
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('<html></html>');
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($mockStream);
+        $response2->method('getHeaderLine')->willReturn('');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/', 'GET');
+
+        // www-only redirect should NOT be in the chain (either direction)
+        $this->assertEmpty($result['chain']);
+        $this->assertEquals(200, $result['finalStatus']);
+        $this->assertFalse($result['loop']);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_includes_non_www_redirects_in_chain(): void
+    {
+        // Simulate redirect to a different path (not www-only)
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/new-page' : '';
+        });
+
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('<html></html>');
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($mockStream);
+        $response2->method('getHeaderLine')->willReturn('');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/old-page', 'GET');
+
+        // Non-www redirect SHOULD be in the chain
+        $this->assertCount(1, $result['chain']);
+        $this->assertEquals('https://example.com/new-page', $result['chain'][0]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function test_follow_redirects_www_redirect_with_path_change_is_in_chain(): void
+    {
+        // www redirect that ALSO changes the path should be in the chain
+        $response1 = $this->createMock(ResponseInterface::class);
+        $response1->method('getStatusCode')->willReturn(301);
+        $response1->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/new-page' : '';
+        });
+
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('<html></html>');
+
+        $response2 = $this->createMock(ResponseInterface::class);
+        $response2->method('getStatusCode')->willReturn(200);
+        $response2->method('getBody')->willReturn($mockStream);
+        $response2->method('getHeaderLine')->willReturn('');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response1, $response2);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://www.example.com/old-page', 'GET');
+
+        // This redirect changes BOTH www AND path, so it SHOULD be in the chain
+        $this->assertCount(1, $result['chain']);
+        $this->assertEquals('https://example.com/new-page', $result['chain'][0]);
+    }
+
     public function test_set_max_redirects(): void
     {
         $result = $this->service->setMaxRedirects(10);
