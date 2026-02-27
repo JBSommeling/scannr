@@ -185,7 +185,9 @@ class SitemapService
         $robotsUrl = $this->baseUrl . '/robots.txt';
 
         try {
-            $response = $this->client->request('GET', $robotsUrl);
+            $response = $this->client->request('GET', $robotsUrl, [
+                'allow_redirects' => true,
+            ]);
 
             if ($response->getStatusCode() === 200) {
                 $robotsContent = (string) $response->getBody();
@@ -219,7 +221,9 @@ class SitemapService
         }
 
         try {
-            $response = $this->client->request('GET', $url);
+            $response = $this->client->request('GET', $url, [
+                'allow_redirects' => true,
+            ]);
 
             if ($response->getStatusCode() !== 200) {
                 return [];

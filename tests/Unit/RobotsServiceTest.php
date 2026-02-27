@@ -564,5 +564,106 @@ ROBOTS;
         $this->assertTrue($this->service->isAllowed('https://example.com/admin'));
         $this->assertFalse($this->service->isAllowed('https://example.com/bot-specific'));
     }
+
+    // ===================
+    // Redirect handling tests
+    // ===================
+
+    public function test_fetch_and_parse_follows_redirects(): void
+    {
+        $robotsTxt = "User-agent: *\nDisallow: /admin\nSitemap: https://example.com/sitemap.xml\n";
+
+        $mock = new MockHandler([
+            new Response(301, ['Location' => 'https://www.example.com/robots.txt']),
+            new Response(200, [], $robotsTxt),
+        ]);
+        $handlerStack = HandlerStack::create($mock);
+        $client = new Client(['handler' => $handlerStack]);
+
+        $this->service->setClient($client);
+        $this->service->fetchAndParse('https://example.com');
+
+        $rules = $this->service->getRules();
+        $this->assertCount(1, $rules);
+        $this->assertEquals('/admin', $rules[0]['pattern']);
+        $this->assertContains('https://example.com/sitemap.xml', $this->service->getSitemapUrls());
+    }
+
+    public function test_fetch_and_parse_follows_redirects_with_no_redirect_client(): void
+    {
+        $robotsTxt = "User-agent: *\nDisallow: /private/\nCrawl-delay: 3\n";
+
+        $mock = new MockHandler([
+            new Response(302, ['Location' => 'https://www.example.com/robots.txt']),
+            new Response(200, [], $robotsTxt),
+        ]);
+        $handlerStack = HandlerStack::create($mock);
+        // Simulate CrawlerService's client that has allow_redirects => false by default
+        $client = new Client([
+            'handler' => $handlerStack,
+            'allow_redirects' => false,
+        ]);
+
+        $this->service->setClient($client);
+        $this->service->fetchAndParse('https://www.example.com');
+
+        $rules = $this->service->getRules();
+        $this->assertCount(1, $rules);
+        $this->assertEquals('/private/', $rules[0]['pattern']);
+        $this->assertEquals(3.0, $this->service->getCrawlDelay());
+    }
+
+    // ===================
+    // WordPress / Yoast robots.txt tests
+    // ===================
+
+    public function test_parse_content_handles_wordpress_yoast_robots_txt(): void
+    {
+        $content = <<<'ROBOTS'
+User-agent: *
+Disallow: /wp-content/uploads/wc-logs/
+Disallow: /wp-content/uploads/woocommerce_transient_files/
+Disallow: /wp-content/uploads/woocommerce_uploads/
+Disallow: /*?add-to-cart=
+Disallow: /*?*add-to-cart=
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+# START YOAST BLOCK
+# ---------------------------
+User-agent: *
+Disallow:
+
+Sitemap: https://www.japkejanneke.nl/sitemap_index.xml
+# ---------------------------
+# END YOAST BLOCK
+ROBOTS;
+
+        $this->service->parseContent($content);
+
+        $rules = $this->service->getRules();
+        $this->assertCount(7, $rules);
+
+        // Verify disallow rules from first block are preserved
+        $this->assertEquals('disallow', $rules[0]['type']);
+        $this->assertEquals('/wp-content/uploads/wc-logs/', $rules[0]['pattern']);
+        $this->assertEquals('disallow', $rules[5]['type']);
+        $this->assertEquals('/wp-admin/', $rules[5]['pattern']);
+
+        // Verify allow rule
+        $this->assertEquals('allow', $rules[6]['type']);
+        $this->assertEquals('/wp-admin/admin-ajax.php', $rules[6]['pattern']);
+
+        // Verify sitemap URL extracted
+        $sitemaps = $this->service->getSitemapUrls();
+        $this->assertCount(1, $sitemaps);
+        $this->assertEquals('https://www.japkejanneke.nl/sitemap_index.xml', $sitemaps[0]);
+
+        // Verify rules are enforced correctly
+        $this->assertFalse($this->service->isAllowed('https://www.japkejanneke.nl/wp-admin/'));
+        $this->assertTrue($this->service->isAllowed('https://www.japkejanneke.nl/wp-admin/admin-ajax.php'));
+        $this->assertFalse($this->service->isAllowed('https://www.japkejanneke.nl/shop?add-to-cart=123'));
+        $this->assertTrue($this->service->isAllowed('https://www.japkejanneke.nl/shop/'));
+    }
 }
 
