@@ -130,6 +130,83 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('https://example.com/page?foo=bar', $result);
     }
 
+    // ==========================
+    // canonicalUrlKey tests
+    // ==========================
+
+    public function test_canonical_url_key_strips_trailing_slash(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page/');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_strips_fragment(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page#section');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_strips_tracking_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page?utm_source=test&valid=1');
+        $this->assertEquals('https://example.com/page?valid=1', $result);
+    }
+
+    public function test_canonical_url_key_strips_all_tracking_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page?utm_source=test&fbclid=abc');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_lowercases_host(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://Example.COM/Page');
+        $this->assertEquals('https://example.com/Page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_path_case(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/About/Contact');
+        $this->assertEquals('https://example.com/About/Contact', $result);
+    }
+
+    public function test_canonical_url_key_lowercases_scheme_host(): void
+    {
+        $result = $this->service->canonicalUrlKey('HTTPS://EXAMPLE.COM/page');
+        $this->assertEquals('HTTPS://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_handles_combined_normalization(): void
+    {
+        // Fragment + trailing slash + tracking params + mixed-case host
+        $result = $this->service->canonicalUrlKey('https://Example.COM/page/?utm_source=test&fbclid=abc#section');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_port(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://Example.COM:8080/page/');
+        $this->assertEquals('https://example.com:8080/page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_non_tracking_query_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/search?q=test&page=2');
+        $this->assertEquals('https://example.com/search?q=test&page=2', $result);
+    }
+
+    public function test_canonical_url_key_equivalent_urls_produce_same_key(): void
+    {
+        $key1 = $this->service->canonicalUrlKey('https://Example.com/page/');
+        $key2 = $this->service->canonicalUrlKey('https://example.com/page');
+        $key3 = $this->service->canonicalUrlKey('https://example.com/page#section');
+        $key4 = $this->service->canonicalUrlKey('https://example.com/page?utm_source=google');
+
+        $this->assertEquals($key1, $key2);
+        $this->assertEquals($key2, $key3);
+        $this->assertEquals($key3, $key4);
+    }
+
     // ====================
     // isInternalUrl tests
     // ====================

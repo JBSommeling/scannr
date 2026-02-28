@@ -274,6 +274,83 @@ class CrawlerServiceTest extends TestCase
         $this->assertNotContains('https://example.com/page1?custom_tracker=123', $urls);
     }
 
+    public function test_crawl_deduplicates_urls_differing_only_by_tracking_params(): void
+    {
+        // Page links to the same URL with different tracking params
+        $html = '<html><body>
+            <a href="/page1?utm_source=google">Link 1</a>
+            <a href="/page1?fbclid=abc123">Link 2</a>
+            <a href="/page1">Link 3</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $results = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (not 3 duplicates)
+        $this->assertCount(2, $results);
+    }
+
+    public function test_crawl_deduplicates_urls_differing_by_trailing_slash(): void
+    {
+        // Page links to the same URL with and without trailing slash
+        $html = '<html><body>
+            <a href="/page1/">With slash</a>
+            <a href="/page1">Without slash</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $results = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (not duplicated)
+        $this->assertCount(2, $results);
+    }
+
+    public function test_crawl_deduplicates_urls_differing_by_fragment(): void
+    {
+        // Page links to the same URL with different fragments
+        $html = '<html><body>
+            <a href="/page1#section1">Section 1</a>
+            <a href="/page1#section2">Section 2</a>
+            <a href="/page1">No fragment</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $results = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (fragments don't create distinct pages)
+        $this->assertCount(2, $results);
+    }
+
     // ==================
     // Sitemap integration tests
     // ==================

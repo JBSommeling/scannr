@@ -156,9 +156,10 @@ class SitemapService
         $filteredUrls = [];
         $seen = [];
         foreach ($discoveredUrls as $url) {
-            $normalizedUrl = rtrim($url, '/');
-            if (!isset($seen[$normalizedUrl]) && $this->isInternalUrl($normalizedUrl)) {
-                $seen[$normalizedUrl] = true;
+            $normalizedUrl = $this->scannerService->normalizeUrl($url, $this->baseUrl) ?? rtrim($url, '/');
+            $urlKey = $this->scannerService->canonicalUrlKey($normalizedUrl);
+            if (!isset($seen[$urlKey]) && $this->isInternalUrl($normalizedUrl)) {
+                $seen[$urlKey] = true;
                 $filteredUrls[] = [
                     'url' => $normalizedUrl,
                     'source' => 'sitemap',

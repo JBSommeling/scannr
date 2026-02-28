@@ -18,7 +18,8 @@ use Random\RandomException;
 class CrawlerService
 {
     protected array $visited = [];
-    protected array $queue = [];
+    protected \SplQueue $queue;
+    protected \SplQueue $priorityQueue;
     protected array $results = [];
     protected ?Client $client = null;
     protected ?string $originalHost = null;
@@ -52,7 +53,8 @@ class CrawlerService
     {
         // Reset state for new crawl
         $this->visited = [];
-        $this->queue = [];
+        $this->queue = new \SplQueue();
+        $this->priorityQueue = new \SplQueue();
         $this->results = [];
         $this->originalHost = parse_url($config->baseUrl, PHP_URL_HOST);
         $this->canonicalHost = null;
@@ -123,12 +125,12 @@ class CrawlerService
         }
 
         // Initialize queue with starting URL
-        $this->queue[] = [
+        $this->queue->enqueue([
             'url' => $config->baseUrl,
             'depth' => 0,
             'source' => 'start',
             'element' => 'a',
-        ];
+        ]);
 
         // Discover URLs from sitemap if enabled
         if ($config->useSitemap) {
@@ -137,15 +139,18 @@ class CrawlerService
 
         $scannedCount = 0;
 
-        while (!empty($this->queue) && $scannedCount < $config->maxUrls) {
-            $current = array_shift($this->queue);
+        while ((!$this->priorityQueue->isEmpty() || !$this->queue->isEmpty()) && $scannedCount < $config->maxUrls) {
+            $current = !$this->priorityQueue->isEmpty()
+                ? $this->priorityQueue->dequeue()
+                : $this->queue->dequeue();
             $url = $current['url'];
             $depth = $current['depth'];
             $source = $current['source'];
             $element = $current['element'] ?? 'a';
 
-            // Skip if already visited
-            if (isset($this->visited[$url])) {
+            // Skip if already visited (using canonical URL key for deduplication)
+            $urlKey = $this->scannerService->canonicalUrlKey($url);
+            if (isset($this->visited[$urlKey])) {
                 continue;
             }
 
@@ -156,11 +161,11 @@ class CrawlerService
 
             // Skip if disallowed by robots.txt (only for internal URLs)
             if ($config->respectRobots && $this->scannerService->isInternalUrl($url) && !$this->robotsService->isAllowed($url)) {
-                $this->visited[$url] = true;
+                $this->visited[$urlKey] = true;
                 continue;
             }
 
-            $this->visited[$url] = true;
+            $this->visited[$urlKey] = true;
             $scannedCount++;
 
             $isInternal = $this->scannerService->isInternalUrl($url);
@@ -190,7 +195,7 @@ class CrawlerService
                         // Mark the canonical URL as visited to prevent duplicates
                         // when sitemap contains the canonical URL (e.g., non-www)
                         // while we started with the original URL (e.g., www)
-                        $this->visited[$finalUrl] = true;
+                        $this->visited[$this->scannerService->canonicalUrlKey($finalUrl)] = true;
 
                         // Rewrite all URLs currently in the queue to use canonical host
                         $this->rewriteQueueToCanonicalHost();
@@ -250,13 +255,14 @@ class CrawlerService
 
         if ($result['count'] > 0) {
             foreach ($result['urls'] as $urlData) {
-                if (!isset($this->visited[$urlData['url']])) {
-                    $this->queue[] = [
+                $sitemapUrlKey = $this->scannerService->canonicalUrlKey($urlData['url']);
+                if (!isset($this->visited[$sitemapUrlKey])) {
+                    $this->queue->enqueue([
                         'url' => $urlData['url'],
                         'depth' => 0,
                         'source' => $urlData['source'],
                         'element' => 'a',
-                    ];
+                    ]);
                 }
             }
 
@@ -302,7 +308,8 @@ class CrawlerService
             // Rewrite URL to canonical host if needed (e.g., www -> non-www)
             $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
 
-            if (!isset($this->visited[$linkUrl])) {
+            $linkKey = $this->scannerService->canonicalUrlKey($linkUrl);
+            if (!isset($this->visited[$linkKey])) {
                 $queueItem = [
                     'url' => $linkUrl,
                     'depth' => $depth + 1,
@@ -310,11 +317,11 @@ class CrawlerService
                     'element' => $linkElement,
                 ];
 
-                // Prioritize scanElements (except 'a') by adding to front
+                // Prioritize scanElements (except 'a') by adding to priority queue
                 if (in_array($linkElement, $scanElements) && $linkElement !== 'a') {
-                    array_unshift($this->queue, $queueItem);
+                    $this->priorityQueue->enqueue($queueItem);
                 } else {
-                    $this->queue[] = $queueItem;
+                    $this->queue->enqueue($queueItem);
                 }
             }
         }
@@ -383,18 +390,34 @@ class CrawlerService
      * Called after discovering the canonical host to ensure all queued
      * URLs use the correct host. Also removes URLs that are already visited
      * (which can happen when sitemap URLs match the canonical URL of the start page).
+     *
+     * Drains both queues and rebuilds them, preserving priority semantics.
      */
     protected function rewriteQueueToCanonicalHost(): void
     {
-        $filteredQueue = [];
-        foreach ($this->queue as $item) {
+        // Drain and rebuild the priority queue
+        $newPriorityQueue = new \SplQueue();
+        while (!$this->priorityQueue->isEmpty()) {
+            $item = $this->priorityQueue->dequeue();
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
-            // Skip if this URL is already visited (e.g., sitemap homepage matching canonical start URL)
-            if (!isset($this->visited[$item['url']])) {
-                $filteredQueue[] = $item;
+            $itemKey = $this->scannerService->canonicalUrlKey($item['url']);
+            if (!isset($this->visited[$itemKey])) {
+                $newPriorityQueue->enqueue($item);
             }
         }
-        $this->queue = $filteredQueue;
+        $this->priorityQueue = $newPriorityQueue;
+
+        // Drain and rebuild the normal queue
+        $newQueue = new \SplQueue();
+        while (!$this->queue->isEmpty()) {
+            $item = $this->queue->dequeue();
+            $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
+            $itemKey = $this->scannerService->canonicalUrlKey($item['url']);
+            if (!isset($this->visited[$itemKey])) {
+                $newQueue->enqueue($item);
+            }
+        }
+        $this->queue = $newQueue;
     }
 }
 
