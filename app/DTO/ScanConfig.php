@@ -29,19 +29,19 @@ readonly class ScanConfig
     ) {}
 
     /**
-     * Create a ScanConfig from command options.
+     * Create a ScanConfig from a plain associative array.
      *
-     * Applies hard caps from configuration and parses all options.
+     * Applies the same hard-cap logic as fromCommandOptions.
      *
      * @return array{config: self, warnings: array<string>}
      */
-    public static function fromCommandOptions(Command $command): array
+    public static function fromArray(array $data): array
     {
         $warnings = [];
-        $baseUrl = rtrim($command->argument('url'), '/');
+        $baseUrl = rtrim($data['baseUrl'] ?? $data['url'] ?? '', '/');
 
         // Parse and cap depth
-        $maxDepth = (int) $command->option('depth');
+        $maxDepth = (int) ($data['maxDepth'] ?? 3);
         $hardMaxDepth = config('scanner.hard_max_depth', 10);
         if ($maxDepth > $hardMaxDepth) {
             $warnings[] = "Depth {$maxDepth} exceeds hard limit, capping to {$hardMaxDepth}";
@@ -49,7 +49,7 @@ readonly class ScanConfig
         }
 
         // Parse and cap max URLs
-        $maxUrls = (int) $command->option('max');
+        $maxUrls = (int) ($data['maxUrls'] ?? 300);
         $hardMaxUrls = config('scanner.hard_max_urls', 2000);
         if ($maxUrls > $hardMaxUrls) {
             $warnings[] = "Max URLs {$maxUrls} exceeds hard limit, capping to {$hardMaxUrls}";
@@ -57,10 +57,46 @@ readonly class ScanConfig
         }
 
         // Parse and cap timeout
-        $requestedTimeout = (int) $command->option('timeout');
+        $requestedTimeout = (int) ($data['timeout'] ?? 5);
         $maxTimeout = config('scanner.timeout', 30);
         $timeout = min($requestedTimeout, $maxTimeout);
 
+        // Parse scan elements
+        $scanElements = $data['scanElements'] ?? ['a', 'link', 'script', 'img', 'media'];
+
+        // Get rate limiting config
+        $delayMin = config('scanner.request_delay_min', 300);
+        $delayMax = config('scanner.request_delay_max', 500);
+
+        $config = new self(
+            baseUrl: $baseUrl,
+            maxDepth: $maxDepth,
+            maxUrls: $maxUrls,
+            timeout: $timeout,
+            scanElements: $scanElements,
+            statusFilter: $data['statusFilter'] ?? 'all',
+            elementFilter: $data['elementFilter'] ?? 'all',
+            outputFormat: $data['outputFormat'] ?? 'json',
+            delayMin: $delayMin,
+            delayMax: $delayMax,
+            useSitemap: (bool) ($data['useSitemap'] ?? false),
+            customTrackingParams: $data['customTrackingParams'] ?? [],
+            useJsRendering: (bool) ($data['useJsRendering'] ?? false),
+            respectRobots: (bool) ($data['respectRobots'] ?? true),
+        );
+
+        return ['config' => $config, 'warnings' => $warnings];
+    }
+
+    /**
+     * Create a ScanConfig from command options.
+     *
+     * Parses command arguments/options into an array and delegates to fromArray.
+     *
+     * @return array{config: self, warnings: array<string>}
+     */
+    public static function fromCommandOptions(Command $command): array
+    {
         // Parse scan elements
         $scanElementsOption = $command->option('scan-elements');
         $scanElements = $scanElementsOption === 'all'
@@ -73,28 +109,45 @@ readonly class ScanConfig
             ? array_map('trim', explode(',', $stripParams))
             : [];
 
-        // Get rate limiting config
-        $delayMin = config('scanner.request_delay_min', 300);
-        $delayMax = config('scanner.request_delay_max', 500);
+        return self::fromArray([
+            'baseUrl' => $command->argument('url'),
+            'maxDepth' => (int) $command->option('depth'),
+            'maxUrls' => (int) $command->option('max'),
+            'timeout' => (int) $command->option('timeout'),
+            'scanElements' => $scanElements,
+            'statusFilter' => $command->option('status'),
+            'elementFilter' => $command->option('filter'),
+            'outputFormat' => $command->option('format'),
+            'useSitemap' => (bool) $command->option('sitemap'),
+            'customTrackingParams' => $customTrackingParams,
+            'useJsRendering' => (bool) $command->option('js'),
+            'respectRobots' => !$command->option('no-robots'),
+        ]);
+    }
 
-        $config = new self(
-            baseUrl: $baseUrl,
-            maxDepth: $maxDepth,
-            maxUrls: $maxUrls,
-            timeout: $timeout,
-            scanElements: $scanElements,
-            statusFilter: $command->option('status'),
-            elementFilter: $command->option('filter'),
-            outputFormat: $command->option('format'),
-            delayMin: $delayMin,
-            delayMax: $delayMax,
-            useSitemap: (bool) $command->option('sitemap'),
-            customTrackingParams: $customTrackingParams,
-            useJsRendering: (bool) $command->option('js'),
-            respectRobots: !$command->option('no-robots'),
-        );
-
-        return ['config' => $config, 'warnings' => $warnings];
+    /**
+     * Serialize the config to a plain array.
+     *
+     * Can be stored as JSON and later restored via fromArray().
+     */
+    public function toArray(): array
+    {
+        return [
+            'baseUrl' => $this->baseUrl,
+            'maxDepth' => $this->maxDepth,
+            'maxUrls' => $this->maxUrls,
+            'timeout' => $this->timeout,
+            'scanElements' => $this->scanElements,
+            'statusFilter' => $this->statusFilter,
+            'elementFilter' => $this->elementFilter,
+            'outputFormat' => $this->outputFormat,
+            'delayMin' => $this->delayMin,
+            'delayMax' => $this->delayMax,
+            'useSitemap' => $this->useSitemap,
+            'customTrackingParams' => $this->customTrackingParams,
+            'useJsRendering' => $this->useJsRendering,
+            'respectRobots' => $this->respectRobots,
+        ];
     }
 
     /**

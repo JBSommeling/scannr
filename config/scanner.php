@@ -103,6 +103,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Job Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Maximum execution time in seconds for queued scan jobs (--queue flag).
+    | Long-running scans with many URLs may need a higher value. The job
+    | will be marked as failed if it exceeds this timeout.
+    |
+    */
+
+    'job_timeout' => 600,
+
+    /*
+    |--------------------------------------------------------------------------
     | Downloadable File Extensions
     |--------------------------------------------------------------------------
     |

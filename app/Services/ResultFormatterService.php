@@ -138,6 +138,43 @@ class ResultFormatterService
     }
 
     /**
+     * Build the JSON output array from results and config.
+     *
+     * Returns the structured array with summary, results, and broken links.
+     * Useful for storing scan output in the database without an OutputInterface.
+     *
+     * @param array $results The scan results.
+     * @param ScanConfig $config The scan configuration.
+     * @return array{summary: array, results: array, brokenLinks: array}
+     */
+    public function toJsonArray(array $results, ScanConfig $config): array
+    {
+        $filtered = $this->scannerService->filterResults($results, $config->statusFilter);
+        $filtered = $this->scannerService->filterByElement($filtered, $config->elementFilter);
+
+        $stats = $this->scannerService->calculateStats($filtered);
+        $totalScanned = count($results);
+        $isFiltered = $config->hasFilter();
+
+        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$r['isOk']));
+
+        $summary = ['totalScanned' => $totalScanned];
+
+        if ($isFiltered) {
+            $summary['filtered'] = $stats['total'];
+        }
+
+        $statsWithoutTotal = array_diff_key($stats, ['total' => true]);
+        $summary = array_merge($summary, $statsWithoutTotal);
+
+        return [
+            'summary' => $summary,
+            'results' => array_values($filtered),
+            'brokenLinks' => $brokenLinks,
+        ];
+    }
+
+    /**
      * Display results as JSON.
      */
     protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output): void

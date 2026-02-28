@@ -470,6 +470,174 @@ class ScanConfigTest extends TestCase
         $this->assertTrue($result['config']->useJsRendering);
     }
 
+    // ==================
+    // fromArray tests
+    // ==================
+
+    public function test_from_array_creates_config_with_defaults(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com/',
+        ]);
+
+        $config = $result['config'];
+
+        $this->assertInstanceOf(ScanConfig::class, $config);
+        $this->assertEquals('https://example.com', $config->baseUrl);
+        $this->assertEquals(3, $config->maxDepth);
+        $this->assertEquals(300, $config->maxUrls);
+        $this->assertEquals(5, $config->timeout);
+        $this->assertEquals(['a', 'link', 'script', 'img', 'media'], $config->scanElements);
+        $this->assertEquals('all', $config->statusFilter);
+        $this->assertEquals('all', $config->elementFilter);
+        $this->assertEquals('json', $config->outputFormat);
+        $this->assertFalse($config->useSitemap);
+        $this->assertEmpty($config->customTrackingParams);
+        $this->assertFalse($config->useJsRendering);
+        $this->assertTrue($config->respectRobots);
+        $this->assertEmpty($result['warnings']);
+    }
+
+    public function test_from_array_accepts_url_key(): void
+    {
+        $result = ScanConfig::fromArray(['url' => 'https://example.com']);
+        $this->assertEquals('https://example.com', $result['config']->baseUrl);
+    }
+
+    public function test_from_array_applies_all_provided_values(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'maxDepth' => 5,
+            'maxUrls' => 200,
+            'timeout' => 10,
+            'scanElements' => ['a', 'img'],
+            'statusFilter' => 'broken',
+            'elementFilter' => 'a',
+            'outputFormat' => 'json',
+            'useSitemap' => true,
+            'customTrackingParams' => ['ref'],
+            'useJsRendering' => true,
+            'respectRobots' => false,
+        ]);
+
+        $config = $result['config'];
+
+        $this->assertEquals(5, $config->maxDepth);
+        $this->assertEquals(200, $config->maxUrls);
+        $this->assertEquals(['a', 'img'], $config->scanElements);
+        $this->assertEquals('broken', $config->statusFilter);
+        $this->assertEquals('a', $config->elementFilter);
+        $this->assertTrue($config->useSitemap);
+        $this->assertEquals(['ref'], $config->customTrackingParams);
+        $this->assertTrue($config->useJsRendering);
+        $this->assertFalse($config->respectRobots);
+    }
+
+    public function test_from_array_caps_depth_exceeding_hard_limit(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'maxDepth' => 999,
+        ]);
+
+        $this->assertNotEmpty($result['warnings']);
+        $this->assertStringContainsString('Depth', $result['warnings'][0]);
+        $this->assertLessThanOrEqual(config('scanner.hard_max_depth', 10), $result['config']->maxDepth);
+    }
+
+    public function test_from_array_caps_max_urls_exceeding_hard_limit(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'maxUrls' => 99999,
+        ]);
+
+        $this->assertNotEmpty($result['warnings']);
+        $this->assertStringContainsString('Max URLs', $result['warnings'][0]);
+        $this->assertLessThanOrEqual(config('scanner.hard_max_urls', 2000), $result['config']->maxUrls);
+    }
+
+    // ==================
+    // toArray tests
+    // ==================
+
+    public function test_to_array_returns_all_properties(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 5,
+            maxUrls: 200,
+            timeout: 10,
+            scanElements: ['a', 'img'],
+            statusFilter: 'broken',
+            elementFilter: 'a',
+            outputFormat: 'json',
+            delayMin: 100,
+            delayMax: 200,
+            useSitemap: true,
+            customTrackingParams: ['ref'],
+            useJsRendering: true,
+            respectRobots: false,
+        );
+
+        $array = $config->toArray();
+
+        $this->assertEquals('https://example.com', $array['baseUrl']);
+        $this->assertEquals(5, $array['maxDepth']);
+        $this->assertEquals(200, $array['maxUrls']);
+        $this->assertEquals(10, $array['timeout']);
+        $this->assertEquals(['a', 'img'], $array['scanElements']);
+        $this->assertEquals('broken', $array['statusFilter']);
+        $this->assertEquals('a', $array['elementFilter']);
+        $this->assertEquals('json', $array['outputFormat']);
+        $this->assertEquals(100, $array['delayMin']);
+        $this->assertEquals(200, $array['delayMax']);
+        $this->assertTrue($array['useSitemap']);
+        $this->assertEquals(['ref'], $array['customTrackingParams']);
+        $this->assertTrue($array['useJsRendering']);
+        $this->assertFalse($array['respectRobots']);
+    }
+
+    // ==================
+    // fromArray / toArray round-trip tests
+    // ==================
+
+    public function test_from_array_to_array_round_trip(): void
+    {
+        $original = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 5,
+            maxUrls: 200,
+            timeout: 10,
+            scanElements: ['a', 'img'],
+            statusFilter: 'broken',
+            elementFilter: 'a',
+            outputFormat: 'json',
+            delayMin: 100,
+            delayMax: 200,
+            useSitemap: true,
+            customTrackingParams: ['ref', 'tracker'],
+            useJsRendering: true,
+            respectRobots: false,
+        );
+
+        $array = $original->toArray();
+        $restored = ScanConfig::fromArray($array)['config'];
+
+        $this->assertEquals($original->baseUrl, $restored->baseUrl);
+        $this->assertEquals($original->maxDepth, $restored->maxDepth);
+        $this->assertEquals($original->maxUrls, $restored->maxUrls);
+        $this->assertEquals($original->scanElements, $restored->scanElements);
+        $this->assertEquals($original->statusFilter, $restored->statusFilter);
+        $this->assertEquals($original->elementFilter, $restored->elementFilter);
+        $this->assertEquals($original->outputFormat, $restored->outputFormat);
+        $this->assertEquals($original->useSitemap, $restored->useSitemap);
+        $this->assertEquals($original->customTrackingParams, $restored->customTrackingParams);
+        $this->assertEquals($original->useJsRendering, $restored->useJsRendering);
+        $this->assertEquals($original->respectRobots, $restored->respectRobots);
+    }
+
     private function createMockCommand(array $options): Command
     {
         $command = $this->createMock(Command::class);

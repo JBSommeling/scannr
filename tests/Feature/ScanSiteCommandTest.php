@@ -2,11 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ScanSiteJob;
+use App\Models\ScanResult;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Tests\TestCase;
 
 class ScanSiteCommandTest extends TestCase
 {
+    use RefreshDatabase;
     /**
      * Test command requires a URL argument
      */
@@ -356,6 +361,107 @@ class ScanSiteCommandTest extends TestCase
             '--max' => 5,
         ])
             ->doesntExpectOutputToContain('exceeds hard limit')
+            ->assertExitCode(0);
+    }
+
+    // ==================
+    // --queue flag tests
+    // ==================
+
+    /**
+     * Test --queue flag dispatches a job and creates a ScanResult record
+     */
+    public function test_queue_flag_dispatches_job(): void
+    {
+        Queue::fake();
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 1,
+            '--max' => 5,
+            '--queue' => true,
+        ])
+            ->expectsOutputToContain('Scan job dispatched for: https://example.com')
+            ->expectsOutputToContain('Scan ID:')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(ScanSiteJob::class, 1);
+    }
+
+    /**
+     * Test --queue flag creates a pending ScanResult in the database
+     */
+    public function test_queue_flag_creates_pending_scan_result(): void
+    {
+        Queue::fake();
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 2,
+            '--max' => 10,
+            '--queue' => true,
+        ]);
+
+        $this->assertDatabaseCount('scan_results', 1);
+
+        $scanResult = ScanResult::first();
+        $this->assertEquals('pending', $scanResult->status);
+        $this->assertEquals('https://example.com', $scanResult->url);
+        $this->assertIsArray($scanResult->config);
+        $this->assertEquals('https://example.com', $scanResult->config['baseUrl']);
+        $this->assertNull($scanResult->results);
+    }
+
+    /**
+     * Test --queue flag stores correct config in the ScanResult
+     */
+    public function test_queue_flag_stores_config_correctly(): void
+    {
+        Queue::fake();
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--depth' => 5,
+            '--max' => 50,
+            '--status' => 'broken',
+            '--sitemap' => true,
+            '--queue' => true,
+        ]);
+
+        $scanResult = ScanResult::first();
+        $config = $scanResult->config;
+
+        $this->assertEquals(5, $config['maxDepth']);
+        $this->assertEquals(50, $config['maxUrls']);
+        $this->assertEquals('broken', $config['statusFilter']);
+        $this->assertTrue($config['useSitemap']);
+    }
+
+    /**
+     * Test --queue flag with invalid URL still fails validation
+     */
+    public function test_queue_flag_with_invalid_url_fails(): void
+    {
+        Queue::fake();
+
+        $this->artisan('site:scan', [
+            'url' => 'not-a-valid-url',
+            '--queue' => true,
+        ])
+            ->expectsOutput('Invalid URL provided.')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('scan_results', 0);
+    }
+
+    /**
+     * Test --queue option appears in help
+     */
+    public function test_queue_option_in_help(): void
+    {
+        $this->artisan('site:scan', ['url' => 'https://example.com', '--help' => true])
+            ->expectsOutputToContain('queue')
             ->assertExitCode(0);
     }
 }
