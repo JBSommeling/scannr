@@ -130,6 +130,83 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('https://example.com/page?foo=bar', $result);
     }
 
+    // ==========================
+    // canonicalUrlKey tests
+    // ==========================
+
+    public function test_canonical_url_key_strips_trailing_slash(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page/');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_strips_fragment(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page#section');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_strips_tracking_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page?utm_source=test&valid=1');
+        $this->assertEquals('https://example.com/page?valid=1', $result);
+    }
+
+    public function test_canonical_url_key_strips_all_tracking_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/page?utm_source=test&fbclid=abc');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_lowercases_host(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://Example.COM/Page');
+        $this->assertEquals('https://example.com/Page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_path_case(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/About/Contact');
+        $this->assertEquals('https://example.com/About/Contact', $result);
+    }
+
+    public function test_canonical_url_key_lowercases_scheme_host(): void
+    {
+        $result = $this->service->canonicalUrlKey('HTTPS://EXAMPLE.COM/page');
+        $this->assertEquals('HTTPS://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_handles_combined_normalization(): void
+    {
+        // Fragment + trailing slash + tracking params + mixed-case host
+        $result = $this->service->canonicalUrlKey('https://Example.COM/page/?utm_source=test&fbclid=abc#section');
+        $this->assertEquals('https://example.com/page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_port(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://Example.COM:8080/page/');
+        $this->assertEquals('https://example.com:8080/page', $result);
+    }
+
+    public function test_canonical_url_key_preserves_non_tracking_query_params(): void
+    {
+        $result = $this->service->canonicalUrlKey('https://example.com/search?q=test&page=2');
+        $this->assertEquals('https://example.com/search?q=test&page=2', $result);
+    }
+
+    public function test_canonical_url_key_equivalent_urls_produce_same_key(): void
+    {
+        $key1 = $this->service->canonicalUrlKey('https://Example.com/page/');
+        $key2 = $this->service->canonicalUrlKey('https://example.com/page');
+        $key3 = $this->service->canonicalUrlKey('https://example.com/page#section');
+        $key4 = $this->service->canonicalUrlKey('https://example.com/page?utm_source=google');
+
+        $this->assertEquals($key1, $key2);
+        $this->assertEquals($key2, $key3);
+        $this->assertEquals($key3, $key4);
+    }
+
     // ====================
     // isInternalUrl tests
     // ====================
@@ -1706,6 +1783,78 @@ class ScannerServiceTest extends TestCase
         $this->assertStringNotContainsString('Mozilla', $userAgent);
         $this->assertStringNotContainsString('Chrome', $userAgent);
         $this->assertStringNotContainsString('Safari', $userAgent);
+    }
+
+    // ===================
+    // Retry-After header tests
+    // ===================
+
+    public function test_follow_redirects_extracts_retry_after_header_on_429(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '5']);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertEquals(5, $result['retryAfter']);
+    }
+
+    public function test_follow_redirects_returns_null_retry_after_when_header_missing(): void
+    {
+        $mockClient = $this->createMockClient(429, '');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_follow_redirects_ignores_non_numeric_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => 'Wed, 21 Oct 2025 07:28:00 GMT']);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_follow_redirects_returns_null_retry_after_on_non_429(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com', 'GET');
+
+        $this->assertEquals(200, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_process_internal_url_includes_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '10']);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/page', 'start');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertEquals(10, $result['retryAfter']);
+    }
+
+    public function test_process_external_url_includes_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '15']);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertEquals(15, $result['retryAfter']);
     }
 }
 

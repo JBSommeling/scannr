@@ -249,7 +249,8 @@ class ScannerService
      *     chain: array<string>,
      *     loop: bool,
      *     body: string|null,
-     *     hasHttpsDowngrade: bool
+     *     hasHttpsDowngrade: bool,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -262,6 +263,7 @@ class ScannerService
         $finalStatus = 0;
         $loop = false;
         $hasHttpsDowngrade = false;
+        $retryAfter = null;
 
         // Keep track of visited URLs to detect loops
         $visitedUrls = [];
@@ -313,6 +315,14 @@ class ScannerService
                     continue;
                 }
 
+                // Extract Retry-After header for 429 responses (in seconds)
+                if ($finalStatus === 429) {
+                    $retryAfterHeader = $response->getHeaderLine('Retry-After');
+                    if (!empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
+                        $retryAfter = (int) $retryAfterHeader;
+                    }
+                }
+
                 // Got final response (200, 404, 5xx, etc.)
                 if ($method === 'GET' && $finalStatus === 200) {
                     $body = (string) $response->getBody();
@@ -340,6 +350,7 @@ class ScannerService
             'loop' => $loop,
             'body' => $body,
             'hasHttpsDowngrade' => $hasHttpsDowngrade,
+            'retryAfter' => $retryAfter,
         ];
     }
 
@@ -873,6 +884,43 @@ class ScannerService
     }
 
     /**
+     * Generate a canonical key for a URL, suitable for visited-set deduplication.
+     *
+     * Strips fragments, tracking parameters, and trailing slashes, and
+     * lowercases the host portion for case-insensitive host matching.
+     * The path portion remains case-sensitive per RFC 3986.
+     *
+     * @param  string  $url  An absolute URL.
+     * @return string The canonical URL key.
+     */
+    public function canonicalUrlKey(string $url): string
+    {
+        // Strip fragment
+        $url = preg_replace('/#.*$/', '', $url);
+
+        // Strip tracking params, then trailing slash
+        // Note: stripTrackingParams rebuilds the URL from parsed components,
+        // so trailing slash removal must happen after it.
+        $url = rtrim($this->stripTrackingParams($url), '/');
+
+        // Lowercase the host portion only (RFC 3986: host is case-insensitive)
+        $parsed = parse_url($url);
+        if (isset($parsed['host'])) {
+            $lowerHost = strtolower($parsed['host']);
+            if ($lowerHost !== $parsed['host']) {
+                $url = preg_replace(
+                    '/^(' . preg_quote($parsed['scheme'] ?? 'https', '/') . ':\/\/)' . preg_quote($parsed['host'], '/') . '/',
+                    '$1' . $lowerHost,
+                    $url,
+                    1
+                );
+            }
+        }
+
+        return $url;
+    }
+
+    /**
      * Resolve a redirect URL to an absolute URL.
      *
      * Similar to normalizeUrl but preserves trailing slashes and does not
@@ -1046,7 +1094,8 @@ class ScannerService
      *     isLoop: bool,
      *     hasHttpsDowngrade: bool,
      *     sourceElement: string,
-     *     extractedLinks: array<array{url: string, source: string, element: string}>
+     *     extractedLinks: array<array{url: string, source: string, element: string}>,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -1089,6 +1138,7 @@ class ScannerService
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
+            'retryAfter' => $result['retryAfter'],
         ];
     }
 
@@ -1110,7 +1160,8 @@ class ScannerService
      *     isOk: bool,
      *     isLoop: bool,
      *     hasHttpsDowngrade: bool,
-     *     sourceElement: string
+     *     sourceElement: string,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -1128,6 +1179,7 @@ class ScannerService
             'isLoop' => $result['loop'],
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
+            'retryAfter' => $result['retryAfter'],
         ];
     }
 

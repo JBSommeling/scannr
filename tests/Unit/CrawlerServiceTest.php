@@ -65,6 +65,10 @@ class CrawlerServiceTest extends TestCase
     // Crawl tests
     // ==================
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_crawl_returns_results_array(): void
     {
         $html = '<html><body><a href="/page1">Link</a></body></html>';
@@ -79,12 +83,18 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 2]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
-        $this->assertIsArray($results);
-        $this->assertNotEmpty($results);
+        $this->assertIsArray($crawlResult);
+        $this->assertArrayHasKey('results', $crawlResult);
+        $this->assertArrayHasKey('aborted', $crawlResult);
+        $this->assertNotEmpty($crawlResult['results']);
     }
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_crawl_respects_max_urls_limit(): void
     {
         $html = '<html><body>
@@ -107,11 +117,15 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 2]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
-        $this->assertLessThanOrEqual(2, count($results));
+        $this->assertLessThanOrEqual(2, count($crawlResult['results']));
     }
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_crawl_respects_max_depth(): void
     {
         // Page at depth 0 links to page at depth 1
@@ -136,17 +150,21 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxDepth' => 2, 'maxUrls' => 10]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should have crawled: base url (depth 0), /level1 (depth 1), /level2 (depth 2)
         // Should NOT have crawled: /level3 (depth 3)
-        $urls = array_column($results, 'url');
+        $urls = array_column($crawlResult['results'], 'url');
         $this->assertContains('https://example.com', $urls);
         $this->assertContains('https://example.com/level1', $urls);
         $this->assertContains('https://example.com/level2', $urls);
         $this->assertNotContains('https://example.com/level3', $urls);
     }
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_crawl_tracks_visited_urls(): void
     {
         // Page links to same URL multiple times
@@ -167,12 +185,16 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should only have 2 results: base URL and /page1 (not duplicates)
-        $this->assertCount(2, $results);
+        $this->assertCount(2, $crawlResult['results']);
     }
 
+    /**
+     * @throws GuzzleException
+     * @throws RandomException
+     */
     public function test_crawl_calls_progress_callback(): void
     {
         $html = '<html><body><a href="/page1">Link</a></body></html>';
@@ -212,9 +234,9 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
-        $externalResults = array_filter($results, fn($r) => $r['type'] === 'external');
+        $externalResults = array_filter($crawlResult['results'], fn($r) => $r['type'] === 'external');
         $this->assertNotEmpty($externalResults);
     }
 
@@ -238,10 +260,10 @@ class CrawlerServiceTest extends TestCase
 
         // Only scan 'a' elements
         $config = $this->createConfig(['scanElements' => ['a'], 'maxUrls' => 10]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should only have results for 'a' elements
-        foreach ($results as $result) {
+        foreach ($crawlResult['results'] as $result) {
             if ($result['url'] !== 'https://example.com') {
                 $this->assertEquals('a', $result['sourceElement']);
             }
@@ -266,12 +288,89 @@ class CrawlerServiceTest extends TestCase
             'customTrackingParams' => ['custom_tracker'],
             'maxUrls' => 10,
         ]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // The URL should have the tracking param stripped
-        $urls = array_column($results, 'url');
+        $urls = array_column($crawlResult['results'], 'url');
         $this->assertContains('https://example.com/page1', $urls);
         $this->assertNotContains('https://example.com/page1?custom_tracker=123', $urls);
+    }
+
+    public function test_crawl_deduplicates_urls_differing_only_by_tracking_params(): void
+    {
+        // Page links to the same URL with different tracking params
+        $html = '<html><body>
+            <a href="/page1?utm_source=google">Link 1</a>
+            <a href="/page1?fbclid=abc123">Link 2</a>
+            <a href="/page1">Link 3</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $crawlResult = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (not 3 duplicates)
+        $this->assertCount(2, $crawlResult['results']);
+    }
+
+    public function test_crawl_deduplicates_urls_differing_by_trailing_slash(): void
+    {
+        // Page links to the same URL with and without trailing slash
+        $html = '<html><body>
+            <a href="/page1/">With slash</a>
+            <a href="/page1">Without slash</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $crawlResult = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (not duplicated)
+        $this->assertCount(2, $crawlResult['results']);
+    }
+
+    public function test_crawl_deduplicates_urls_differing_by_fragment(): void
+    {
+        // Page links to the same URL with different fragments
+        $html = '<html><body>
+            <a href="/page1#section1">Section 1</a>
+            <a href="/page1#section2">Section 2</a>
+            <a href="/page1">No fragment</a>
+        </body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $crawlResult = $crawler->crawl($config);
+
+        // Should only have 2 results: base URL and /page1 (fragments don't create distinct pages)
+        $this->assertCount(2, $crawlResult['results']);
     }
 
     // ==================
@@ -341,12 +440,12 @@ class CrawlerServiceTest extends TestCase
         $config = $this->createConfig(['maxUrls' => 10]);
 
         // First crawl
-        $results1 = $crawler->crawl($config);
+        $crawlResult1 = $crawler->crawl($config);
 
         // Second crawl should start fresh
-        $results2 = $crawler->crawl($config);
+        $crawlResult2 = $crawler->crawl($config);
 
-        $this->assertEquals(count($results1), count($results2));
+        $this->assertEquals(count($crawlResult1['results']), count($crawlResult2['results']));
     }
 
     public function test_get_results_returns_current_results(): void
@@ -454,10 +553,10 @@ class CrawlerServiceTest extends TestCase
             'baseUrl' => 'https://www.example.com',
             'maxUrls' => 10
         ]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should only have one result for the homepage (not two for www and non-www)
-        $homepageResults = array_filter($results, function ($r) {
+        $homepageResults = array_filter($crawlResult['results'], function ($r) {
             $url = $r['url'] ?? '';
             return $url === 'https://www.example.com' || $url === 'https://example.com';
         });
@@ -558,10 +657,10 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 5, 'scanElements' => ['a', 'img']]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should find the image from JS-rendered content
-        $urls = array_column($results, 'url');
+        $urls = array_column($crawlResult['results'], 'url');
         $this->assertContains('https://cdn.example.com/hero.webp', $urls);
     }
 
@@ -581,11 +680,11 @@ class CrawlerServiceTest extends TestCase
 
         // No JS rendering, no BrowsershotFetcher
         $config = $this->createConfig(['maxUrls' => 5]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Only the base URL itself should appear - no links extracted from SPA shell
-        $this->assertCount(1, $results);
-        $this->assertEquals('https://example.com', $results[0]['url']);
+        $this->assertCount(1, $crawlResult['results']);
+        $this->assertEquals('https://example.com', $crawlResult['results'][0]['url']);
     }
 
     public function test_crawl_with_js_rendering_falls_back_on_browsershot_failure(): void
@@ -615,10 +714,10 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 5]);
-        $results = $crawler->crawl($config);
+        $crawlResult = $crawler->crawl($config);
 
         // Should still find the static link from Guzzle response
-        $urls = array_column($results, 'url');
+        $urls = array_column($crawlResult['results'], 'url');
         $this->assertContains('https://example.com/static-link', $urls);
     }
 
@@ -666,6 +765,234 @@ class CrawlerServiceTest extends TestCase
             $this->assertStringNotContainsString('Mozilla', $userAgent);
             $this->assertStringNotContainsString('Chrome', $userAgent);
         }
+    }
+
+    // ===================
+    // Rate Limit Backoff (429) tests
+    // ===================
+
+    public function test_crawl_retries_on_429_with_backoff(): void
+    {
+        // First request returns 429, second succeeds
+        $responses = [
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Success</body></html>'),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // Set low backoff for test speed
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [10],
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 10,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 1, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $this->assertFalse($crawlResult['aborted']);
+        $this->assertNull($crawlResult['error']);
+        $this->assertNotEmpty($crawlResult['results']);
+        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+    }
+
+    public function test_crawl_aborts_after_max_429_responses(): void
+    {
+        // All requests return 429
+        $responses = array_fill(0, 20, new Response(429, ['Content-Type' => 'text/html'], ''));
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // Set low backoff with enough retries to reach abort threshold
+        // We have 1 URL, and with 5 backoff delays we get 6 requests (1 original + 5 retries)
+        // Setting max_429_before_abort to 3 means we abort on the 3rd 429
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [10, 10, 10, 10, 10],
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 3,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 10, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $this->assertTrue($crawlResult['aborted']);
+        $this->assertEquals('Scan aborted due to rate limiting', $crawlResult['error']);
+    }
+
+    public function test_crawl_respects_retry_after_header(): void
+    {
+        $startTime = microtime(true);
+
+        // 429 with Retry-After header of 1 second, then success
+        $responses = [
+            new Response(429, ['Content-Type' => 'text/html', 'Retry-After' => '1'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Success</body></html>'),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [10], // Very short default
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 10,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 1, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $elapsed = microtime(true) - $startTime;
+
+        // Should have waited approximately 1 second due to Retry-After header
+        $this->assertGreaterThan(0.9, $elapsed, 'Should have waited for Retry-After header');
+        $this->assertFalse($crawlResult['aborted']);
+        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+    }
+
+    public function test_crawl_uses_backoff_delays_when_no_retry_after(): void
+    {
+        $startTime = microtime(true);
+
+        // 429 without Retry-After, then success
+        $responses = [
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Success</body></html>'),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // Set specific backoff delay
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [500], // 500ms
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 10,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 1, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $elapsed = microtime(true) - $startTime;
+
+        // Should have waited approximately 500ms
+        $this->assertGreaterThan(0.4, $elapsed, 'Should have waited for backoff delay');
+        $this->assertLessThan(1.0, $elapsed, 'Should not have waited too long');
+        $this->assertFalse($crawlResult['aborted']);
+    }
+
+    public function test_crawl_escalates_backoff_delays(): void
+    {
+        $startTime = microtime(true);
+
+        // Multiple 429s, then success
+        $responses = [
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Success</body></html>'),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // Set escalating backoff delays: 200ms, then 400ms
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [200, 400],
+            'respect_retry_after' => false,
+            'max_429_before_abort' => 10,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 1, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $elapsed = microtime(true) - $startTime;
+
+        // Should have waited 200ms + 400ms = ~600ms total
+        $this->assertGreaterThan(0.5, $elapsed, 'Should have waited for both backoff delays');
+        $this->assertFalse($crawlResult['aborted']);
+        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+    }
+
+    public function test_429_count_accumulates_across_urls(): void
+    {
+        // Multiple URLs, each returning 429s
+        // With 2 backoff delays, each URL can get up to 3 429s (1 original + 2 retries)
+        // URL 1: 429, retry, 429, retry, 200 (success after 2 retries) - count = 2
+        // URL 2: 429 - this is the 3rd total 429, should trigger abort
+        $responses = [
+            // URL 1: 429, 429, success
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body><a href="/page2">Link</a></body></html>'),
+            // URL 2: 429 - this should trigger abort (3rd total 429)
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        // With 2 backoff delays, we can retry up to 2 times per URL
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [10, 10],
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 3,
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 10, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $this->assertTrue($crawlResult['aborted']);
+        $this->assertEquals('Scan aborted due to rate limiting', $crawlResult['error']);
+    }
+
+    public function test_crawl_continues_when_max_429_is_zero(): void
+    {
+        // Setting max_429_before_abort to 0 disables abort
+        $responses = [
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(429, ['Content-Type' => 'text/html'], ''),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Success</body></html>'),
+        ];
+
+        $client = $this->createMockClient($responses);
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        config(['scanner.rate_limit' => [
+            'backoff_delays' => [10, 10, 10],
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 0, // Disable abort
+        ]]);
+
+        $config = $this->createConfig(['maxUrls' => 1, 'delayMin' => 0, 'delayMax' => 0]);
+        $crawlResult = $crawler->crawl($config);
+
+        $this->assertFalse($crawlResult['aborted']);
+        $this->assertNull($crawlResult['error']);
+        $this->assertEquals(200, $crawlResult['results'][0]['status']);
     }
 }
 

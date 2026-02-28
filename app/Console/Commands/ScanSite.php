@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\DTO\ScanConfig;
+use App\Jobs\ScanSiteJob;
+use App\Models\ScanResult;
 use App\Services\CrawlerService;
 use App\Services\Output\ConsoleOutput;
 use App\Services\ResultFormatterService;
@@ -28,7 +30,8 @@ class ScanSite extends Command
         {--sitemap : Use sitemap.xml to discover URLs}
         {--strip-params= : Additional tracking parameters to strip (comma-separated, e.g., ref,tracker_*)}
         {--js : Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer)}
-        {--no-robots : Ignore robots.txt rules (Disallow/Crawl-delay)}';
+        {--no-robots : Ignore robots.txt rules (Disallow/Crawl-delay)}
+        {--queue : Dispatch scan as a background job}';
 
 
     /**
@@ -68,6 +71,40 @@ class ScanSite extends Command
             $this->warn($warning);
         }
 
+        // Dispatch as a background job if --queue is set
+        if ($this->option('queue')) {
+            return $this->dispatchJob($config);
+        }
+
+        return $this->runSynchronously($config);
+    }
+
+    /**
+     * Dispatch the scan as a queued background job.
+     */
+    protected function dispatchJob(ScanConfig $config): int
+    {
+        $scanResult = ScanResult::query()->create([
+            'url' => $config->baseUrl,
+            'config' => $config->toArray(),
+            'status' => 'pending',
+        ]);
+
+        ScanSiteJob::dispatch($scanResult);
+
+        $this->info("Scan job dispatched for: {$config->baseUrl}");
+        $this->info("Scan ID: {$scanResult->id}");
+        $this->line('Run a queue worker to process the job.');
+
+        return CommandAlias::SUCCESS;
+    }
+
+    /**
+     * Run the scan synchronously (default behavior).
+     */
+    protected function runSynchronously(ScanConfig $config): int
+    {
+
         // Display scan info
         $this->info("Site Scan: {$config->baseUrl}");
         $this->info(str_repeat('=', 40));
@@ -81,7 +118,7 @@ class ScanSite extends Command
         $output = new ConsoleOutput($this);
 
         // Run the crawl
-        $results = $this->crawlerService->crawl(
+        $crawlResult = $this->crawlerService->crawl(
             $config,
             function (int $scanned, int $total) use ($progressBar, &$progressBarStarted) {
                 if (!$progressBarStarted) {
@@ -98,8 +135,17 @@ class ScanSite extends Command
         }
         $this->newLine(2);
 
+        // Extract results and error from crawl result
+        $results = $crawlResult['results'];
+        $error = $crawlResult['error'] ?? null;
+
         // Format and display results
-        $this->resultFormatter->format($results, $config, $output);
+        $this->resultFormatter->format($results, $config, $output, $error);
+
+        // Return failure if scan was aborted
+        if ($crawlResult['aborted'] ?? false) {
+            return CommandAlias::FAILURE;
+        }
 
         return CommandAlias::SUCCESS;
     }
