@@ -140,5 +140,36 @@ return [
         'svg', 'psd', 'ai', 'eps',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rate Limit Handling (HTTP 429)
+    |--------------------------------------------------------------------------
+    |
+    | When the scanner receives HTTP 429 (Too Many Requests) responses, it will
+    | automatically retry with exponential backoff. The delays are applied in
+    | sequence for each retry attempt.
+    |
+    | If the server sends a Retry-After header (in seconds), the scanner will
+    | use that value instead of the configured delay (when respect_retry_after
+    | is enabled).
+    |
+    | After max_429_before_abort total 429 responses during a scan, the scan
+    | will be aborted to prevent excessive waiting and server strain.
+    |
+    */
+
+    'rate_limit' => [
+        // Backoff delays in milliseconds for each retry attempt
+        // First 429: wait 2s, second: wait 5s, third: wait 10s
+        'backoff_delays' => [2000, 5000, 10000],
+
+        // Whether to respect the Retry-After header from the server (in seconds)
+        'respect_retry_after' => true,
+
+        // Maximum total 429 responses before aborting the scan
+        // Set to 0 to disable abort (will always retry with backoff)
+        'max_429_before_abort' => 5,
+    ],
+
 ];
 

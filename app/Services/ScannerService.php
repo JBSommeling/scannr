@@ -249,7 +249,8 @@ class ScannerService
      *     chain: array<string>,
      *     loop: bool,
      *     body: string|null,
-     *     hasHttpsDowngrade: bool
+     *     hasHttpsDowngrade: bool,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -262,6 +263,7 @@ class ScannerService
         $finalStatus = 0;
         $loop = false;
         $hasHttpsDowngrade = false;
+        $retryAfter = null;
 
         // Keep track of visited URLs to detect loops
         $visitedUrls = [];
@@ -313,6 +315,14 @@ class ScannerService
                     continue;
                 }
 
+                // Extract Retry-After header for 429 responses (in seconds)
+                if ($finalStatus === 429) {
+                    $retryAfterHeader = $response->getHeaderLine('Retry-After');
+                    if (!empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
+                        $retryAfter = (int) $retryAfterHeader;
+                    }
+                }
+
                 // Got final response (200, 404, 5xx, etc.)
                 if ($method === 'GET' && $finalStatus === 200) {
                     $body = (string) $response->getBody();
@@ -340,6 +350,7 @@ class ScannerService
             'loop' => $loop,
             'body' => $body,
             'hasHttpsDowngrade' => $hasHttpsDowngrade,
+            'retryAfter' => $retryAfter,
         ];
     }
 
@@ -1083,7 +1094,8 @@ class ScannerService
      *     isLoop: bool,
      *     hasHttpsDowngrade: bool,
      *     sourceElement: string,
-     *     extractedLinks: array<array{url: string, source: string, element: string}>
+     *     extractedLinks: array<array{url: string, source: string, element: string}>,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -1126,6 +1138,7 @@ class ScannerService
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
+            'retryAfter' => $result['retryAfter'],
         ];
     }
 
@@ -1147,7 +1160,8 @@ class ScannerService
      *     isOk: bool,
      *     isLoop: bool,
      *     hasHttpsDowngrade: bool,
-     *     sourceElement: string
+     *     sourceElement: string,
+     *     retryAfter: int|null
      * }
      * @throws GuzzleException
      */
@@ -1165,6 +1179,7 @@ class ScannerService
             'isLoop' => $result['loop'],
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
+            'retryAfter' => $result['retryAfter'],
         ];
     }
 

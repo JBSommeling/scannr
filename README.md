@@ -20,6 +20,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Internal & External Links**: Scans both internal pages and external links
 - **Multiple Output Formats**: Table, JSON, or CSV output
 - **Rate Limiting**: Random delay (300-500ms) between requests to avoid overwhelming servers
+- **Rate Limit Backoff**: Automatic exponential backoff on HTTP 429 responses with configurable abort threshold
 - **Hard Limits**: Configurable maximum caps for depth and URLs to prevent excessive resource usage
 - **Configurable**: Adjustable depth, max URLs, timeout, and tracking parameters
 
@@ -546,6 +547,56 @@ return [
     'request_delay_max' => 500,
 ];
 ```
+
+### Rate Limit Backoff (HTTP 429)
+
+When the scanner receives HTTP 429 (Too Many Requests) responses, it automatically implements exponential backoff to handle rate limiting gracefully.
+
+#### How It Works
+
+1. On receiving a 429 response, the scanner waits before retrying the request
+2. Each subsequent 429 increases the wait time (exponential backoff)
+3. If the server sends a `Retry-After` header (in seconds), that value is used instead
+4. After a configurable number of total 429 responses, the scan is aborted
+
+#### Default Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `backoff_delays` | [2000, 5000, 10000] | Backoff delays in ms for each retry attempt |
+| `respect_retry_after` | true | Use server's Retry-After header when present |
+| `max_429_before_abort` | 5 | Abort scan after this many total 429 responses |
+
+#### Configuration
+
+Rate limit backoff can be configured in `config/scanner.php`:
+
+```php
+return [
+    'rate_limit' => [
+        // Backoff delays in milliseconds for each retry attempt
+        // First 429: wait 2s, second: wait 5s, third: wait 10s
+        'backoff_delays' => [2000, 5000, 10000],
+
+        // Whether to respect the Retry-After header from the server
+        'respect_retry_after' => true,
+
+        // Maximum total 429 responses before aborting the scan
+        // Set to 0 to disable abort (will always retry with backoff)
+        'max_429_before_abort' => 5,
+    ],
+];
+```
+
+#### Abort Behavior
+
+When the scan is aborted due to rate limiting:
+
+- **Table output**: Shows error message at the top: `⚠ Error: Scan aborted due to rate limiting`
+- **JSON output**: Includes `"error": "Scan aborted due to rate limiting"` in the response
+- **CSV output**: Includes comment line at the top: `# Error: Scan aborted due to rate limiting`
+- **Exit code**: Command returns failure exit code (1)
+- **Queued jobs**: Job status is set to `aborted` with error message stored
 
 ## Hard Limits
 

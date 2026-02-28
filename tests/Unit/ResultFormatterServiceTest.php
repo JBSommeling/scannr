@@ -1063,4 +1063,164 @@ class ResultFormatterServiceTest extends TestCase
         $firstRow = $output->tables[0]['rows'][0];
         $this->assertArrayNotHasKey('Redirects', $firstRow);
     }
+
+    // ===================
+    // Error output tests (rate limit abort)
+    // ===================
+
+    public function test_format_table_shows_error_message(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 429,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output, 'Scan aborted due to rate limiting');
+
+        // Should show error message
+        $this->assertNotEmpty($output->errors);
+        $this->assertStringContainsString('Scan aborted due to rate limiting', $output->errors[0]);
+    }
+
+    public function test_format_json_includes_error_key(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 429,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output, 'Scan aborted due to rate limiting');
+
+        // Parse JSON output
+        $jsonOutput = json_decode($output->lines[0], true);
+        $this->assertArrayHasKey('error', $jsonOutput);
+        $this->assertEquals('Scan aborted due to rate limiting', $jsonOutput['error']);
+    }
+
+    public function test_format_csv_includes_error_comment(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 429,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv']);
+
+        $this->formatter->format($results, $config, $output, 'Scan aborted due to rate limiting');
+
+        // First line should be error comment
+        $this->assertStringStartsWith('# Error:', $output->lines[0]);
+        $this->assertStringContainsString('Scan aborted due to rate limiting', $output->lines[0]);
+    }
+
+    public function test_format_table_no_error_when_null(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output, null);
+
+        // Should not have any error messages about rate limiting in errors array
+        $hasRateLimitError = false;
+        foreach ($output->errors as $error) {
+            if (str_contains(strtolower($error), 'rate limiting')) {
+                $hasRateLimitError = true;
+                break;
+            }
+        }
+        $this->assertFalse($hasRateLimitError, 'Should not have rate limiting error when error is null');
+    }
+
+    public function test_to_json_array_includes_error(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 429,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig();
+        $jsonArray = $this->formatter->toJsonArray($results, $config, 'Scan aborted due to rate limiting');
+
+        $this->assertArrayHasKey('error', $jsonArray);
+        $this->assertEquals('Scan aborted due to rate limiting', $jsonArray['error']);
+    }
+
+    public function test_to_json_array_no_error_key_when_null(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com',
+                'sourcePage' => 'start',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig();
+        $jsonArray = $this->formatter->toJsonArray($results, $config, null);
+
+        $this->assertArrayNotHasKey('error', $jsonArray);
+    }
 }

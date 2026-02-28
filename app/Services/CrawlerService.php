@@ -26,6 +26,16 @@ class CrawlerService
     protected ?string $canonicalHost = null;
     protected bool $canonicalBaseResolved = false;
 
+    /**
+     * Total count of 429 responses received during the current crawl.
+     */
+    protected int $total429Count = 0;
+
+    /**
+     * Error message if the crawl was aborted (e.g., due to rate limiting).
+     */
+    protected ?string $abortError = null;
+
     public function __construct(
         protected ScannerService $scannerService,
         protected SitemapService $sitemapService,
@@ -75,9 +85,24 @@ class CrawlerService
         // Initialize queue with starting URL
         $this->initQueue($config, $onSitemapDiscovery);
 
+        // Load rate limit configuration
+        $rateLimitConfig = $this->getRateLimitConfig();
+        $backoffDelays = $rateLimitConfig['backoff_delays'];
+        $respectRetryAfter = $rateLimitConfig['respect_retry_after'];
+        $max429BeforeAbort = $rateLimitConfig['max_429_before_abort'];
+
         $scannedCount = 0;
 
         while ((!$this->priorityQueue->isEmpty() || !$this->queue->isEmpty()) && $scannedCount < $config->maxUrls) {
+            // Check if we should abort due to rate limiting
+            if ($max429BeforeAbort > 0 && $this->total429Count >= $max429BeforeAbort) {
+                $this->abortError = 'Scan aborted due to rate limiting';
+                if ($onSitemapDiscovery !== null) {
+                    $onSitemapDiscovery("  ⚠ {$this->abortError} ({$this->total429Count} 429 responses received)");
+                }
+                break;
+            }
+
             $current = !$this->priorityQueue->isEmpty()
                 ? $this->priorityQueue->dequeue()
                 : $this->queue->dequeue();
@@ -108,11 +133,27 @@ class CrawlerService
 
             $isInternal = $this->scannerService->isInternalUrl($url);
 
-            if ($isInternal) {
-                $this->processInternalUrl($url, $depth, $source, $element, $config->scanElements);
+            // Process URL with 429 retry handling
+            $result = $this->processUrlWithRetry(
+                $url,
+                $depth,
+                $source,
+                $element,
+                $config->scanElements,
+                $isInternal,
+                $backoffDelays,
+                $respectRetryAfter,
+                $max429BeforeAbort,
+                $onSitemapDiscovery,
+            );
+
+            // Check if we should abort after processing
+            if ($this->abortError !== null) {
+                break;
+            }
+
+            if ($isInternal && $result !== null) {
                 $this->resolveCanonicalBaseFromFirstResult($url, $source);
-            } else {
-                $this->processExternalUrl($url, $source, $element, $config->scanElements);
             }
 
             // Rate limiting (respects Crawl-delay from robots.txt)
@@ -124,7 +165,19 @@ class CrawlerService
             }
         }
 
-        return $this->results;
+        return [
+            'results' => $this->results,
+            'aborted' => $this->abortError !== null,
+            'error' => $this->abortError,
+        ];
+    }
+
+    /**
+     * Get the abort error message if the crawl was aborted.
+     */
+    public function getAbortError(): ?string
+    {
+        return $this->abortError;
     }
 
     /**
@@ -139,6 +192,194 @@ class CrawlerService
         $this->originalHost = parse_url($baseUrl, PHP_URL_HOST);
         $this->canonicalHost = null;
         $this->canonicalBaseResolved = false;
+        $this->total429Count = 0;
+        $this->abortError = null;
+    }
+
+    /**
+     * Get rate limit configuration from config.
+     *
+     * @return array{backoff_delays: array<int>, respect_retry_after: bool, max_429_before_abort: int}
+     */
+    protected function getRateLimitConfig(): array
+    {
+        $defaults = [
+            'backoff_delays' => [2000, 5000, 10000],
+            'respect_retry_after' => true,
+            'max_429_before_abort' => 5,
+        ];
+
+        try {
+            $config = config('scanner.rate_limit', $defaults);
+            return [
+                'backoff_delays' => $config['backoff_delays'] ?? $defaults['backoff_delays'],
+                'respect_retry_after' => $config['respect_retry_after'] ?? $defaults['respect_retry_after'],
+                'max_429_before_abort' => $config['max_429_before_abort'] ?? $defaults['max_429_before_abort'],
+            ];
+        } catch (\Throwable) {
+            return $defaults;
+        }
+    }
+
+    /**
+     * Process a URL with 429 retry handling.
+     *
+     * @param string $url The URL to process.
+     * @param int $depth Current crawl depth.
+     * @param string $source Source page URL.
+     * @param string $element HTML element type.
+     * @param array<string> $scanElements Elements to scan.
+     * @param bool $isInternal Whether the URL is internal.
+     * @param array<int> $backoffDelays Backoff delays in milliseconds.
+     * @param bool $respectRetryAfter Whether to respect Retry-After header.
+     * @param int $max429BeforeAbort Maximum 429 responses before aborting.
+     * @param Closure|null $onMessage Message callback for status updates.
+     * @return array|null The result array, or null if skipped/aborted.
+     * @throws GuzzleException
+     */
+    protected function processUrlWithRetry(
+        string $url,
+        int $depth,
+        string $source,
+        string $element,
+        array $scanElements,
+        bool $isInternal,
+        array $backoffDelays,
+        bool $respectRetryAfter,
+        int $max429BeforeAbort,
+        ?Closure $onMessage,
+    ): ?array {
+        $maxRetries = count($backoffDelays);
+        $retryCount = 0;
+
+        while (true) {
+            // Process the URL
+            if ($isInternal) {
+                $result = $this->processInternalUrlAndGetResult($url, $depth, $source, $element, $scanElements);
+            } else {
+                $result = $this->processExternalUrlAndGetResult($url, $source, $element, $scanElements);
+            }
+
+            // Check if we got a 429 response
+            if ($result !== null && $result['status'] === 429) {
+                $this->total429Count++;
+
+                // Check if we should abort (always check before deciding to retry or return)
+                if ($max429BeforeAbort > 0 && $this->total429Count >= $max429BeforeAbort) {
+                    $this->abortError = 'Scan aborted due to rate limiting';
+                    return $result;
+                }
+
+                // Check if we have retries left for this URL
+                if ($retryCount >= $maxRetries) {
+                    // Max retries exhausted for this URL, keep the 429 result
+                    return $result;
+                }
+
+                // Calculate backoff delay
+                $delayMs = $backoffDelays[$retryCount] ?? $backoffDelays[$maxRetries - 1];
+
+                // Check for Retry-After header
+                if ($respectRetryAfter && isset($result['retryAfter']) && $result['retryAfter'] > 0) {
+                    $delayMs = $result['retryAfter'] * 1000;
+                }
+
+                if ($onMessage !== null) {
+                    $delaySec = $delayMs / 1000;
+                    $onMessage("  ⏳ Rate limited (429) on {$url}, waiting {$delaySec}s before retry...");
+                }
+
+                // Wait before retry
+                usleep($delayMs * 1000);
+
+                // Remove the 429 result from results array (we'll retry)
+                if (!empty($this->results)) {
+                    array_pop($this->results);
+                }
+
+                $retryCount++;
+                continue;
+            }
+
+            // Success or other error, we're done with this URL
+            return $result;
+        }
+    }
+
+    /**
+     * Process an internal URL and return the result (for retry handling).
+     *
+     * @param array<string> $scanElements Elements to scan
+     * @return array|null The result array, or null if skipped.
+     * @throws GuzzleException
+     */
+    protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements): ?array
+    {
+        $shouldStoreResult = in_array($element, $scanElements);
+
+        // For non-<a> internal elements, skip entirely if not in scanElements
+        if ($element !== 'a' && !$shouldStoreResult) {
+            return null;
+        }
+
+        $result = $this->scannerService->processInternalUrl($url, $source, $element);
+
+        // Extract links and remove from result
+        $extractedLinks = $result['extractedLinks'] ?? [];
+        unset($result['extractedLinks']);
+
+        // Only store result if element type is in scanElements
+        if ($shouldStoreResult) {
+            $this->results[] = $result;
+        }
+
+        // Add extracted links to the queue (only if not rate limited)
+        if ($result['status'] !== 429) {
+            foreach ($extractedLinks as $link) {
+                $linkElement = $link['element'] ?? 'a';
+                // Rewrite URL to canonical host if needed (e.g., www -> non-www)
+                $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
+
+                $linkKey = $this->scannerService->canonicalUrlKey($linkUrl);
+                if (!isset($this->visited[$linkKey])) {
+                    $queueItem = [
+                        'url' => $linkUrl,
+                        'depth' => $depth + 1,
+                        'source' => $url,
+                        'element' => $linkElement,
+                    ];
+
+                    // Prioritize scanElements (except 'a') by adding to priority queue
+                    if (in_array($linkElement, $scanElements) && $linkElement !== 'a') {
+                        $this->priorityQueue->enqueue($queueItem);
+                    } else {
+                        $this->queue->enqueue($queueItem);
+                    }
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Process an external URL and return the result (for retry handling).
+     *
+     * @param array<string> $scanElements Elements to scan
+     * @return array|null The result array, or null if skipped.
+     * @throws GuzzleException
+     */
+    protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements): ?array
+    {
+        // Skip if element type is not in scanElements
+        if (!in_array($element, $scanElements)) {
+            return null;
+        }
+
+        $result = $this->scannerService->processExternalUrl($url, $source, $element);
+        $this->results[] = $result;
+
+        return $result;
     }
 
     /**
@@ -324,73 +565,6 @@ class CrawlerService
         }
     }
 
-    /**
-     * Process an internal URL.
-     *
-     * @param array<string> $scanElements Elements to scan
-     * @throws GuzzleException
-     */
-    protected function processInternalUrl(string $url, int $depth, string $source, string $element, array $scanElements): void
-    {
-        $shouldStoreResult = in_array($element, $scanElements);
-
-        // For non-<a> internal elements, skip entirely if not in scanElements
-        if ($element !== 'a' && !$shouldStoreResult) {
-            return;
-        }
-
-        $result = $this->scannerService->processInternalUrl($url, $source, $element);
-
-        // Extract links and remove from result
-        $extractedLinks = $result['extractedLinks'] ?? [];
-        unset($result['extractedLinks']);
-
-        // Only store result if element type is in scanElements
-        if ($shouldStoreResult) {
-            $this->results[] = $result;
-        }
-
-        // Add extracted links to the queue
-        foreach ($extractedLinks as $link) {
-            $linkElement = $link['element'] ?? 'a';
-            // Rewrite URL to canonical host if needed (e.g., www -> non-www)
-            $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
-
-            $linkKey = $this->scannerService->canonicalUrlKey($linkUrl);
-            if (!isset($this->visited[$linkKey])) {
-                $queueItem = [
-                    'url' => $linkUrl,
-                    'depth' => $depth + 1,
-                    'source' => $url,
-                    'element' => $linkElement,
-                ];
-
-                // Prioritize scanElements (except 'a') by adding to priority queue
-                if (in_array($linkElement, $scanElements) && $linkElement !== 'a') {
-                    $this->priorityQueue->enqueue($queueItem);
-                } else {
-                    $this->queue->enqueue($queueItem);
-                }
-            }
-        }
-    }
-
-    /**
-     * Process an external URL.
-     *
-     * @param array<string> $scanElements Elements to scan
-     * @throws GuzzleException
-     */
-    protected function processExternalUrl(string $url, string $source, string $element, array $scanElements): void
-    {
-        // Skip if element type is not in scanElements
-        if (!in_array($element, $scanElements)) {
-            return;
-        }
-
-        $result = $this->scannerService->processExternalUrl($url, $source, $element);
-        $this->results[] = $result;
-    }
 
     /**
      * Get the current results.

@@ -59,7 +59,11 @@ class ScanSiteJobTest extends TestCase
         $crawlerService = $this->mock(CrawlerService::class);
         $crawlerService->shouldReceive('crawl')
             ->once()
-            ->andReturn($mockResults);
+            ->andReturn([
+                'results' => $mockResults,
+                'aborted' => false,
+                'error' => null,
+            ]);
 
         $resultFormatter = $this->mock(ResultFormatterService::class);
         $resultFormatter->shouldReceive('toJsonArray')
@@ -125,7 +129,11 @@ class ScanSiteJobTest extends TestCase
         ];
 
         $crawlerService = $this->mock(CrawlerService::class);
-        $crawlerService->shouldReceive('crawl')->andReturn($mockResults);
+        $crawlerService->shouldReceive('crawl')->andReturn([
+            'results' => $mockResults,
+            'aborted' => false,
+            'error' => null,
+        ]);
 
         $resultFormatter = $this->mock(ResultFormatterService::class);
         $resultFormatter->shouldReceive('toJsonArray')->andReturn($expectedJson);

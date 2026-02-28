@@ -22,8 +22,9 @@ class ResultFormatterService
      * @param array $results The scan results.
      * @param ScanConfig $config The scan configuration.
      * @param OutputInterface $output The output interface.
+     * @param string|null $error Optional error message (e.g., rate limit abort).
      */
-    public function format(array $results, ScanConfig $config, OutputInterface $output): void
+    public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): void
     {
         // Filter results
         $filtered = $this->scannerService->filterResults($results, $config->statusFilter);
@@ -36,17 +37,23 @@ class ResultFormatterService
 
         // Display based on format
         match ($config->outputFormat) {
-            'json' => $this->displayJson($filtered, $stats, $totalScanned, $isFiltered, $output),
-            'csv' => $this->displayCsv($filtered, $output),
-            default => $this->displayTable($filtered, $stats, $totalScanned, $isFiltered, $output),
+            'json' => $this->displayJson($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
+            'csv' => $this->displayCsv($filtered, $output, $error),
+            default => $this->displayTable($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
         };
     }
 
     /**
      * Display results as a table.
      */
-    protected function displayTable(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output): void
+    protected function displayTable(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
+        // Display error message if present (e.g., rate limit abort)
+        if ($error !== null) {
+            $output->error("⚠ Error: {$error}");
+            $output->newLine();
+        }
+
         $output->info('Summary:');
         $output->line("  Total scanned:  {$totalScanned}");
 
@@ -145,9 +152,10 @@ class ResultFormatterService
      *
      * @param array $results The scan results.
      * @param ScanConfig $config The scan configuration.
-     * @return array{summary: array, results: array, brokenLinks: array}
+     * @param string|null $error Optional error message (e.g., rate limit abort).
+     * @return array{summary: array, results: array, brokenLinks: array, error?: string}
      */
-    public function toJsonArray(array $results, ScanConfig $config): array
+    public function toJsonArray(array $results, ScanConfig $config, ?string $error = null): array
     {
         $filtered = $this->scannerService->filterResults($results, $config->statusFilter);
         $filtered = $this->scannerService->filterByElement($filtered, $config->elementFilter);
@@ -167,17 +175,23 @@ class ResultFormatterService
         $statsWithoutTotal = array_diff_key($stats, ['total' => true]);
         $summary = array_merge($summary, $statsWithoutTotal);
 
-        return [
+        $output = [
             'summary' => $summary,
             'results' => array_values($filtered),
             'brokenLinks' => $brokenLinks,
         ];
+
+        if ($error !== null) {
+            $output['error'] = $error;
+        }
+
+        return $output;
     }
 
     /**
      * Display results as JSON.
      */
-    protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output): void
+    protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         $brokenLinks = array_values(array_filter($results, fn($r) => !$r['isOk']));
 
@@ -197,14 +211,24 @@ class ResultFormatterService
             'brokenLinks' => $brokenLinks,
         ];
 
+        // Add error to output if present
+        if ($error !== null) {
+            $jsonOutput['error'] = $error;
+        }
+
         $output->line(json_encode($jsonOutput, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
     /**
      * Display results as CSV.
      */
-    protected function displayCsv(array $results, OutputInterface $output): void
+    protected function displayCsv(array $results, OutputInterface $output, ?string $error = null): void
     {
+        // Display error as comment line at the top if present
+        if ($error !== null) {
+            $output->line("# Error: {$error}");
+        }
+
         $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade');
 
         foreach ($results as $result) {

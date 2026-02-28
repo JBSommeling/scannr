@@ -1784,5 +1784,77 @@ class ScannerServiceTest extends TestCase
         $this->assertStringNotContainsString('Chrome', $userAgent);
         $this->assertStringNotContainsString('Safari', $userAgent);
     }
+
+    // ===================
+    // Retry-After header tests
+    // ===================
+
+    public function test_follow_redirects_extracts_retry_after_header_on_429(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '5']);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertEquals(5, $result['retryAfter']);
+    }
+
+    public function test_follow_redirects_returns_null_retry_after_when_header_missing(): void
+    {
+        $mockClient = $this->createMockClient(429, '');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_follow_redirects_ignores_non_numeric_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => 'Wed, 21 Oct 2025 07:28:00 GMT']);
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com/rate-limited', 'GET');
+
+        $this->assertEquals(429, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_follow_redirects_returns_null_retry_after_on_non_429(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->followRedirects('https://example.com', 'GET');
+
+        $this->assertEquals(200, $result['finalStatus']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_process_internal_url_includes_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '10']);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/page', 'start');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertEquals(10, $result['retryAfter']);
+    }
+
+    public function test_process_external_url_includes_retry_after(): void
+    {
+        $mockClient = $this->createMockClient(429, '', ['Retry-After' => '15']);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertEquals(15, $result['retryAfter']);
+    }
 }
 

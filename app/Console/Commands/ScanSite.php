@@ -118,7 +118,7 @@ class ScanSite extends Command
         $output = new ConsoleOutput($this);
 
         // Run the crawl
-        $results = $this->crawlerService->crawl(
+        $crawlResult = $this->crawlerService->crawl(
             $config,
             function (int $scanned, int $total) use ($progressBar, &$progressBarStarted) {
                 if (!$progressBarStarted) {
@@ -135,8 +135,17 @@ class ScanSite extends Command
         }
         $this->newLine(2);
 
+        // Extract results and error from crawl result
+        $results = $crawlResult['results'];
+        $error = $crawlResult['error'] ?? null;
+
         // Format and display results
-        $this->resultFormatter->format($results, $config, $output);
+        $this->resultFormatter->format($results, $config, $output, $error);
+
+        // Return failure if scan was aborted
+        if ($crawlResult['aborted'] ?? false) {
+            return CommandAlias::FAILURE;
+        }
 
         return CommandAlias::SUCCESS;
     }

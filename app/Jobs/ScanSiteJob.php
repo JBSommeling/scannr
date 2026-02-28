@@ -54,7 +54,7 @@ class ScanSiteJob implements ShouldQueue
         $config = $result['config'];
 
         try {
-            $results = $crawlerService->crawl($config);
+            $crawlResult = $crawlerService->crawl($config);
         } catch (Throwable $e) {
             $this->scanResult->update([
                 'status' => 'failed',
@@ -67,11 +67,19 @@ class ScanSiteJob implements ShouldQueue
             return;
         }
 
-        $jsonArray = $resultFormatter->toJsonArray($results, $config);
+        // Extract results and error from crawl result
+        $results = $crawlResult['results'];
+        $error = $crawlResult['error'] ?? null;
+
+        $jsonArray = $resultFormatter->toJsonArray($results, $config, $error);
+
+        // Determine final status based on abort
+        $status = ($crawlResult['aborted'] ?? false) ? 'aborted' : 'completed';
 
         $this->scanResult->update([
-            'status' => 'completed',
+            'status' => $status,
             'results' => json_encode($jsonArray, JSON_UNESCAPED_SLASHES),
+            'error' => $error,
             'completed_at' => now(),
         ]);
     }
