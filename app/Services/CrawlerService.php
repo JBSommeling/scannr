@@ -24,6 +24,7 @@ class CrawlerService
     protected ?Client $client = null;
     protected ?string $originalHost = null;
     protected ?string $canonicalHost = null;
+    protected bool $canonicalBaseResolved = false;
 
     public function __construct(
         protected ScannerService $scannerService,
@@ -51,14 +52,7 @@ class CrawlerService
      */
     public function crawl(ScanConfig $config, ?Closure $onProgress = null, ?Closure $onSitemapDiscovery = null): array
     {
-        // Reset state for new crawl
-        $this->visited = [];
-        $this->queue = new \SplQueue();
-        $this->priorityQueue = new \SplQueue();
-        $this->results = [];
-        $this->originalHost = parse_url($config->baseUrl, PHP_URL_HOST);
-        $this->canonicalHost = null;
-        $canonicalBaseResolved = false;
+        $this->resetState($config->baseUrl);
 
         // Configure HTTP client (use injected client or create new one)
         $client = $this->client ?? $this->createHttpClient($config->timeout);
@@ -67,30 +61,7 @@ class CrawlerService
         $this->scannerService->setClient($client);
         $this->scannerService->setBaseUrl($config->baseUrl);
 
-        // Configure JavaScript rendering if enabled
-        if ($config->useJsRendering) {
-            $depCheck = BrowsershotFetcher::checkDependencies();
-            if ($depCheck['available']) {
-                $fetcher = new BrowsershotFetcher();
-                $fetcher->setTimeout($config->timeout);
-
-                // Load custom paths from config if available
-                $jsConfig = config('scanner.js_rendering', []);
-                if (!empty($jsConfig)) {
-                    $fetcher->configure($jsConfig);
-                }
-
-                $this->scannerService->setBrowsershotFetcher($fetcher);
-
-                if ($onSitemapDiscovery !== null) {
-                    $onSitemapDiscovery('  JavaScript rendering enabled (headless browser)');
-                }
-            } else {
-                if ($onSitemapDiscovery !== null) {
-                    $onSitemapDiscovery("  Warning: {$depCheck['message']} Falling back to static HTML.");
-                }
-            }
-        }
+        $this->configureJsRendering($config, $onSitemapDiscovery);
 
         if (!empty($config->customTrackingParams)) {
             $this->scannerService->addTrackingParams($config->customTrackingParams);
@@ -99,43 +70,10 @@ class CrawlerService
         // Configure sitemap service
         $this->sitemapService->setClient($client);
 
-        // Fetch and parse robots.txt if respect-robots is enabled
-        $delayMin = $config->delayMin;
-        $delayMax = $config->delayMax;
-
-        if ($config->respectRobots) {
-            $this->robotsService->setClient($client);
-            $this->robotsService->fetchAndParse($config->baseUrl);
-
-            $robotsDelay = $this->robotsService->getCrawlDelay();
-            if ($robotsDelay !== null) {
-                $robotsDelayMs = (int) ($robotsDelay * 1000);
-                $delayMin = max($delayMin, $robotsDelayMs);
-                $delayMax = max($delayMax, $robotsDelayMs);
-
-                if ($onSitemapDiscovery !== null) {
-                    $onSitemapDiscovery("  Robots.txt Crawl-delay: {$robotsDelay}s (using {$delayMin}ms-{$delayMax}ms delay)");
-                }
-            }
-
-            $rulesCount = count($this->robotsService->getRules());
-            if ($rulesCount > 0 && $onSitemapDiscovery !== null) {
-                $onSitemapDiscovery("  Robots.txt: respecting {$rulesCount} Disallow/Allow rule(s)");
-            }
-        }
+        [$delayMin, $delayMax] = $this->configureRobots($config, $client, $onSitemapDiscovery);
 
         // Initialize queue with starting URL
-        $this->queue->enqueue([
-            'url' => $config->baseUrl,
-            'depth' => 0,
-            'source' => 'start',
-            'element' => 'a',
-        ]);
-
-        // Discover URLs from sitemap if enabled
-        if ($config->useSitemap) {
-            $this->discoverFromSitemap($config->baseUrl, $onSitemapDiscovery);
-        }
+        $this->initQueue($config, $onSitemapDiscovery);
 
         $scannedCount = 0;
 
@@ -172,36 +110,7 @@ class CrawlerService
 
             if ($isInternal) {
                 $this->processInternalUrl($url, $depth, $source, $element, $config->scanElements);
-
-                // After processing the first URL (start), check if there was a redirect
-                // and update the base URL to the canonical URL to avoid counting
-                // the same redirect (e.g., www -> non-www) for every resource
-                if (!$canonicalBaseResolved && $source === 'start' && !empty($this->results)) {
-                    $firstResult = end($this->results);
-                    $finalUrl = rtrim($firstResult['finalUrl'] ?? $url, '/');
-                    $finalHost = parse_url($finalUrl, PHP_URL_HOST);
-
-                    // Check if the final URL has a different host than the original
-                    // This catches www-only redirects that aren't in the redirectChain
-                    if ($finalHost !== null && $finalHost !== $this->originalHost) {
-                        $this->canonicalHost = $finalHost;
-                        $this->scannerService->setBaseUrl($finalUrl);
-
-                        // Clear the redirect chain for the start URL since it's expected
-                        if (!empty($firstResult['redirectChain'])) {
-                            $this->results[array_key_last($this->results)]['redirectChain'] = [];
-                        }
-
-                        // Mark the canonical URL as visited to prevent duplicates
-                        // when sitemap contains the canonical URL (e.g., non-www)
-                        // while we started with the original URL (e.g., www)
-                        $this->visited[$this->scannerService->canonicalUrlKey($finalUrl)] = true;
-
-                        // Rewrite all URLs currently in the queue to use canonical host
-                        $this->rewriteQueueToCanonicalHost();
-                    }
-                    $canonicalBaseResolved = true;
-                }
+                $this->resolveCanonicalBaseFromFirstResult($url, $source);
             } else {
                 $this->processExternalUrl($url, $source, $element, $config->scanElements);
             }
@@ -216,6 +125,145 @@ class CrawlerService
         }
 
         return $this->results;
+    }
+
+    /**
+     * Reset all crawl state for a new crawl session.
+     */
+    protected function resetState(string $baseUrl): void
+    {
+        $this->visited = [];
+        $this->queue = new \SplQueue();
+        $this->priorityQueue = new \SplQueue();
+        $this->results = [];
+        $this->originalHost = parse_url($baseUrl, PHP_URL_HOST);
+        $this->canonicalHost = null;
+        $this->canonicalBaseResolved = false;
+    }
+
+    /**
+     * Configure JavaScript rendering if enabled and dependencies are available.
+     */
+    protected function configureJsRendering(ScanConfig $config, ?Closure $onMessage): void
+    {
+        if (!$config->useJsRendering) {
+            return;
+        }
+
+        $depCheck = BrowsershotFetcher::checkDependencies();
+        if ($depCheck['available']) {
+            $fetcher = new BrowsershotFetcher();
+            $fetcher->setTimeout($config->timeout);
+
+            // Load custom paths from config if available
+            $jsConfig = config('scanner.js_rendering', []);
+            if (!empty($jsConfig)) {
+                $fetcher->configure($jsConfig);
+            }
+
+            $this->scannerService->setBrowsershotFetcher($fetcher);
+
+            if ($onMessage !== null) {
+                $onMessage('  JavaScript rendering enabled (headless browser)');
+            }
+        } else {
+            if ($onMessage !== null) {
+                $onMessage("  Warning: {$depCheck['message']} Falling back to static HTML.");
+            }
+        }
+    }
+
+    /**
+     * Configure robots.txt handling and compute effective crawl delays.
+     *
+     * @return array{0: int, 1: int} The effective [$delayMin, $delayMax] in milliseconds.
+     */
+    protected function configureRobots(ScanConfig $config, Client $client, ?Closure $onMessage): array
+    {
+        $delayMin = $config->delayMin;
+        $delayMax = $config->delayMax;
+
+        if (!$config->respectRobots) {
+            return [$delayMin, $delayMax];
+        }
+
+        $this->robotsService->setClient($client);
+        $this->robotsService->fetchAndParse($config->baseUrl);
+
+        $robotsDelay = $this->robotsService->getCrawlDelay();
+        if ($robotsDelay !== null) {
+            $robotsDelayMs = (int) ($robotsDelay * 1000);
+            $delayMin = max($delayMin, $robotsDelayMs);
+            $delayMax = max($delayMax, $robotsDelayMs);
+
+            if ($onMessage !== null) {
+                $onMessage("  Robots.txt Crawl-delay: {$robotsDelay}s (using {$delayMin}ms-{$delayMax}ms delay)");
+            }
+        }
+
+        $rulesCount = count($this->robotsService->getRules());
+        if ($rulesCount > 0 && $onMessage !== null) {
+            $onMessage("  Robots.txt: respecting {$rulesCount} Disallow/Allow rule(s)");
+        }
+
+        return [$delayMin, $delayMax];
+    }
+
+    /**
+     * Initialize the BFS queue with the starting URL and optional sitemap URLs.
+     */
+    protected function initQueue(ScanConfig $config, ?Closure $onMessage): void
+    {
+        $this->queue->enqueue([
+            'url' => $config->baseUrl,
+            'depth' => 0,
+            'source' => 'start',
+            'element' => 'a',
+        ]);
+
+        if ($config->useSitemap) {
+            $this->discoverFromSitemap($config->baseUrl, $onMessage);
+        }
+    }
+
+    /**
+     * After processing the first (start) URL, detect host redirects and
+     * update the base URL to the canonical host.
+     *
+     * This catches cases like www.example.com → example.com so that
+     * subsequent resources aren't flagged as redirect chains.
+     */
+    protected function resolveCanonicalBaseFromFirstResult(string $startUrl, string $source): void
+    {
+        if ($this->canonicalBaseResolved || $source !== 'start' || empty($this->results)) {
+            return;
+        }
+
+        $firstResult = end($this->results);
+        $finalUrl = rtrim($firstResult['finalUrl'] ?? $startUrl, '/');
+        $finalHost = parse_url($finalUrl, PHP_URL_HOST);
+
+        // Check if the final URL has a different host than the original
+        // This catches www-only redirects that aren't in the redirectChain
+        if ($finalHost !== null && $finalHost !== $this->originalHost) {
+            $this->canonicalHost = $finalHost;
+            $this->scannerService->setBaseUrl($finalUrl);
+
+            // Clear the redirect chain for the start URL since it's expected
+            if (!empty($firstResult['redirectChain'])) {
+                $this->results[array_key_last($this->results)]['redirectChain'] = [];
+            }
+
+            // Mark the canonical URL as visited to prevent duplicates
+            // when sitemap contains the canonical URL (e.g., non-www)
+            // while we started with the original URL (e.g., www)
+            $this->visited[$this->scannerService->canonicalUrlKey($finalUrl)] = true;
+
+            // Rewrite all URLs currently in the queue to use canonical host
+            $this->rewriteQueueToCanonicalHost();
+        }
+
+        $this->canonicalBaseResolved = true;
     }
 
     /**
