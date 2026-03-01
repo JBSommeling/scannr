@@ -62,7 +62,7 @@ readonly class ScanConfig
         $timeout = min($requestedTimeout, $maxTimeout);
 
         // Parse scan elements
-        $scanElements = $data['scanElements'] ?? ['a', 'link', 'script', 'img', 'media'];
+        $scanElements = $data['scanElements'] ?? ['a', 'link', 'script', 'img', 'media', 'form'];
 
         // Get rate limiting config
         $delayMin = config('scanner.request_delay_min', 300);
@@ -100,7 +100,7 @@ readonly class ScanConfig
         // Parse scan elements
         $scanElementsOption = $command->option('scan-elements');
         $scanElements = $scanElementsOption === 'all'
-            ? ['a', 'link', 'script', 'img', 'media']
+            ? ['a', 'link', 'script', 'img', 'media', 'form']
             : array_map('trim', explode(',', $scanElementsOption));
 
         // Parse custom tracking params
@@ -157,7 +157,7 @@ readonly class ScanConfig
     {
         return $this->statusFilter !== 'all'
             || $this->elementFilter !== 'all'
-            || $this->scanElements !== ['a', 'link', 'script', 'img', 'media'];
+            || $this->scanElements !== ['a', 'link', 'script', 'img', 'media', 'form'];
     }
 
     /**

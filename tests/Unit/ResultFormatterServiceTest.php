@@ -27,7 +27,7 @@ class ResultFormatterServiceTest extends TestCase
             maxDepth: $overrides['maxDepth'] ?? 3,
             maxUrls: $overrides['maxUrls'] ?? 100,
             timeout: $overrides['timeout'] ?? 5,
-            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img', 'media'],
+            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img', 'media', 'form'],
             statusFilter: $overrides['statusFilter'] ?? 'all',
             elementFilter: $overrides['elementFilter'] ?? 'all',
             outputFormat: $overrides['outputFormat'] ?? 'table',
@@ -262,6 +262,134 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         $this->assertContains('Redirects', $output->tables[0]['headers']);
+    }
+
+    public function test_format_table_form_endpoint_422_shows_ok_annotation(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => 422,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Status should show "422 (ok)" in the table
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertEquals('422 (ok)', $firstRow['Status']);
+    }
+
+    public function test_format_table_form_endpoint_200_shows_plain_status(): void
+    {
+        $results = [
+            [
+                'url' => 'https://formspree.io/f/abc123',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertEquals(200, $firstRow['Status']);
+    }
+
+    public function test_format_table_form_endpoint_404_shows_plain_status(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/missing',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Broken form endpoint should show plain 404 (no "ok" annotation)
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertEquals(404, $firstRow['Status']);
+    }
+
+    public function test_format_table_non_form_422_shows_plain_status(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page',
+                'sourcePage' => 'https://example.com',
+                'status' => 422,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Non-form 422 should show plain status (no annotation)
+        $firstRow = $output->tables[0]['rows'][0];
+        $this->assertEquals(422, $firstRow['Status']);
+    }
+
+    public function test_format_table_form_endpoint_not_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => 422,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Should not appear in broken links section
+        $this->assertNotContains('Broken Links:', $output->errors);
     }
 
     // ==================

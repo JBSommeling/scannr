@@ -1845,6 +1845,232 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals(10, $result['retryAfter']);
     }
 
+    public function test_extract_links_finds_form_action_urls(): void
+    {
+        $html = '<html><body><form action="https://formspree.io/f/abc123" method="POST"><input type="text"><button type="submit">Send</button></form></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://formspree.io/f/abc123', $formLink['url']);
+        $this->assertEquals('form', $formLink['element']);
+    }
+
+    public function test_extract_links_finds_relative_form_action_urls(): void
+    {
+        $html = '<html><body><form action="/api/contact" method="POST"><button type="submit">Send</button></form></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/contact', $formLink['url']);
+        $this->assertEquals('form', $formLink['element']);
+    }
+
+    public function test_extract_links_skips_forms_without_action(): void
+    {
+        $html = '<html><body><form method="POST"><button type="submit">Send</button></form><a href="/page">Link</a></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com');
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertEmpty($formLinks);
+    }
+
+    // ======================
+    // Form endpoint JS extraction tests
+    // ======================
+
+    public function test_extract_links_finds_fetch_form_endpoint_in_inline_script(): void
+    {
+        $html = '<html><body><script>function handleSubmit(data) { fetch("/api/contact", { method: "POST", body: JSON.stringify(data) }); }</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/contact', $formLink['url']);
+    }
+
+    public function test_extract_links_finds_axios_post_form_endpoint(): void
+    {
+        $html = '<html><body><script>axios.post("/api/submit", formData);</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/submit', $formLink['url']);
+    }
+
+    public function test_extract_links_finds_formspree_url_in_script(): void
+    {
+        $html = '<html><body><script>fetch("https://formspree.io/f/xpzvqwer", { method: "POST", body: formData });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        // Should find it via both fetch pattern and formspree pattern, but deduplicated
+        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $this->assertContains('https://formspree.io/f/xpzvqwer', $formUrls);
+    }
+
+    public function test_extract_links_finds_web3forms_url_in_script(): void
+    {
+        $html = '<html><body><script>fetch("https://api.web3forms.com/submit", { method: "POST" });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $this->assertContains('https://api.web3forms.com/submit', $formUrls);
+    }
+
+    public function test_extract_links_finds_jquery_ajax_form_endpoint(): void
+    {
+        $html = '<html><body><script>$.post("/api/contact", data);</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/contact', $formLink['url']);
+    }
+
+    public function test_extract_links_finds_xhr_open_form_endpoint(): void
+    {
+        $html = '<html><body><script>var xhr = new XMLHttpRequest(); xhr.open("POST", "/api/contact");</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/contact', $formLink['url']);
+    }
+
+    public function test_extract_links_does_not_find_form_endpoints_without_js_flag(): void
+    {
+        $html = '<html><body><script>fetch("/api/contact", { method: "POST" });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', false);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertEmpty($formLinks);
+    }
+
+    public function test_extract_links_deduplicates_form_endpoints(): void
+    {
+        $html = '<html><body><script>fetch("/api/contact", opts); fetch("/api/contact", opts);</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form' && $l['url'] === 'https://example.com/api/contact');
+        $this->assertCount(1, $formLinks);
+    }
+
+    public function test_extract_links_finds_axios_without_method(): void
+    {
+        $html = '<html><body><script>axios("/api/submit-form", { data: formData });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/submit-form', $formLink['url']);
+    }
+
+    public function test_extract_links_ignores_telemetry_fetch_urls(): void
+    {
+        $html = '<html><body><script>fetch("/_spark/kv"); fetch("/_spark/loaded"); fetch("/_spark/llm"); fetch("/analytics/event");</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertEmpty($formLinks);
+    }
+
+    public function test_extract_links_finds_external_contact_endpoint(): void
+    {
+        $html = '<html><body><script>fetch("https://app.example.com/contacts", { method: "POST", body: JSON.stringify(formData) });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://app.example.com/contacts', $formLink['url']);
+    }
+
+    public function test_extract_links_finds_subscribe_endpoint(): void
+    {
+        $html = '<html><body><script>fetch("/api/newsletter/subscribe", { method: "POST" });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formLink = array_values($formLinks)[0];
+        $this->assertEquals('https://example.com/api/newsletter/subscribe', $formLink['url']);
+    }
+
+    public function test_extract_links_finds_api_config_baseurl_with_endpoints(): void
+    {
+        // React pattern: config object with baseUrl + endpoints, URL built via template literal
+        $html = '<html><body><script>const config={baseUrl:"https://app.example.com",endpoints:{contacts:"/api/contacts"},headers:{"Content-Type":"application/json"}};function submit(data){return fetch(`${config.baseUrl}${config.endpoints.contacts}`,{method:"POST",body:JSON.stringify(data)})}</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $this->assertContains('https://app.example.com/api/contacts', $formUrls);
+    }
+
+    public function test_extract_links_finds_minified_api_config(): void
+    {
+        // Matches the exact minified pattern from sommeling.dev
+        $html = '<html><body><script>a))}const mr={baseUrl:"https://app.sommeling.dev",endpoints:{contacts:"/api/contacts"},headers:{"Content-Type":"application/json"}};function submit(){return fetch(`${mr.baseUrl}${mr.endpoints.contacts}`,{method:"POST"})}</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://sommeling.dev', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks);
+        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $this->assertContains('https://app.sommeling.dev/api/contacts', $formUrls);
+    }
+
+    public function test_extract_links_api_config_ignores_non_form_endpoints(): void
+    {
+        // baseUrl with non-form endpoints should not be picked up
+        $html = '<html><body><script>const api={baseUrl:"https://api.example.com",endpoints:{users:"/api/users",analytics:"/api/analytics"}};</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertEmpty($formLinks);
+    }
+
+    public function test_extract_links_api_config_not_detected_without_js_flag(): void
+    {
+        $html = '<html><body><script>const config={baseUrl:"https://app.example.com",endpoints:{contacts:"/api/contacts"}};</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', false);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertEmpty($formLinks);
+    }
+
     public function test_process_external_url_includes_retry_after(): void
     {
         $mockClient = $this->createMockClient(429, '', ['Retry-After' => '15']);
@@ -1855,6 +2081,167 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(429, $result['status']);
         $this->assertEquals(15, $result['retryAfter']);
+    }
+
+    // ======================
+    // Form endpoint health check tests
+    // ======================
+
+    public function test_process_external_url_uses_post_for_form_element(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->once())
+            ->method('request')
+            ->with('POST', $this->anything(), $this->callback(function ($options) {
+                return isset($options['headers']['Content-Type'])
+                    && $options['headers']['Content-Type'] === 'application/json';
+            }))
+            ->willReturn($this->createMockResponse(422));
+
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(422, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertEquals('form', $result['sourceElement']);
+    }
+
+    public function test_process_internal_url_uses_post_for_form_element(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->once())
+            ->method('request')
+            ->with('POST', $this->anything(), $this->anything())
+            ->willReturn($this->createMockResponse(422));
+
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/api/contact', 'https://example.com', 'form');
+
+        $this->assertEquals(422, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertEquals('form', $result['sourceElement']);
+    }
+
+    public function test_form_endpoint_422_is_healthy(): void
+    {
+        $mockClient = $this->createMockClient(422);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(422, $result['status']);
+        $this->assertTrue($result['isOk']);
+    }
+
+    public function test_form_endpoint_400_is_healthy(): void
+    {
+        $mockClient = $this->createMockClient(400);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(400, $result['status']);
+        $this->assertTrue($result['isOk']);
+    }
+
+    public function test_form_endpoint_401_is_healthy(): void
+    {
+        $mockClient = $this->createMockClient(401);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(401, $result['status']);
+        $this->assertTrue($result['isOk']);
+    }
+
+    public function test_form_endpoint_405_is_healthy(): void
+    {
+        $mockClient = $this->createMockClient(405);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['isOk']);
+    }
+
+    public function test_form_endpoint_404_is_broken(): void
+    {
+        $mockClient = $this->createMockClient(404);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(404, $result['status']);
+        $this->assertFalse($result['isOk']);
+    }
+
+    public function test_form_endpoint_500_is_broken(): void
+    {
+        $mockClient = $this->createMockClient(500);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(500, $result['status']);
+        $this->assertFalse($result['isOk']);
+    }
+
+    public function test_form_endpoint_200_is_healthy(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['isOk']);
+    }
+
+    public function test_non_form_external_url_still_uses_head(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->once())
+            ->method('request')
+            ->with('HEAD', $this->anything())
+            ->willReturn($this->createMockResponse(200));
+
+        $this->service->setClient($mockClient);
+        $this->service->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com', 'a');
+
+        $this->assertEquals(200, $result['status']);
+    }
+
+    /**
+     * Helper to create a mock response with a given status code.
+     */
+    private function createMockResponse(int $statusCode, array $headers = []): ResponseInterface
+    {
+        $mockStream = $this->createMock(StreamInterface::class);
+        $mockStream->method('__toString')->willReturn('');
+
+        $mockResponse = $this->createMock(ResponseInterface::class);
+        $mockResponse->method('getStatusCode')->willReturn($statusCode);
+        $mockResponse->method('getBody')->willReturn($mockStream);
+        $mockResponse->method('getHeaderLine')->willReturnCallback(function ($name) use ($headers) {
+            return $headers[$name] ?? '';
+        });
+
+        return $mockResponse;
     }
 }
 
