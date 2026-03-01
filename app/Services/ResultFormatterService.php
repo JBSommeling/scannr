@@ -105,7 +105,7 @@ class ResultFormatterService
                 'URL' => $this->truncate($result['url'], 50),
                 'Source' => $this->truncate($result['sourcePage'], 30),
                 'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
-                'Status' => $result['status'],
+                'Status' => $this->formatStatus($result),
                 'Type' => $result['type'],
             ];
 
@@ -261,6 +261,30 @@ class ResultFormatterService
         }
 
         return substr($string, 0, $length - 3) . '...';
+    }
+
+    /**
+     * Format a status code for display.
+     *
+     * For form endpoints that return non-2xx but are considered healthy
+     * (e.g., 422 Unprocessable Entity from posting empty data), appends
+     * "(ok)" to make it clear the endpoint exists and is functional.
+     *
+     * @param array $result The scan result item.
+     * @return string|int The formatted status for display.
+     */
+    protected function formatStatus(array $result): string|int
+    {
+        $status = $result['status'];
+        $isOk = $result['isOk'] ?? false;
+        $element = $result['sourceElement'] ?? 'a';
+
+        // Annotate healthy non-2xx form endpoints so the user knows it's alive
+        if ($element === 'form' && $isOk && is_int($status) && ($status < 200 || $status >= 300)) {
+            return "{$status} (ok)";
+        }
+
+        return $status;
     }
 }
 

@@ -25,8 +25,8 @@ class ScanSite extends Command
         {--timeout=5 : Request timeout in seconds}
         {--format=table : Output format (table, json, csv)}
         {--status=all : Filter results (all, ok, broken)}
-        {--filter=all : Filter displayed results by element type (all, a, link, script, img, media)}
-        {--scan-elements=all : Element types to scan (all, or comma-separated: a,img,link,script,media)}
+        {--filter=all : Filter displayed results by element type (all, a, link, script, img, media, form)}
+        {--scan-elements=all : Element types to scan (all, or comma-separated: a,img,link,script,media,form)}
         {--sitemap : Use sitemap.xml to discover URLs}
         {--strip-params= : Additional tracking parameters to strip (comma-separated, e.g., ref,tracker_*)}
         {--js : Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer)}

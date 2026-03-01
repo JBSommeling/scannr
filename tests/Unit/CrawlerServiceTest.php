@@ -35,7 +35,7 @@ class CrawlerServiceTest extends TestCase
             maxDepth: $overrides['maxDepth'] ?? 3,
             maxUrls: $overrides['maxUrls'] ?? 100,
             timeout: $overrides['timeout'] ?? 5,
-            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img', 'media'],
+            scanElements: $overrides['scanElements'] ?? ['a', 'link', 'script', 'img', 'media', 'form'],
             statusFilter: $overrides['statusFilter'] ?? 'all',
             elementFilter: $overrides['elementFilter'] ?? 'all',
             outputFormat: $overrides['outputFormat'] ?? 'table',
@@ -963,6 +963,61 @@ class CrawlerServiceTest extends TestCase
 
         $this->assertTrue($crawlResult['aborted']);
         $this->assertEquals('Scan aborted due to rate limiting', $crawlResult['error']);
+    }
+
+    /**
+     * Form actions that point to the same page (self-referencing forms) should
+     * still be reported. This is common with WordPress Contact Form 7, WPForms,
+     * etc., where the form posts back to the same URL with a fragment.
+     *
+     * Duplicate forms with the same action on the same page should be deduplicated.
+     *
+     * e.g., <form action="/contact/#wpcf7-f54-o1"> on /contact/
+     */
+    public function test_crawl_reports_self_referencing_form_actions(): void
+    {
+        // The contact page has two forms that post to itself (with fragments)
+        // — only one form result should be recorded (deduplication)
+        $contactHtml = '<html><body>'
+            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            . '<input type="text" name="name">'
+            . '<input type="submit" value="Send">'
+            . '</form>'
+            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            . '<input type="text" name="email">'
+            . '<input type="submit" value="Subscribe">'
+            . '</form>'
+            . '</body></html>';
+
+        $client = $this->createMockClient([
+            // GET /contact/ (the page itself)
+            new Response(200, ['Content-Type' => 'text/html'], $contactHtml),
+            // POST /contact (the form endpoint check for self-referencing form)
+            new Response(200, ['Content-Type' => 'text/html'], ''),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig([
+            'baseUrl' => 'https://example.com/contact',
+            'maxUrls' => 5,
+            'scanElements' => ['a', 'form'],
+        ]);
+
+        $crawlResult = $crawler->crawl($config);
+        $results = $crawlResult['results'];
+
+        // Should have 2 results: the page itself + one form endpoint (deduplicated)
+        $formResults = array_filter($results, fn($r) => $r['sourceElement'] === 'form');
+        $this->assertNotEmpty($formResults, 'Self-referencing form action should be reported');
+        $this->assertCount(1, $formResults, 'Duplicate self-referencing forms should be deduplicated');
+
+        $formResult = array_values($formResults)[0];
+        $this->assertEquals('https://example.com/contact', $formResult['url']);
+        $this->assertEquals('form', $formResult['sourceElement']);
     }
 
     public function test_crawl_continues_when_max_429_is_zero(): void
