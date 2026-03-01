@@ -2000,6 +2000,50 @@ class ScannerServiceTest extends TestCase
         $this->assertEmpty($formLinks);
     }
 
+    /**
+     * @dataProvider newFormKeywordEndpointsProvider
+     */
+    public function test_extract_links_finds_new_keyword_endpoints(string $endpoint, string $expectedUrl): void
+    {
+        $html = '<html><body><script>fetch("' . $endpoint . '", { method: "POST", body: JSON.stringify(data) });</script></body></html>';
+
+        $links = $this->service->extractLinks($html, 'https://example.com', true);
+
+        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $this->assertNotEmpty($formLinks, "Expected form endpoint for: {$endpoint}");
+        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $this->assertContains($expectedUrl, $formUrls);
+    }
+
+    public static function newFormKeywordEndpointsProvider(): array
+    {
+        return [
+            'send' => ['/api/send', 'https://example.com/api/send'],
+            'mail' => ['/api/mail', 'https://example.com/api/mail'],
+            'email' => ['/api/email', 'https://example.com/api/email'],
+            'checkout' => ['/api/checkout', 'https://example.com/api/checkout'],
+            'order' => ['/api/order', 'https://example.com/api/order'],
+            'payment' => ['/api/payment', 'https://example.com/api/payment'],
+            'donate' => ['/api/donate', 'https://example.com/api/donate'],
+            'donation' => ['/api/donation', 'https://example.com/api/donation'],
+            'apply' => ['/api/apply', 'https://example.com/api/apply'],
+            'application' => ['/api/application', 'https://example.com/api/application'],
+            'enroll' => ['/api/enroll', 'https://example.com/api/enroll'],
+            'survey' => ['/api/survey', 'https://example.com/api/survey'],
+            'rsvp' => ['/api/rsvp', 'https://example.com/api/rsvp'],
+            'review' => ['/api/review', 'https://example.com/api/review'],
+            'comment' => ['/api/comment', 'https://example.com/api/comment'],
+            'reply' => ['/api/reply', 'https://example.com/api/reply'],
+            'upload' => ['/api/upload', 'https://example.com/api/upload'],
+            'report' => ['/api/report', 'https://example.com/api/report'],
+            'claim' => ['/api/claim', 'https://example.com/api/claim'],
+            'login' => ['/api/login', 'https://example.com/api/login'],
+            'signin' => ['/api/signin', 'https://example.com/api/signin'],
+            'sign-in' => ['/api/sign-in', 'https://example.com/api/sign-in'],
+            'verify' => ['/api/verify', 'https://example.com/api/verify'],
+        ];
+    }
+
     public function test_extract_links_finds_external_contact_endpoint(): void
     {
         $html = '<html><body><script>fetch("https://app.example.com/contacts", { method: "POST", body: JSON.stringify(formData) });</script></body></html>';

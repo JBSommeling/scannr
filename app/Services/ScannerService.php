@@ -749,6 +749,37 @@ class ScannerService
     }
 
     /**
+     * Get the list of form-related keywords from config.
+     *
+     * Used to filter API call URLs in JavaScript to only those that
+     * are likely form submission endpoints (avoiding false positives
+     * from telemetry/analytics endpoints).
+     *
+     * @return array<string>
+     */
+    protected function getFormKeywords(): array
+    {
+        $defaults = [
+            'contact', 'message', 'inquiry', 'inquiries', 'feedback',
+            'submit', 'form', 'send', 'mail', 'email',
+            'subscribe', 'newsletter', 'signup', 'sign-up', 'register',
+            'lead', 'booking', 'reservation', 'appointment', 'quote',
+            'request', 'support', 'ticket', 'complaint',
+            'checkout', 'order', 'payment', 'donate', 'donation',
+            'apply', 'application', 'enroll', 'enrollment',
+            'survey', 'rsvp', 'review', 'comment', 'reply',
+            'upload', 'report', 'claim',
+            'login', 'signin', 'sign-in', 'verify',
+        ];
+
+        try {
+            return config('scanner.form_keywords', $defaults) ?? $defaults;
+        } catch (\Throwable) {
+            return $defaults;
+        }
+    }
+
+    /**
      * Extract form submission endpoint URLs from JavaScript/JSON content.
      *
      * Scans script content for form submission endpoints used by React, Vue,
@@ -758,8 +789,7 @@ class ScannerService
      *    Formspree, Formcarry, Getform, Web3Forms, Formsubmit, etc.
      *
      * 2. API calls (fetch, axios, $.ajax, XHR) where the URL contains
-     *    form-related keywords (contact, submit, form, message, inquiry,
-     *    feedback, subscribe, newsletter, register, signup, lead, booking).
+     *    form-related keywords (configurable via scanner.form_keywords).
      *    This avoids false positives from telemetry/analytics endpoints
      *    like /_spark/kv, /_spark/loaded, etc.
      *
@@ -782,7 +812,7 @@ class ScannerService
 
         $urls = [];
 
-        $formKeywords = 'contact|submit|form|message|inquiry|inquiries|feedback|subscribe|newsletter|register|signup|sign-up|lead|booking|reservation|appointment|quote|request|support|ticket|complaint';
+        $formKeywords = implode('|', array_map('preg_quote', $this->getFormKeywords()));
 
         // Strategy 1: Known form service URL patterns (always extract these)
         // Matches: "https://formspree.io/f/...", "https://formcarry.com/s/...", etc.

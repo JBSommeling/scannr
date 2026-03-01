@@ -142,6 +142,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Form Endpoint Keywords
+    |--------------------------------------------------------------------------
+    |
+    | Keywords used to identify form submission endpoints in JavaScript code
+    | (requires --js flag). When scanning fetch(), axios, $.ajax, or XHR calls,
+    | only URLs containing one of these keywords are treated as form endpoints.
+    | This prevents false positives from telemetry/analytics endpoints.
+    |
+    | Also used for API config objects (baseUrl + endpoint paths) to filter
+    | which endpoints are considered form-related.
+    |
+    */
+
+    'form_keywords' => [
+        // Contact & messaging
+        'contact', 'message', 'inquiry', 'inquiries', 'feedback',
+        // Form submission
+        'submit', 'form', 'send', 'mail', 'email',
+        // Subscriptions & newsletters
+        'subscribe', 'newsletter', 'signup', 'sign-up', 'register',
+        // Leads & sales
+        'lead', 'booking', 'book', 'reservation', 'appointment', 'quote',
+        // Support
+        'request', 'support', 'ticket', 'complaint',
+        // E-commerce & payments
+        'checkout', 'order', 'payment', 'donate', 'donation',
+        // Applications & enrollment
+        'apply', 'application', 'enroll', 'enrollment',
+        // Engagement
+        'survey', 'rsvp', 'review', 'comment', 'reply',
+        // Uploads & reports
+        'upload', 'report', 'claim',
+        // Authentication
+        'login', 'signin', 'sign-in', 'verify',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Rate Limit Handling (HTTP 429)
     |--------------------------------------------------------------------------
     |
