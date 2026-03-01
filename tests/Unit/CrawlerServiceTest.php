@@ -965,6 +965,53 @@ class CrawlerServiceTest extends TestCase
         $this->assertEquals('Scan aborted due to rate limiting', $crawlResult['error']);
     }
 
+    /**
+     * Form actions that point to the same page (self-referencing forms) should
+     * still be reported. This is common with WordPress Contact Form 7, WPForms,
+     * etc., where the form posts back to the same URL with a fragment.
+     *
+     * e.g., <form action="/contact/#wpcf7-f54-o1"> on /contact/
+     */
+    public function test_crawl_reports_self_referencing_form_actions(): void
+    {
+        // The contact page has a form that posts to itself (with a fragment)
+        $contactHtml = '<html><body>'
+            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            . '<input type="text" name="name">'
+            . '<input type="submit" value="Send">'
+            . '</form>'
+            . '</body></html>';
+
+        $client = $this->createMockClient([
+            // GET /contact/ (the page itself)
+            new Response(200, ['Content-Type' => 'text/html'], $contactHtml),
+            // POST /contact (the form endpoint check for self-referencing form)
+            new Response(200, ['Content-Type' => 'text/html'], ''),
+        ]);
+
+        $scannerService = new ScannerService();
+        $sitemapService = new SitemapService();
+        $crawler = new CrawlerService($scannerService, $sitemapService);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig([
+            'baseUrl' => 'https://example.com/contact',
+            'maxUrls' => 5,
+            'scanElements' => ['a', 'form'],
+        ]);
+
+        $crawlResult = $crawler->crawl($config);
+        $results = $crawlResult['results'];
+
+        // Should have 2 results: the page itself + the form endpoint
+        $formResults = array_filter($results, fn($r) => $r['sourceElement'] === 'form');
+        $this->assertNotEmpty($formResults, 'Self-referencing form action should be reported');
+
+        $formResult = array_values($formResults)[0];
+        $this->assertEquals('https://example.com/contact', $formResult['url']);
+        $this->assertEquals('form', $formResult['sourceElement']);
+    }
+
     public function test_crawl_continues_when_max_429_is_zero(): void
     {
         // Setting max_429_before_abort to 0 disables abort

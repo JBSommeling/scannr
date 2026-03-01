@@ -355,6 +355,13 @@ class CrawlerService
                     } else {
                         $this->queue->enqueue($queueItem);
                     }
+                } elseif ($linkElement === 'form' && in_array('form', $scanElements)) {
+                    // Form actions commonly point to the same page (self-referencing forms,
+                    // e.g., WordPress Contact Form 7, WPForms). Since the URL is already
+                    // visited, it won't be re-queued, but we still need to process and
+                    // report the form endpoint.
+                    $formResult = $this->scannerService->processFormEndpoint($linkUrl, $url);
+                    $this->results[] = $formResult;
                 }
             }
         }

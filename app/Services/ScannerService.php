@@ -1366,7 +1366,7 @@ class ScannerService
      * @param string $type 'internal' or 'external'.
      * @return array The scan result array.
      */
-    protected function processFormEndpoint(string $url, string $source, string $type): array
+    public function processFormEndpoint(string $url, string $source, string $type = 'internal'): array
     {
         $status = 0;
         $retryAfter = null;
