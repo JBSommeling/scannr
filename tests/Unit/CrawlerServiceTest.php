@@ -970,15 +970,22 @@ class CrawlerServiceTest extends TestCase
      * still be reported. This is common with WordPress Contact Form 7, WPForms,
      * etc., where the form posts back to the same URL with a fragment.
      *
+     * Duplicate forms with the same action on the same page should be deduplicated.
+     *
      * e.g., <form action="/contact/#wpcf7-f54-o1"> on /contact/
      */
     public function test_crawl_reports_self_referencing_form_actions(): void
     {
-        // The contact page has a form that posts to itself (with a fragment)
+        // The contact page has two forms that post to itself (with fragments)
+        // — only one form result should be recorded (deduplication)
         $contactHtml = '<html><body>'
             . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
             . '<input type="text" name="name">'
             . '<input type="submit" value="Send">'
+            . '</form>'
+            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            . '<input type="text" name="email">'
+            . '<input type="submit" value="Subscribe">'
             . '</form>'
             . '</body></html>';
 
@@ -1003,9 +1010,10 @@ class CrawlerServiceTest extends TestCase
         $crawlResult = $crawler->crawl($config);
         $results = $crawlResult['results'];
 
-        // Should have 2 results: the page itself + the form endpoint
+        // Should have 2 results: the page itself + one form endpoint (deduplicated)
         $formResults = array_filter($results, fn($r) => $r['sourceElement'] === 'form');
         $this->assertNotEmpty($formResults, 'Self-referencing form action should be reported');
+        $this->assertCount(1, $formResults, 'Duplicate self-referencing forms should be deduplicated');
 
         $formResult = array_values($formResults)[0];
         $this->assertEquals('https://example.com/contact', $formResult['url']);
