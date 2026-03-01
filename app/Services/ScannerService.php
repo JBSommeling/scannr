@@ -396,6 +396,7 @@ class ScannerService
      *
      * Parses HTML and extracts URLs from:
      * - <a href=""> (anchor links)
+     * - <form action=""> (form submission endpoints)
      * - <link href=""> (stylesheets, icons, etc.)
      * - <script src=""> (JavaScript files)
      * - <img src=""> (images)
@@ -405,6 +406,7 @@ class ScannerService
      * - onclick attributes containing window.location, window.open, or download() calls
      * - Inline <script> contents referencing downloadable file URLs (when --js is enabled)
      * - External <script src=""> JS bundles for downloadable file URLs (when --js is enabled, internal only)
+     * - Form submission endpoints in JS: fetch(), axios, $.ajax, XMLHttpRequest (when --js is enabled)
      *
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
      * Normalizes relative URLs to absolute URLs.
@@ -424,6 +426,11 @@ class ScannerService
             // Extract from <a href="">
             $crawler->filter('a[href]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                 $this->addLinkFromAttribute($node, 'href', $sourceUrl, 'a', $links);
+            });
+
+            // Extract from <form action=""> (form submission endpoints)
+            $crawler->filter('form[action]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $this->addLinkFromAttribute($node, 'action', $sourceUrl, 'form', $links);
             });
 
             // Extract from <link href=""> (stylesheets, icons, etc.)
@@ -524,10 +531,13 @@ class ScannerService
                 $this->addLinksFromInlineJs($onclick, $sourceUrl, $links);
             });
 
-            // Extract downloadable file URLs from inline <script> contents.
+            // Extract downloadable file URLs and form submission endpoints
+            // from inline <script> contents and external JS bundles.
             // Only enabled with --js flag to avoid false positives.
             // Catches URLs in React/Next.js/Nuxt data blobs, JSON config,
             // and JS string literals that reference downloadable files.
+            // Also catches form submission endpoints used by React/Vue/Svelte
+            // apps via fetch(), axios, $.ajax, etc.
             if ($scanScriptContent) {
                 $crawler->filter('script:not([src])')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                     $content = $node->text('', false);
@@ -535,13 +545,16 @@ class ScannerService
                         return;
                     }
                     $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
+                    $this->addFormEndpointUrlsFromScriptContent($content, $sourceUrl, $links);
                 });
 
-                // Also fetch and scan external JS bundles for download URLs.
+                // Also fetch and scan external JS bundles for download URLs
+                // and form submission endpoints.
                 // Only scans internal scripts (same domain) to avoid fetching
                 // third-party CDN bundles. This catches React/Vue/Svelte apps
                 // where download URLs are compiled into the JS bundle
-                // (e.g., onClick handlers with document.createElement("a").href="/cv.pdf").
+                // (e.g., onClick handlers with document.createElement("a").href="/cv.pdf")
+                // and form submission endpoints (e.g., fetch("/api/contact")).
                 $crawler->filter('script[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                     $src = $node->attr('src');
                     if ($src === null || $src === '') {
@@ -556,6 +569,7 @@ class ScannerService
                     $content = $this->fetchScriptContent($scriptUrl);
                     if ($content !== null) {
                         $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
+                        $this->addFormEndpointUrlsFromScriptContent($content, $sourceUrl, $links);
                     }
                 });
             }
@@ -572,7 +586,7 @@ class ScannerService
      * @param  Crawler  $node       The DOM node to extract from.
      * @param  string   $attribute  The attribute name ('href' or 'src').
      * @param  string   $sourceUrl  The source page URL.
-     * @param  string   $element    The element type ('a', 'link', 'script', 'img', 'media').
+     * @param  string   $element    The element type ('a', 'link', 'script', 'img', 'media', 'form').
      * @param  array    &$links     Reference to the links array.
      * @return void
      */
@@ -731,6 +745,154 @@ class ScannerService
                 'dmg', 'exe', 'msi', 'deb', 'rpm', 'apk', 'ipa',
                 'svg', 'psd', 'ai', 'eps',
             ];
+        }
+    }
+
+    /**
+     * Get the list of form-related keywords from config.
+     *
+     * Used to filter API call URLs in JavaScript to only those that
+     * are likely form submission endpoints (avoiding false positives
+     * from telemetry/analytics endpoints).
+     *
+     * @return array<string>
+     */
+    protected function getFormKeywords(): array
+    {
+        return config('scanner.form_keywords');
+    }
+
+    /**
+     * Extract form submission endpoint URLs from JavaScript/JSON content.
+     *
+     * Scans script content for form submission endpoints used by React, Vue,
+     * Svelte, and other SPA frameworks. Uses three strategies:
+     *
+     * 1. Known form service URLs — always matched regardless of context:
+     *    Formspree, Formcarry, Getform, Web3Forms, Formsubmit, etc.
+     *
+     * 2. API calls (fetch, axios, $.ajax, XHR) where the URL contains
+     *    form-related keywords (configurable via scanner.form_keywords).
+     *    This avoids false positives from telemetry/analytics endpoints
+     *    like /_spark/kv, /_spark/loaded, etc.
+     *
+     * 3. API config objects with baseUrl + endpoint paths — detects patterns
+     *    like {baseUrl:"https://api.example.com",endpoints:{contacts:"/api/contacts"}}
+     *    common in React/Vue apps where URLs are constructed dynamically
+     *    via template literals (e.g., `${config.baseUrl}${config.endpoints.contacts}`).
+     *
+     * Only enabled when --js flag is set, to avoid false positives.
+     *
+     * @param  string  $content    The script content to scan.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  array   &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addFormEndpointUrlsFromScriptContent(string $content, string $sourceUrl, array &$links): void
+    {
+        // Unescape JSON forward-slash escaping
+        $content = str_replace('\\/', '/', $content);
+
+        $urls = [];
+
+        $formKeywords = implode('|', array_map('preg_quote', $this->getFormKeywords()));
+
+        // Strategy 1: Known form service URL patterns (always extract these)
+        // Matches: "https://formspree.io/f/...", "https://formcarry.com/s/...", etc.
+        $formServicePatterns = [
+            '/[\'\"](https?:\/\/(?:formspree\.io|formcarry\.com|getform\.io|api\.web3forms\.com|formsubmit\.co|submit-form\.com|usebasin\.com|formbold\.com|fabform\.io|formkeep\.com|kwes\.io)\/[^\s\'"]*)[\'\"]/i',
+        ];
+
+        foreach ($formServicePatterns as $pattern) {
+            if (preg_match_all($pattern, $content, $matches)) {
+                foreach ($matches[1] as $url) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        // Strategy 2: API calls where the URL contains form-related keywords.
+        // This catches endpoints like /api/contact, /contacts, /submit-form,
+        // https://app.example.com/contacts, etc. while avoiding false positives
+        // from telemetry endpoints like /_spark/kv, /analytics, etc.
+        $apiCallPatterns = [
+            // fetch("/api/contact", ...) or fetch("https://app.example.com/contacts", ...)
+            '/\bfetch\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            // axios.post("/api/contact", ...) / axios.put / axios.patch / axios.delete / axios("/api/contact", ...)
+            '/\baxios(?:\s*\.\s*(?:post|put|patch|delete))?\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            // $.ajax("/api/contact", ...) or $.post("/api/contact", ...)
+            '/\$\s*\.\s*(?:ajax|post)\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            // $.ajax({url: "/api/contact"}) — object-style
+            '/\$\s*\.\s*ajax\s*\(\s*\{[^}]*url\s*:\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            // XMLHttpRequest .open("POST", "/api/contact")
+            '/\.open\s*\(\s*[\'"](?:POST|PUT|PATCH)[\'\"]\s*,\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+        ];
+
+        foreach ($apiCallPatterns as $pattern) {
+            if (preg_match_all($pattern, $content, $matches)) {
+                foreach ($matches[1] as $url) {
+                    // Only include URLs that contain form-related keywords
+                    if (preg_match('/(?:' . $formKeywords . ')/i', $url)) {
+                        $urls[] = $url;
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: API config objects with baseUrl + endpoint paths.
+        // Detects patterns like: {baseUrl:"https://api.example.com",endpoints:{contacts:"/api/contacts"}}
+        // Common in React/Vue/Svelte apps where the URL is constructed dynamically:
+        //   fetch(`${config.baseUrl}${config.endpoints.contacts}`, ...)
+        // Step 1: Find baseUrl values (absolute URLs)
+        if (preg_match_all('/baseUrl\s*:\s*[\'\"](https?:\/\/[^\s\'"]+)[\'"]/i', $content, $baseUrlMatches)) {
+            foreach ($baseUrlMatches[1] as $baseUrl) {
+                $baseUrl = rtrim($baseUrl, '/');
+
+                // Step 2: Find endpoint paths near the baseUrl (within ~500 chars, same config object)
+                // Look for patterns like: endpoints:{contacts:"/api/contacts",messages:"/api/messages"}
+                // or: apiUrl:"/api/contact", contactEndpoint:"/api/contact"
+                $escapedBase = preg_quote($baseUrl, '/');
+                $nearbyPattern = '/' . $escapedBase . '[\'"][,\s}].*?[\'"](\/[^\s\'"]+)[\'"]/s';
+
+                // Get surrounding context (up to 1000 chars after baseUrl)
+                $pos = strpos($content, $baseUrl);
+                if ($pos !== false) {
+                    $context = substr($content, $pos, 1000);
+
+                    // Find all quoted path strings (starting with /) in the nearby context
+                    if (preg_match_all('/[\'\"](\/[^\s\'"]+)[\'"]/i', $context, $pathMatches)) {
+                        foreach ($pathMatches[1] as $path) {
+                            // Only include paths that contain form-related keywords
+                            if (preg_match('/(?:' . $formKeywords . ')/i', $path)) {
+                                $urls[] = $baseUrl . $path;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Deduplicate and add to links
+        $seen = [];
+        foreach ($urls as $url) {
+            if (isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+
+            // Skip javascript:, mailto:, tel:, data: URLs
+            if (preg_match('/^(javascript|mailto|tel|data|#)/', $url)) {
+                continue;
+            }
+
+            $normalizedUrl = $this->normalizeUrl($url, $sourceUrl);
+            if ($normalizedUrl !== null) {
+                $links[] = [
+                    'url' => $normalizedUrl,
+                    'source' => $sourceUrl,
+                    'element' => 'form',
+                ];
+            }
         }
     }
 
@@ -1101,6 +1263,12 @@ class ScannerService
      */
     public function processInternalUrl(string $url, string $source, string $element = 'a'): array
     {
+        // Form endpoints only accept POST, so use POST with empty body.
+        // A GET/HEAD would return 405, which looks broken but isn't.
+        if ($element === 'form') {
+            return $this->processFormEndpoint($url, $source, 'internal');
+        }
+
         $result = $this->followRedirects($url, 'GET');
 
         $extractedLinks = [];
@@ -1150,7 +1318,7 @@ class ScannerService
      *
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
-     * @param string $element The HTML element type that contained this URL ('a', 'link', 'script', 'img', 'media').
+     * @param string $element The HTML element type that contained this URL ('a', 'link', 'script', 'img', 'media', 'form').
      * @return array{
      *     url: string,
      *     sourcePage: string,
@@ -1167,6 +1335,12 @@ class ScannerService
      */
     public function processExternalUrl(string $url, string $source, string $element = 'a'): array
     {
+        // Form endpoints only accept POST, so use POST with empty body.
+        // A HEAD/GET would return 405, which looks broken but isn't.
+        if ($element === 'form') {
+            return $this->processFormEndpoint($url, $source, 'external');
+        }
+
         $result = $this->followRedirects($url, 'HEAD');
 
         return [
@@ -1180,6 +1354,85 @@ class ScannerService
             'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
             'retryAfter' => $result['retryAfter'],
+        ];
+    }
+
+    /**
+     * Process a form submission endpoint URL and return scan result.
+     *
+     * Sends a POST request with an empty JSON body to check if the endpoint
+     * is alive. Form endpoints typically only accept POST, so GET/HEAD
+     * would return 405 Method Not Allowed.
+     *
+     * The following responses are considered "healthy" (endpoint exists and works):
+     * - 200-299: Success
+     * - 400: Bad Request — endpoint exists, needs proper data
+     * - 401/403: Auth required — endpoint exists, needs credentials
+     * - 405: Method Not Allowed — endpoint exists (may need different content-type)
+     * - 422: Unprocessable Entity — endpoint exists, validation rejected empty data
+     * - 429: Rate limited — endpoint exists, too many requests
+     *
+     * Only 404, 500+, timeouts, and connection errors indicate a truly broken endpoint.
+     *
+     * @param string $url The form endpoint URL.
+     * @param string $source The source page where this URL was found.
+     * @param string $type 'internal' or 'external'.
+     * @return array The scan result array.
+     */
+    public function processFormEndpoint(string $url, string $source, string $type = 'internal'): array
+    {
+        $status = 0;
+        $retryAfter = null;
+
+        try {
+            $response = $this->client->request('POST', $url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ],
+                'body' => '{}',
+            ]);
+            $status = $response->getStatusCode();
+        } catch (\GuzzleHttp\Exception\ConnectException $e) {
+            if (str_contains($e->getMessage(), 'timed out') || str_contains($e->getMessage(), 'timeout')) {
+                $status = 'Timeout';
+            } else {
+                $status = 'Error';
+            }
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            if ($e->hasResponse()) {
+                $status = $e->getResponse()->getStatusCode();
+                if ($status === 429) {
+                    $retryAfterHeader = $e->getResponse()->getHeaderLine('Retry-After');
+                    if (!empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
+                        $retryAfter = (int) $retryAfterHeader;
+                    }
+                }
+            } else {
+                $status = 'Error';
+            }
+        } catch (\Exception $e) {
+            $status = 'Error';
+        }
+
+        // These statuses confirm the endpoint exists and is functional,
+        // even though the request itself was rejected (no valid form data sent)
+        $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
+        $isOk = ($status >= 200 && $status < 300) || in_array($status, $healthyFormStatuses);
+
+        return [
+            'url' => $url,
+            'finalUrl' => $url,
+            'sourcePage' => $source,
+            'status' => $status,
+            'type' => $type,
+            'redirectChain' => [],
+            'isOk' => $isOk,
+            'isLoop' => false,
+            'hasHttpsDowngrade' => false,
+            'sourceElement' => 'form',
+            'extractedLinks' => [],
+            'retryAfter' => $retryAfter,
         ];
     }
 

@@ -21,6 +21,7 @@ class CrawlerService
     protected \SplQueue $queue;
     protected \SplQueue $priorityQueue;
     protected array $results = [];
+    protected array $processedFormKeys = [];
     protected ?Client $client = null;
     protected ?string $originalHost = null;
     protected ?string $canonicalHost = null;
@@ -189,6 +190,7 @@ class CrawlerService
         $this->queue = new \SplQueue();
         $this->priorityQueue = new \SplQueue();
         $this->results = [];
+        $this->processedFormKeys = [];
         $this->originalHost = parse_url($baseUrl, PHP_URL_HOST);
         $this->canonicalHost = null;
         $this->canonicalBaseResolved = false;
@@ -355,6 +357,8 @@ class CrawlerService
                     } else {
                         $this->queue->enqueue($queueItem);
                     }
+                } elseif ($linkElement === 'form') {
+                    $this->processVisitedFormEndpoint($linkUrl, $url, $scanElements);
                 }
             }
         }
@@ -380,6 +384,36 @@ class CrawlerService
         $this->results[] = $result;
 
         return $result;
+    }
+
+    /**
+     * Process a form endpoint whose target URL was already visited.
+     *
+     * Self-referencing forms (e.g., WordPress Contact Form 7, WPForms)
+     * commonly post back to the same page. Since the URL won't be
+     * re-queued, we still need to check and report the form endpoint.
+     *
+     * Deduplication is per url+source pair so the same form action
+     * discovered on different pages is still reported per page.
+     *
+     * @param string $linkUrl  The form action URL.
+     * @param string $sourceUrl The page where the form was found.
+     * @param array<string> $scanElements Elements the user wants to scan.
+     */
+    protected function processVisitedFormEndpoint(string $linkUrl, string $sourceUrl, array $scanElements): void
+    {
+        if (!in_array('form', $scanElements)) {
+            return;
+        }
+
+        $key = $linkUrl . '|' . $sourceUrl;
+        if (isset($this->processedFormKeys[$key])) {
+            return;
+        }
+        $this->processedFormKeys[$key] = true;
+
+        $formResult = $this->scannerService->processFormEndpoint($linkUrl, $sourceUrl);
+        $this->results[] = $formResult;
     }
 
     /**

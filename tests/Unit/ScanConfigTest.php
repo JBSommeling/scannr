@@ -159,7 +159,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img', 'media'],
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
             statusFilter: 'all',
             elementFilter: 'all',
             outputFormat: 'table',
@@ -179,7 +179,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img', 'media'],
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
             statusFilter: 'broken',
             elementFilter: 'all',
             outputFormat: 'table',
@@ -199,7 +199,7 @@ class ScanConfigTest extends TestCase
             maxDepth: 3,
             maxUrls: 100,
             timeout: 5,
-            scanElements: ['a', 'link', 'script', 'img', 'media'],
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
             statusFilter: 'all',
             elementFilter: 'a',
             outputFormat: 'table',
@@ -276,7 +276,7 @@ class ScanConfigTest extends TestCase
 
         $result = ScanConfig::fromCommandOptions($command);
 
-        $this->assertEquals(['a', 'link', 'script', 'img', 'media'], $result['config']->scanElements);
+        $this->assertEquals(['a', 'link', 'script', 'img', 'media', 'form'], $result['config']->scanElements);
     }
 
     public function test_from_command_options_parses_scan_elements_comma_separated(): void
@@ -487,7 +487,7 @@ class ScanConfigTest extends TestCase
         $this->assertEquals(3, $config->maxDepth);
         $this->assertEquals(300, $config->maxUrls);
         $this->assertEquals(5, $config->timeout);
-        $this->assertEquals(['a', 'link', 'script', 'img', 'media'], $config->scanElements);
+        $this->assertEquals(['a', 'link', 'script', 'img', 'media', 'form'], $config->scanElements);
         $this->assertEquals('all', $config->statusFilter);
         $this->assertEquals('all', $config->elementFilter);
         $this->assertEquals('json', $config->outputFormat);
