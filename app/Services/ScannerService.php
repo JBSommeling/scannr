@@ -759,24 +759,7 @@ class ScannerService
      */
     protected function getFormKeywords(): array
     {
-        $defaults = [
-            'contact', 'message', 'inquiry', 'inquiries', 'feedback',
-            'submit', 'form', 'send', 'mail', 'email',
-            'subscribe', 'newsletter', 'signup', 'sign-up', 'register',
-            'lead', 'booking', 'reservation', 'appointment', 'quote',
-            'request', 'support', 'ticket', 'complaint',
-            'checkout', 'order', 'payment', 'donate', 'donation',
-            'apply', 'application', 'enroll', 'enrollment',
-            'survey', 'rsvp', 'review', 'comment', 'reply',
-            'upload', 'report', 'claim',
-            'login', 'signin', 'sign-in', 'verify',
-        ];
-
-        try {
-            return config('scanner.form_keywords', $defaults) ?? $defaults;
-        } catch (\Throwable) {
-            return $defaults;
-        }
+        return config('scanner.form_keywords');
     }
 
     /**
