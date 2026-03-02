@@ -1907,6 +1907,110 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertNotEmpty($output->tables);
         $this->assertEquals('429 (ok)', $output->tables[0]['rows'][0]['Status']);
     }
+
+    public function test_format_table_displays_separate_verification_table(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/normal',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+            [
+                'url' => 'https://example.com/suspicious',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'suspicious_dynamic_url',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Should have 2 tables: the main table and the verification table
+        $this->assertCount(2, $output->tables);
+
+        // Second table should be the verification table with the Reason column
+        $verificationTable = $output->tables[1];
+        $this->assertContains('Reason', $verificationTable['headers']);
+        $this->assertCount(1, $verificationTable['rows']);
+        $this->assertEquals('https://example.com/suspicious', $verificationTable['rows'][0]['URL']);
+        $this->assertEquals('suspicious_dynamic_url', $verificationTable['rows'][0]['Reason']);
+    }
+
+    public function test_format_table_no_verification_table_when_none_flagged(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/normal',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Only the main table, no verification table
+        $this->assertCount(1, $output->tables);
+    }
+
+    public function test_format_table_verification_table_shows_reason_column(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/blocked',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Broken links table + verification table (broken link with needsVerification)
+        $verificationTable = collect($output->tables)->first(fn($t) => in_array('Reason', $t['headers']));
+        $this->assertNotNull($verificationTable);
+        $this->assertEquals('bot_protection', $verificationTable['rows'][0]['Reason']);
+        $this->assertEquals('403 (verify)', $verificationTable['rows'][0]['Status']);
+    }
 }
 
 

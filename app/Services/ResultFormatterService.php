@@ -152,6 +152,26 @@ class ResultFormatterService
 
             $output->table(['URL', 'Source', 'Element', 'Status', 'Error'], $brokenTableData);
         }
+
+        // Display needs-verification links separately
+        $verificationLinks = array_filter($results, fn($r) => $r['needsVerification'] ?? false);
+        if (!empty($verificationLinks)) {
+            $output->newLine();
+            $output->warn('Needs Verification:');
+
+            $verificationTableData = [];
+            foreach ($verificationLinks as $result) {
+                $verificationTableData[] = [
+                    'URL' => $this->truncate($result['url'], 60),
+                    'Source' => $this->truncate($result['sourcePage'], 40),
+                    'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                    'Status' => $this->formatStatus($result),
+                    'Reason' => $result['verificationReason'] ?? '',
+                ];
+            }
+
+            $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $verificationTableData);
+        }
     }
 
     /**
