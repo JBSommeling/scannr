@@ -37,9 +37,9 @@ class ScanStatistics
         $broken = count(array_filter($results, fn($r) => !$r['isOk'] && $r['status'] !== 'Timeout'));
         $timeouts = count(array_filter($results, fn($r) => $r['status'] === 'Timeout'));
 
-        // Redirect chain statistics (a "chain" is 2+ hops; single redirects are just redirects)
-        $redirectChainCount = count(array_filter($results, fn($r) => count($r['redirectChain'] ?? []) >= 2));
-        $totalRedirectHops = array_sum(array_map(fn($r) => count($r['redirectChain'] ?? []), $results));
+        // Redirect chain statistics — only for internal URLs (external chains are not actionable)
+        $redirectChainCount = count(array_filter($results, fn($r) => ($r['type'] ?? 'internal') === 'internal' && count($r['redirectChain'] ?? []) >= 2));
+        $totalRedirectHops = array_sum(array_map(fn($r) => ($r['type'] ?? 'internal') === 'internal' ? count($r['redirectChain'] ?? []) : 0, $results));
 
         // HTTPS downgrade count
         $httpsDowngrades = count(array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false));

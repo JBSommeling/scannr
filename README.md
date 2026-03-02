@@ -277,10 +277,10 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
    - `<a download>`, `[data-href]`, `[data-url]`, `[data-download]`, `[data-file]` - Download links (including JS-triggered)
    - `[onclick]` - URLs in inline JS handlers (`location.href`, `window.open()`, `download()`)
    - Inline `<script>` content (with `--js`) - Download URLs in JS data blobs, JSON config, React/Next.js/Nuxt data
-   - External JS bundles (with `--js`) - Download URLs compiled into React/Vue/Svelte bundles (same-domain only)
+   - External JS bundles (with `--js`) - URLs and download links compiled into SPA bundles (React, Vue, Svelte, Angular — same-domain only)
 6. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.)
-7. **External Links**: External URLs are checked with HEAD requests for efficiency
-8. **Redirect Handling**: Redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings
+7. **External Links**: External URLs are checked with HEAD requests for efficiency. Only the first redirect destination is tracked — external redirect chains are not reported since they are not actionable for site owners
+8. **Redirect Handling**: Internal redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings. Redirect chain statistics only count internal URLs
 9. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
 
 ## Notes
@@ -633,4 +633,3 @@ return [
     'hard_max_urls' => 2000,
 ];
 ```
-

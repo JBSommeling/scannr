@@ -171,11 +171,11 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_counts_correctly(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://example.com/redirect'], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 404, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 500, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 'Timeout', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => ['https://example.com/redirect'], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 404, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 500, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => false, 'status' => 'Timeout', 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
@@ -234,6 +234,20 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(2, $stats['httpsDowngrades']);
         $this->assertEquals(0, $stats['redirectChainCount']);
         $this->assertEquals(3, $stats['totalRedirectHops']);
+    }
+
+    public function test_calculate_stats_excludes_external_redirect_chains(): void
+    {
+        $results = [
+            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => ['https://example.com/a', 'https://example.com/b'], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'type' => 'external', 'redirectChain' => ['https://external.com/redirect'], 'hasHttpsDowngrade' => false],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        // Only the internal chain should be counted
+        $this->assertEquals(1, $stats['redirectChainCount']);
+        $this->assertEquals(2, $stats['totalRedirectHops']);
     }
 
     public function test_filter_by_element_returns_only_media(): void

@@ -953,4 +953,36 @@ class LinkExtractorTest extends TestCase
         $this->assertEmpty($formLinks);
     }
 
+    public function test_extract_links_finds_urls_in_inline_script_with_js_flag(): void
+    {
+        $html = '<html><body><script>const projects=[{url:"https://tree-demo.sommeling.dev/"},{url:"https://yoga-demo.sommeling.dev/"}];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://sommeling.dev', true);
+
+        $urls = array_column($links, 'url');
+        $this->assertContains('https://tree-demo.sommeling.dev', $urls);
+        $this->assertContains('https://yoga-demo.sommeling.dev', $urls);
+    }
+
+    public function test_extract_links_does_not_find_urls_in_inline_script_without_js_flag(): void
+    {
+        $html = '<html><body><script>const projects=[{url:"https://tree-demo.sommeling.dev/"},{url:"https://yoga-demo.sommeling.dev/"}];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://sommeling.dev', false);
+
+        $urls = array_column($links, 'url');
+        $this->assertNotContains('https://tree-demo.sommeling.dev', $urls);
+        $this->assertNotContains('https://yoga-demo.sommeling.dev', $urls);
+    }
+
+    public function test_extract_links_js_bundle_scanning_skips_cdn_urls(): void
+    {
+        $html = '<html><body><script>const cdn="https://cdn.jsdelivr.net/npm/lib";const site="https://myapp.example.com/page";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $urls = array_column($links, 'url');
+        $this->assertContains('https://myapp.example.com/page', $urls);
+        $this->assertNotContains('https://cdn.jsdelivr.net/npm/lib', $urls);
+    }
 }
