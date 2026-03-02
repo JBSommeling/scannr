@@ -89,12 +89,17 @@ class ResultFormatterService
             }
         }
 
+        // Verification warning
+        if ($stats['needsVerificationCount'] > 0) {
+            $output->warn("  ⚠ Needs verification: {$stats['needsVerificationCount']}");
+        }
+
         // Broken links alert
         if ($stats['broken'] > 0) {
             $output->error("  ⚠ Broken links: {$stats['broken']}");
         }
 
-        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0 || $stats['broken'] > 0) {
+        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0 || $stats['needsVerificationCount'] > 0 || $stats['broken'] > 0) {
             $output->newLine();
         }
 
@@ -239,16 +244,18 @@ class ResultFormatterService
             $output->line("# Error: {$error}");
         }
 
-        $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade');
+        $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReason');
 
         foreach ($results as $result) {
             $redirects = implode(' -> ', $result['redirectChain']);
             $isOk = $result['isOk'] ? 'true' : 'false';
             $httpsDowngrade = ($result['hasHttpsDowngrade'] ?? false) ? 'true' : 'false';
             $element = $result['sourceElement'] ?? 'a';
+            $needsVerification = ($result['needsVerification'] ?? false) ? 'true' : 'false';
+            $verificationReason = $result['verificationReason'] ?? '';
 
             $output->line(sprintf(
-                '"%s","%s","%s","%s","%s","%s","%s","%s"',
+                '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"',
                 str_replace('"', '""', $result['url']),
                 str_replace('"', '""', $result['sourcePage']),
                 $element,
@@ -256,7 +263,9 @@ class ResultFormatterService
                 $result['type'],
                 str_replace('"', '""', $redirects),
                 $isOk,
-                $httpsDowngrade
+                $httpsDowngrade,
+                $needsVerification,
+                $verificationReason
             ));
         }
     }
@@ -280,18 +289,36 @@ class ResultFormatterService
      * (e.g., 422 Unprocessable Entity from posting empty data), appends
      * "(ok)" to make it clear the endpoint exists and is functional.
      *
+     * For URLs needing verification, appends "(verify)" in table output.
+     *
      * @param array $result The scan result item.
+     * @param bool $isTableOutput Whether formatting for table (vs JSON/CSV).
      * @return string|int The formatted status for display.
      */
-    protected function formatStatus(array $result): string|int
+    protected function formatStatus(array $result, bool $isTableOutput = true): string|int
     {
         $status = $result['status'];
         $isOk = $result['isOk'] ?? false;
         $element = $result['sourceElement'] ?? 'a';
+        $needsVerification = $result['needsVerification'] ?? false;
+        $verificationReason = $result['verificationReason'] ?? null;
 
         // Annotate healthy non-2xx form endpoints so the user knows it's alive
         if ($element === 'form' && $isOk && is_int($status) && ($status < 200 || $status >= 300)) {
             return "{$status} (ok)";
+        }
+
+        // Annotate URLs needing verification
+        if ($needsVerification && $isTableOutput) {
+            // For bot protection (403/405/Error/Timeout), always show annotation
+            if ($verificationReason === 'bot_protection') {
+                return "{$status} (verify)";
+            }
+
+            // For suspicious URLs and JS bundle extracted, only show annotation for 200 status
+            if ($status === 200 && in_array($verificationReason, ['suspicious_dynamic_url', 'js_bundle_extracted'])) {
+                return "{$status} (verify)";
+            }
         }
 
         return $status;

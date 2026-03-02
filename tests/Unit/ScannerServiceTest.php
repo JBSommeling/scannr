@@ -522,5 +522,91 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(200, $result['status']);
     }
+
+    // ======================
+    // Verification flag tests
+    // ======================
+
+    public function test_process_external_url_propagates_verification_flags(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://external.com/page',
+            'https://example.com',
+            'a',
+            true,
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('js_bundle_extracted', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_403(): void
+    {
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_405(): void
+    {
+        $mockClient = $this->createMockClient(405);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_timeout(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willThrowException(new \GuzzleHttp\Exception\ConnectException('Connection failed', new \GuzzleHttp\Psr7\Request('HEAD', 'https://external.com')));
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals('Timeout', $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_internal_url_propagates_verification_flags(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com',
+            'start',
+            'a',
+            true,
+            'suspicious_dynamic_url'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('suspicious_dynamic_url', $result['verificationReason']);
+    }
 }
+
 

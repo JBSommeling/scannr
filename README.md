@@ -665,6 +665,75 @@ Noise detection rules can be customized in `config/scanner.php`:
 ],
 ```
 
+## URL Verification Warnings
+
+Some URLs require manual verification because they may not be real site links or may have bot protection. The scanner automatically flags these URLs with verification warnings in all output formats.
+
+### Verification Reasons
+
+| Reason | What It Means | Example |
+|--------|---------------|---------|
+| `suspicious_dynamic_url` | URL contains incomplete template literals or dynamic syntax | `https://alpinejs.dev/plugins/${r}` or `https://api.example.com/{id}` |
+| `js_bundle_extracted` | Clean URL found in JS bundle — may be library documentation | `https://atomiks.github.io/tippyjs/v6/all-props` |
+| `bot_protection` | Request returned 403/405 or network error — likely has bot protection | Status: `403 (verify)` |
+
+### How It Works
+
+1. **Suspicious URLs**: URLs extracted from JavaScript bundles are checked for incomplete template literals (`${`, `#{`, `{`, `}`), backticks, or malformed syntax (e.g., `",n`). These indicate the URL may be dynamically constructed and not fully resolved. Both internal and external URLs are flagged if they have suspicious syntax.
+
+2. **JS Bundle URLs**: External URLs found in JavaScript bundles (when `--js` is enabled) are flagged since they're often references to library documentation embedded by bundled dependencies, not actual site links. **Internal URLs (same domain and subdomains) are NOT flagged** unless they have suspicious syntax.
+
+3. **Bot Protection**: External links returning 403 Forbidden, 405 Method Not Allowed, or network timeouts/errors are flagged as they may have bot protection blocking the scanner.
+
+### Output Formats
+
+**Table Output** — Shows `(verify)` annotation next to status code:
+
+```
++----------------------------------------------------+------------------------------+----------+---------------+----------+
+| URL                                                | Source                       | Element  | Status        | Type     |
++----------------------------------------------------+------------------------------+----------+---------------+----------+
+| https://alpinejs.dev/plugins/${r}                  | https://example.com          | <a>      | 200 (verify)  | external |
+| https://external.com/api                           | https://example.com          | <a>      | 403 (verify)  | external |
++----------------------------------------------------+------------------------------+----------+---------------+----------+
+
+Summary:
+  ⚠ Needs verification: 2
+```
+
+**JSON Output** — Includes `needsVerification` boolean and `verificationReason` string:
+
+```json
+{
+  "summary": {
+    "needsVerificationCount": 2
+  },
+  "results": [
+    {
+      "url": "https://alpinejs.dev/plugins/${r}",
+      "status": 200,
+      "needsVerification": true,
+      "verificationReason": "suspicious_dynamic_url"
+    }
+  ]
+}
+```
+
+**CSV Output** — Includes `NeedsVerification` and `VerificationReason` columns:
+
+```csv
+URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReason
+"https://alpinejs.dev/plugins/${r}","https://example.com","a","200","external","","true","false","true","suspicious_dynamic_url"
+```
+
+### Interpreting Verification Flags
+
+- **Suspicious dynamic URLs**: Manually inspect these in your source code. They may be incomplete string concatenations or framework-specific URL patterns that weren't fully resolved.
+  
+- **JS bundle URLs**: Check if these are actual site features or just library documentation. Library docs (React, Alpine.js, Tippy.js, etc.) bundled by dependencies can safely be ignored.
+
+- **Bot protection**: Try opening the URL in a browser. If it works there but fails in the scanner, the site likely blocks automated requests. Consider whitelisting your IP or using authentication if you control the target site.
+
 ## Hard Limits
 
 The scanner enforces hard limits to prevent excessive resource usage, regardless of what values are passed via command line options. If a user specifies values exceeding these limits, a warning is displayed and the values are automatically capped.

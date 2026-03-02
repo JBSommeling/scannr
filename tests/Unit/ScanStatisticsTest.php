@@ -444,4 +444,31 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
     }
 
+    public function test_calculate_stats_includes_needs_verification_count(): void
+    {
+        $results = [
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'js_bundle_extracted'],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'suspicious_dynamic_url'],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => false],
+            ['isOk' => false, 'status' => 403, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'bot_protection'],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(4, $stats['total']);
+        $this->assertEquals(3, $stats['needsVerificationCount']);
+    }
+
+    public function test_calculate_stats_verification_count_zero_when_none_flagged(): void
+    {
+        $results = [
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(0, $stats['needsVerificationCount']);
+    }
 }
+

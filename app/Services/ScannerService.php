@@ -69,10 +69,12 @@ class ScannerService
      * @param string $url The internal URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
+     * @param bool $needsVerification Whether this URL needs manual verification.
+     * @param string|null $verificationReason Reason for verification flag.
      * @return array
      * @throws GuzzleException
      */
-    public function processInternalUrl(string $url, string $source, string $element = 'a'): array
+    public function processInternalUrl(string $url, string $source, string $element = 'a', bool $needsVerification = false, ?string $verificationReason = null): array
     {
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
@@ -117,6 +119,8 @@ class ScannerService
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
             'retryAfter' => $result['retryAfter'],
+            'needsVerification' => $needsVerification,
+            'verificationReason' => $verificationReason,
         ];
     }
 
@@ -130,10 +134,12 @@ class ScannerService
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
+     * @param bool $needsVerification Whether this URL needs manual verification.
+     * @param string|null $verificationReason Reason for verification flag.
      * @return array
      * @throws GuzzleException
      */
-    public function processExternalUrl(string $url, string $source, string $element = 'a'): array
+    public function processExternalUrl(string $url, string $source, string $element = 'a', bool $needsVerification = false, ?string $verificationReason = null): array
     {
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
@@ -146,17 +152,26 @@ class ScannerService
         // We don't care about external redirect chains, only whether the link works.
         $firstRedirect = !empty($result['chain']) ? [$result['chain'][0]] : [];
 
+        // Detect bot protection: 403 Forbidden, 405 Method Not Allowed, or network errors
+        $status = $result['finalStatus'];
+        if (in_array($status, [403, 405]) || in_array($status, ['Error', 'Timeout'])) {
+            $needsVerification = true;
+            $verificationReason = 'bot_protection';
+        }
+
         return [
             'url' => $url,
             'sourcePage' => $source,
-            'status' => $result['finalStatus'],
+            'status' => $status,
             'type' => 'external',
             'redirectChain' => $firstRedirect,
-            'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
+            'isOk' => is_int($status) && $status >= 200 && $status < 300,
             'isLoop' => false,
             'hasHttpsDowngrade' => false,
             'sourceElement' => $element,
             'retryAfter' => $result['retryAfter'],
+            'needsVerification' => $needsVerification,
+            'verificationReason' => $verificationReason,
         ];
     }
 }

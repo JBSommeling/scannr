@@ -542,10 +542,18 @@ class LinkExtractor
     protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
     {
         // Extract full URLs from JavaScript (https://... or http://...)
-        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)/i', $content, $matches)) {
-            foreach ($matches[1] as $url) {
+        // Capture up to 3 chars after URL to detect suspicious patterns (e.g., ",n or `,r)
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,]{0,3})/i', $content, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $rawUrl = $match[1];
+                $postContext = $match[2] ?? '';
+
+                // Check for suspicious syntax in URL itself OR in the post-context
+                $hasSuspiciousSyntax = $this->hasSuspiciousDynamicUrlSyntax($rawUrl) ||
+                                      preg_match('/["\'`]\s*,/', $postContext);
+
                 // Clean up any trailing punctuation or quotes
-                $url = rtrim($url, '.,;:"\')}>]');
+                $url = rtrim($rawUrl, '.,;:"\')}>]');
 
                 // Skip very common CDN/library URLs and analytics
                 if (preg_match('/(googleapis|gstatic|cloudflare|jsdelivr|unpkg|cdnjs|analytics|gtag|facebook\.net)/i', $url)) {
@@ -568,13 +576,55 @@ class LinkExtractor
                 }
 
                 if (!$alreadyAdded) {
+                    // Check if this is an internal or external URL
+                    // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
+                    $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
+
+                    // Only flag URLs that need verification:
+                    // - Internal URLs: only if they have suspicious syntax
+                    // - External URLs: always (could be library docs)
+                    $needsVerification = $hasSuspiciousSyntax || !$isInternal;
+                    $verificationReason = null;
+
+                    if ($needsVerification) {
+                        $verificationReason = $hasSuspiciousSyntax
+                            ? 'suspicious_dynamic_url'
+                            : 'js_bundle_extracted';
+                    }
+
                     $links[] = [
                         'url' => $normalizedUrl,
                         'source' => $sourceUrl,
                         'element' => 'a', // Treat as anchor link
+                        'needsVerification' => $needsVerification,
+                        'verificationReason' => $verificationReason,
                     ];
                 }
             }
         }
+    }
+
+    /**
+     * Check if a URL contains suspicious dynamic syntax indicating an incomplete template literal.
+     *
+     * Detects patterns like:
+     * - ${variable} - JavaScript template literal syntax
+     * - #{variable} - Ruby/CoffeeScript interpolation
+     * - {variable} or {{variable}} - Vue, Angular, Handlebars interpolation
+     * - Backticks (`) - Incomplete template literal delimiters
+     * - Unencoded commas or newlines - Malformed URLs
+     * - Quotes followed by comma (array/concatenation fragments)
+     *
+     * @param  string  $url  The URL to check.
+     * @return bool True if the URL contains suspicious dynamic syntax.
+     */
+    protected function hasSuspiciousDynamicUrlSyntax(string $url): bool
+    {
+        // Check for template literal syntax, curly braces, backticks, newlines, trailing commas, or quote+comma patterns
+        if (preg_match('/\$\{|\#\{|\{|\}|`|,\w+$|"\s*,|\n/', $url)) {
+            return true;
+        }
+
+        return false;
     }
 }

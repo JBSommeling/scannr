@@ -26,7 +26,8 @@ class ScanStatistics
      *     timeouts: int,
      *     redirectChainCount: int,
      *     totalRedirectHops: int,
-     *     httpsDowngrades: int
+     *     httpsDowngrades: int,
+     *     needsVerificationCount: int
      * }
      */
     public function calculateStats(array $results): array
@@ -44,6 +45,9 @@ class ScanStatistics
         // HTTPS downgrade count
         $httpsDowngrades = count(array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false));
 
+        // Verification count — URLs that need manual verification
+        $needsVerificationCount = count(array_filter($results, fn($r) => $r['needsVerification'] ?? false));
+
         return [
             'total' => $total,
             'ok' => $ok,
@@ -53,6 +57,7 @@ class ScanStatistics
             'redirectChainCount' => $redirectChainCount,
             'totalRedirectHops' => $totalRedirectHops,
             'httpsDowngrades' => $httpsDowngrades,
+            'needsVerificationCount' => $needsVerificationCount,
         ];
     }
 

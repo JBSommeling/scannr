@@ -1666,4 +1666,163 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertNotEmpty($output->tables);
         $this->assertCount(2, $output->tables[0]['rows']);
     }
+
+    // ======================
+    // Verification flag tests
+    // ======================
+
+    public function test_format_table_shows_verification_annotation_for_suspicious_url(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'suspicious_dynamic_url',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('200 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_annotation_for_bot_protection(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/blocked',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('403 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_count_in_summary(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'js_bundle_extracted',
+            ],
+            [
+                'url' => 'https://example.com/test2',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $warnings = implode("\n", $output->warnings);
+        $this->assertStringContainsString('⚠ Needs verification: 2', $warnings);
+    }
+
+    public function test_format_json_includes_verification_fields(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'js_bundle_extracted',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertTrue($decoded['results'][0]['needsVerification']);
+        $this->assertEquals('js_bundle_extracted', $decoded['results'][0]['verificationReason']);
+        $this->assertEquals(1, $decoded['summary']['needsVerificationCount']);
+    }
+
+    public function test_format_csv_includes_verification_columns(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'suspicious_dynamic_url',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $csvLines = $output->lines;
+        $this->assertStringContainsString('NeedsVerification,VerificationReason', $csvLines[0]);
+        $this->assertStringContainsString('"true","suspicious_dynamic_url"', $csvLines[1]);
+    }
 }
+
+
