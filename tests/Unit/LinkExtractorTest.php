@@ -1129,6 +1129,36 @@ class LinkExtractorTest extends TestCase
         $this->assertTrue($link['needsVerification'] ?? false, 'Internal URL with suspicious syntax should need verification');
         $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
     }
+
+    public function test_extract_links_js_bundle_flags_localhost_as_developer_leftover(): void
+    {
+        $html = '<html><body><script>const api="http://localhost/api/contacts";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, 'localhost URL from JS bundle should need verification');
+        $this->assertEquals('developer_leftover', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_flags_127_0_0_1_as_developer_leftover(): void
+    {
+        $html = '<html><body><script>const api="http://127.0.0.1:8000/api/submit";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, '127.0.0.1 URL from JS bundle should need verification');
+        $this->assertEquals('developer_leftover', $link['verificationReason'] ?? null);
+    }
 }
 
 

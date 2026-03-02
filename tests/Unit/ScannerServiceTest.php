@@ -507,6 +507,20 @@ class ScannerServiceTest extends TestCase
         $this->assertTrue($result['isOk']);
     }
 
+    public function test_form_endpoint_always_has_needs_verification_false(): void
+    {
+        $mockClient = $this->createMockClient(429);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertArrayHasKey('needsVerification', $result);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertArrayHasKey('verificationReason', $result);
+        $this->assertNull($result['verificationReason']);
+    }
+
     public function test_non_form_external_url_still_uses_head(): void
     {
         $mockClient = $this->createMock(Client::class);

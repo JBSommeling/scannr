@@ -310,13 +310,14 @@ class ResultFormatterService
 
         // Annotate URLs needing verification
         if ($needsVerification && $isTableOutput) {
-            // For bot protection (403/405/Error/Timeout), always show annotation
-            if ($verificationReason === 'bot_protection') {
+            // For bot protection (403/405/Error/Timeout) and suspicious URLs (any status),
+            // always show annotation
+            if (in_array($verificationReason, ['bot_protection', 'suspicious_dynamic_url', 'developer_leftover'])) {
                 return "{$status} (verify)";
             }
 
-            // For suspicious URLs and JS bundle extracted, only show annotation for 200 status
-            if ($status === 200 && in_array($verificationReason, ['suspicious_dynamic_url', 'js_bundle_extracted'])) {
+            // For JS bundle extracted, only show annotation for 200 status
+            if ($status === 200 && $verificationReason === 'js_bundle_extracted') {
                 return "{$status} (verify)";
             }
         }

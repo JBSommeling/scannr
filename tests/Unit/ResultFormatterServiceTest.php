@@ -1823,6 +1823,90 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertStringContainsString('NeedsVerification,VerificationReason', $csvLines[0]);
         $this->assertStringContainsString('"true","suspicious_dynamic_url"', $csvLines[1]);
     }
+
+    public function test_format_table_shows_verification_annotation_for_suspicious_url_with_404(): void
+    {
+        $results = [
+            [
+                'url' => 'https://github.com/sommelingdev',
+                'sourcePage' => 'https://www.sommeling.dev',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'suspicious_dynamic_url',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('404 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_annotation_for_developer_leftover(): void
+    {
+        $results = [
+            [
+                'url' => 'http://localhost',
+                'sourcePage' => 'https://yoga-demo.sommeling.dev',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'developer_leftover',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('200 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_form_endpoint_has_needs_verification_false(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.sommeling.dev/api/contacts',
+                'finalUrl' => 'https://app.sommeling.dev/api/contacts',
+                'sourcePage' => 'https://www.sommeling.dev',
+                'status' => 429,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+                'retryAfter' => null,
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // 429 (ok) — healthy form endpoint, no (verify) annotation
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('429 (ok)', $output->tables[0]['rows'][0]['Status']);
+    }
 }
 
 

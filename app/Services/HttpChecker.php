@@ -361,6 +361,8 @@ class HttpChecker
             'sourceElement' => 'form',
             'extractedLinks' => [],
             'retryAfter' => $retryAfter,
+            'needsVerification' => false,
+            'verificationReason' => null,
         ];
     }
 }

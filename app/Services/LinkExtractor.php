@@ -587,9 +587,16 @@ class LinkExtractor
                     $verificationReason = null;
 
                     if ($needsVerification) {
-                        $verificationReason = $hasSuspiciousSyntax
-                            ? 'suspicious_dynamic_url'
-                            : 'js_bundle_extracted';
+                        $parsedHost = parse_url($normalizedUrl, PHP_URL_HOST);
+                        $isLoopback = in_array($parsedHost, ['localhost', '127.0.0.1', '::1'], true);
+
+                        if ($hasSuspiciousSyntax) {
+                            $verificationReason = 'suspicious_dynamic_url';
+                        } elseif ($isLoopback) {
+                            $verificationReason = 'developer_leftover';
+                        } else {
+                            $verificationReason = 'js_bundle_extracted';
+                        }
                     }
 
                     $links[] = [
