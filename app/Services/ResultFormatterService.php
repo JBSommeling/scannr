@@ -13,7 +13,7 @@ use App\DTO\ScanConfig;
 class ResultFormatterService
 {
     public function __construct(
-        protected ScannerService $scannerService,
+        protected ScanStatistics $scanStatistics,
     ) {}
 
     /**
@@ -27,11 +27,11 @@ class ResultFormatterService
     public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): void
     {
         // Filter results
-        $filtered = $this->scannerService->filterResults($results, $config->statusFilter);
-        $filtered = $this->scannerService->filterByElement($filtered, $config->elementFilter);
+        $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
+        $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
         // Calculate stats
-        $stats = $this->scannerService->calculateStats($filtered);
+        $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 
@@ -157,10 +157,10 @@ class ResultFormatterService
      */
     public function toJsonArray(array $results, ScanConfig $config, ?string $error = null): array
     {
-        $filtered = $this->scannerService->filterResults($results, $config->statusFilter);
-        $filtered = $this->scannerService->filterByElement($filtered, $config->elementFilter);
+        $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
+        $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
-        $stats = $this->scannerService->calculateStats($filtered);
+        $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 

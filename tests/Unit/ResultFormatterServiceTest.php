@@ -5,19 +5,19 @@ namespace Tests\Unit;
 use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
 use App\Services\ResultFormatterService;
-use App\Services\ScannerService;
+use App\Services\ScanStatistics;
 use PHPUnit\Framework\TestCase;
 
 class ResultFormatterServiceTest extends TestCase
 {
     private ResultFormatterService $formatter;
-    private ScannerService $scannerService;
+    private ScanStatistics $scanStatistics;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scannerService = new ScannerService();
-        $this->formatter = new ResultFormatterService($this->scannerService);
+        $this->scanStatistics = new ScanStatistics();
+        $this->formatter = new ResultFormatterService($this->scanStatistics);
     }
 
     private function createConfig(array $overrides = []): ScanConfig
