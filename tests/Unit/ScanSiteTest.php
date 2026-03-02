@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ResultFormatterService;
-use App\Services\ScannerService;
+use App\Services\ScanStatistics;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
@@ -15,8 +15,8 @@ class ScanSiteTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $scannerService = new ScannerService();
-        $this->formatter = new ResultFormatterService($scannerService);
+        $scanStatistics = new ScanStatistics();
+        $this->formatter = new ResultFormatterService($scanStatistics);
         $this->reflection = new ReflectionClass($this->formatter);
     }
 

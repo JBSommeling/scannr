@@ -13,7 +13,7 @@ use Random\RandomException;
  * Service for crawling websites using BFS traversal.
  *
  * Handles the main crawl loop, queue management, visited tracking,
- * and orchestrates the ScannerService and SitemapService.
+ * and orchestrates the ScannerService, UrlNormalizer, HttpChecker, and SitemapService.
  */
 class CrawlerService
 {
@@ -39,6 +39,8 @@ class CrawlerService
 
     public function __construct(
         protected ScannerService $scannerService,
+        protected UrlNormalizer $urlNormalizer,
+        protected HttpChecker $httpChecker,
         protected SitemapService $sitemapService,
         protected RobotsService $robotsService = new RobotsService(),
     ) {}
@@ -68,14 +70,15 @@ class CrawlerService
         // Configure HTTP client (use injected client or create new one)
         $client = $this->client ?? $this->createHttpClient($config->timeout);
 
-        // Configure scanner service
+        // Configure services
         $this->scannerService->setClient($client);
-        $this->scannerService->setBaseUrl($config->baseUrl);
+        $this->httpChecker->setClient($client);
+        $this->urlNormalizer->setBaseUrl($config->baseUrl);
 
         $this->configureJsRendering($config, $onSitemapDiscovery);
 
         if (!empty($config->customTrackingParams)) {
-            $this->scannerService->addTrackingParams($config->customTrackingParams);
+            $this->urlNormalizer->addTrackingParams($config->customTrackingParams);
         }
 
         // Configure sitemap service
@@ -113,7 +116,7 @@ class CrawlerService
             $element = $current['element'] ?? 'a';
 
             // Skip if already visited (using canonical URL key for deduplication)
-            $urlKey = $this->scannerService->canonicalUrlKey($url);
+            $urlKey = $this->urlNormalizer->canonicalUrlKey($url);
             if (isset($this->visited[$urlKey])) {
                 continue;
             }
@@ -124,7 +127,7 @@ class CrawlerService
             }
 
             // Skip if disallowed by robots.txt (only for internal URLs)
-            if ($config->respectRobots && $this->scannerService->isInternalUrl($url) && !$this->robotsService->isAllowed($url)) {
+            if ($config->respectRobots && $this->urlNormalizer->isInternalUrl($url) && !$this->robotsService->isAllowed($url)) {
                 $this->visited[$urlKey] = true;
                 continue;
             }
@@ -132,7 +135,7 @@ class CrawlerService
             $this->visited[$urlKey] = true;
             $scannedCount++;
 
-            $isInternal = $this->scannerService->isInternalUrl($url);
+            $isInternal = $this->urlNormalizer->isInternalUrl($url);
 
             // Process URL with 429 retry handling
             $result = $this->processUrlWithRetry(
@@ -342,7 +345,7 @@ class CrawlerService
                 // Rewrite URL to canonical host if needed (e.g., www -> non-www)
                 $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
 
-                $linkKey = $this->scannerService->canonicalUrlKey($linkUrl);
+                $linkKey = $this->urlNormalizer->canonicalUrlKey($linkUrl);
                 if (!isset($this->visited[$linkKey])) {
                     $queueItem = [
                         'url' => $linkUrl,
@@ -412,7 +415,7 @@ class CrawlerService
         }
         $this->processedFormKeys[$key] = true;
 
-        $formResult = $this->scannerService->processFormEndpoint($linkUrl, $sourceUrl);
+        $formResult = $this->httpChecker->processFormEndpoint($linkUrl, $sourceUrl);
         $this->results[] = $formResult;
     }
 
@@ -522,7 +525,7 @@ class CrawlerService
         // This catches www-only redirects that aren't in the redirectChain
         if ($finalHost !== null && $finalHost !== $this->originalHost) {
             $this->canonicalHost = $finalHost;
-            $this->scannerService->setBaseUrl($finalUrl);
+            $this->urlNormalizer->setBaseUrl($finalUrl);
 
             // Clear the redirect chain for the start URL since it's expected
             if (!empty($firstResult['redirectChain'])) {
@@ -532,7 +535,7 @@ class CrawlerService
             // Mark the canonical URL as visited to prevent duplicates
             // when sitemap contains the canonical URL (e.g., non-www)
             // while we started with the original URL (e.g., www)
-            $this->visited[$this->scannerService->canonicalUrlKey($finalUrl)] = true;
+            $this->visited[$this->urlNormalizer->canonicalUrlKey($finalUrl)] = true;
 
             // Rewrite all URLs currently in the queue to use canonical host
             $this->rewriteQueueToCanonicalHost();
@@ -578,7 +581,7 @@ class CrawlerService
 
         if ($result['count'] > 0) {
             foreach ($result['urls'] as $urlData) {
-                $sitemapUrlKey = $this->scannerService->canonicalUrlKey($urlData['url']);
+                $sitemapUrlKey = $this->urlNormalizer->canonicalUrlKey($urlData['url']);
                 if (!isset($this->visited[$sitemapUrlKey])) {
                     $this->queue->enqueue([
                         'url' => $urlData['url'],
@@ -656,7 +659,7 @@ class CrawlerService
         while (!$this->priorityQueue->isEmpty()) {
             $item = $this->priorityQueue->dequeue();
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
-            $itemKey = $this->scannerService->canonicalUrlKey($item['url']);
+            $itemKey = $this->urlNormalizer->canonicalUrlKey($item['url']);
             if (!isset($this->visited[$itemKey])) {
                 $newPriorityQueue->enqueue($item);
             }
@@ -668,7 +671,7 @@ class CrawlerService
         while (!$this->queue->isEmpty()) {
             $item = $this->queue->dequeue();
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
-            $itemKey = $this->scannerService->canonicalUrlKey($item['url']);
+            $itemKey = $this->urlNormalizer->canonicalUrlKey($item['url']);
             if (!isset($this->visited[$itemKey])) {
                 $newQueue->enqueue($item);
             }

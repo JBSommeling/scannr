@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Services\ScannerService;
+use App\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Symfony\Component\DomCrawler\Crawler;
@@ -37,17 +37,17 @@ class SitemapService
     protected string $baseHost;
 
     /**
-     * The scanner service instance for URL normalization.
+     * The URL normalizer instance for URL normalization.
      */
-    protected ScannerService $scannerService;
+    protected UrlNormalizer $urlNormalizer;
 
     /**
      * Create a new SitemapService instance.
      *
      * @param  Client|null  $client  Optional Guzzle HTTP client instance. If not provided, a default client will be created.
-     * @param  ScannerService|null  $scannerService  Optional ScannerService instance. If not provided, a default instance will be created.
+     * @param  UrlNormalizer|null  $urlNormalizer  Optional UrlNormalizer instance. If not provided, a default instance will be created.
      */
-    public function __construct(?Client $client = null, ?ScannerService $scannerService = null)
+    public function __construct(?Client $client = null, ?UrlNormalizer $urlNormalizer = null)
     {
         $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
         try {
@@ -66,7 +66,7 @@ class SitemapService
                 'Accept' => 'text/xml,application/xml,text/html,text/plain,*/*',
             ],
         ]);
-        $this->scannerService = $scannerService ?? new ScannerService();
+        $this->urlNormalizer = $urlNormalizer ?? new UrlNormalizer();
     }
 
     /**
@@ -156,8 +156,8 @@ class SitemapService
         $filteredUrls = [];
         $seen = [];
         foreach ($discoveredUrls as $url) {
-            $normalizedUrl = $this->scannerService->normalizeUrl($url, $this->baseUrl) ?? rtrim($url, '/');
-            $urlKey = $this->scannerService->canonicalUrlKey($normalizedUrl);
+            $normalizedUrl = $this->urlNormalizer->normalizeUrl($url, $this->baseUrl) ?? rtrim($url, '/');
+            $urlKey = $this->urlNormalizer->canonicalUrlKey($normalizedUrl);
             if (!isset($seen[$urlKey]) && $this->isInternalUrl($normalizedUrl)) {
                 $seen[$urlKey] = true;
                 $filteredUrls[] = [
@@ -417,7 +417,7 @@ class SitemapService
                     return;
                 }
 
-                $normalizedUrl = $this->scannerService->normalizeUrl($href, $baseUrl);
+                $normalizedUrl = $this->urlNormalizer->normalizeUrl($href, $baseUrl);
 
                 if ($normalizedUrl !== null) {
                     $urls[] = $normalizedUrl;
