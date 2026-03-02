@@ -39,6 +39,7 @@ class LinkExtractor
      * - onclick attributes containing window.location, window.open, or download() calls
      * - Inline <script> contents referencing downloadable file URLs (when --js is enabled)
      * - External <script src=""> JS bundles for downloadable file URLs (when --js is enabled, internal only)
+     * - URLs embedded in inline/external JS bundles by SPA frameworks (React, Vue, Svelte, etc.) (when --js is enabled)
      * - Form submission endpoints in JS: fetch(), axios, $.ajax, XMLHttpRequest (when --js is enabled)
      *
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
@@ -46,7 +47,7 @@ class LinkExtractor
      *
      * @param  string  $html               The HTML content to parse.
      * @param  string  $sourceUrl          The URL the HTML was fetched from (for resolving relative URLs).
-     * @param  bool    $scanScriptContent  Whether to scan inline <script> contents for download URLs (requires --js).
+     * @param  bool    $scanScriptContent  Whether to scan <script> contents for URLs, downloads, and form endpoints (requires --js).
      * @return array<array{url: string, source: string, element: string}> Array of extracted links with URL, source page, and element type.
      */
     public function extractLinks(string $html, string $sourceUrl, bool $scanScriptContent = false): array
@@ -159,19 +160,20 @@ class LinkExtractor
                 $this->addLinksFromInlineJs($onclick, $sourceUrl, $links);
             });
 
-            // Extract downloadable file URLs and form submission endpoints
-            // from inline <script> contents and external JS bundles.
+            // Scan inline and external JS bundles for embedded URLs, downloads,
+            // and form endpoints (requires --js flag for headless browser rendering).
             if ($scanScriptContent) {
                 $crawler->filter('script:not([src])')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                     $content = $node->text('', false);
                     if ($content === '') {
                         return;
                     }
+                    $this->addUrlsFromJsBundleContent($content, $sourceUrl, $links);
                     $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
                     $this->addFormEndpointUrlsFromScriptContent($content, $sourceUrl, $links);
                 });
 
-                // Also fetch and scan external JS bundles (internal only)
+                // Fetch and scan external JS bundles (internal only)
                 $crawler->filter('script[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
                     $src = $node->attr('src');
                     if ($src === null || $src === '') {
@@ -185,6 +187,7 @@ class LinkExtractor
 
                     $content = $this->httpChecker->fetchScriptContent($scriptUrl);
                     if ($content !== null) {
+                        $this->addUrlsFromJsBundleContent($content, $sourceUrl, $links);
                         $this->addDownloadUrlsFromScriptContent($content, $sourceUrl, $links);
                         $this->addFormEndpointUrlsFromScriptContent($content, $sourceUrl, $links);
                     }
@@ -399,11 +402,11 @@ class LinkExtractor
 
         // Strategy 2: API calls where the URL contains form-related keywords.
         $apiCallPatterns = [
-            '/\bfetch\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
-            '/\baxios(?:\s*\.\s*(?:post|put|patch|delete))?\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
-            '/\$\s*\.\s*(?:ajax|post)\s*\(\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
-            '/\$\s*\.\s*ajax\s*\(\s*\{[^}]*url\s*:\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
-            '/\.open\s*\(\s*[\'"](?:POST|PUT|PATCH)[\'\"]\s*,\s*[\'\"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            '/\bfetch\s*\(\s*[\'"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            '/\baxios(?:\s*\.\s*(?:post|put|patch|delete))?\s*\(\s*[\'"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            '/\$\s*\.\s*(?:ajax|post)\s*\(\s*[\'"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            '/\$\s*\.\s*ajax\s*\(\s*\{[^}]*url\s*:\s*[\'"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
+            '/\.open\s*\(\s*[\'"](?:POST|PUT|PATCH)[\'\"]\s*,\s*[\'"]((?:\/|https?:\/\/)[^\s\'"]+)[\'"]/i',
         ];
 
         foreach ($apiCallPatterns as $pattern) {
@@ -523,6 +526,55 @@ class LinkExtractor
             }
         }
     }
+
+    /**
+     * Extract URLs embedded in JavaScript bundle content.
+     *
+     * Discovers links compiled into JS bundles by any SPA framework
+     * (React, Vue, Svelte, Angular, etc.) by searching for full URL
+     * patterns (https://... or http://...) in the JavaScript source.
+     *
+     * @param  string  $content    The JavaScript content to scan.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  array   &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
+    {
+        // Extract full URLs from JavaScript (https://... or http://...)
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)/i', $content, $matches)) {
+            foreach ($matches[1] as $url) {
+                // Clean up any trailing punctuation or quotes
+                $url = rtrim($url, '.,;:"\')}>]');
+
+                // Skip very common CDN/library URLs and analytics
+                if (preg_match('/(googleapis|gstatic|cloudflare|jsdelivr|unpkg|cdnjs|analytics|gtag|facebook\.net)/i', $url)) {
+                    continue;
+                }
+
+                $normalizedUrl = $this->urlNormalizer->normalizeUrl($url, $sourceUrl);
+
+                if ($normalizedUrl === null) {
+                    continue;
+                }
+
+                // Avoid duplicates
+                $alreadyAdded = false;
+                foreach ($links as $link) {
+                    if ($link['url'] === $normalizedUrl) {
+                        $alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!$alreadyAdded) {
+                    $links[] = [
+                        'url' => $normalizedUrl,
+                        'source' => $sourceUrl,
+                        'element' => 'a', // Treat as anchor link
+                    ];
+                }
+            }
+        }
+    }
 }
-
-

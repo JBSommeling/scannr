@@ -124,7 +124,8 @@ class ScannerService
      * Process an external URL and return scan result.
      *
      * Uses HEAD request for efficiency since we don't need to parse
-     * external page content.
+     * external page content. Only keeps the first redirect destination —
+     * external redirect chains are not actionable for site owners.
      *
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
@@ -141,15 +142,19 @@ class ScannerService
 
         $result = $this->httpChecker->followRedirects($url, 'HEAD');
 
+        // For external URLs, only keep the first redirect destination.
+        // We don't care about external redirect chains, only whether the link works.
+        $firstRedirect = !empty($result['chain']) ? [$result['chain'][0]] : [];
+
         return [
             'url' => $url,
             'sourcePage' => $source,
             'status' => $result['finalStatus'],
             'type' => 'external',
-            'redirectChain' => $result['chain'],
+            'redirectChain' => $firstRedirect,
             'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
-            'isLoop' => $result['loop'],
-            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
+            'isLoop' => false,
+            'hasHttpsDowngrade' => false,
             'sourceElement' => $element,
             'retryAfter' => $result['retryAfter'],
         ];
