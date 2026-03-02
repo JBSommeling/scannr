@@ -224,6 +224,52 @@ class UrlNormalizerTest extends TestCase
         $this->assertTrue($result);
     }
 
+    // =======================
+    // isSubdomainUrl tests
+    // =======================
+
+    public function test_is_subdomain_url_returns_true_for_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertTrue($this->urlNormalizer->isSubdomainUrl('https://yoga-demo.sommeling.dev'));
+    }
+
+    public function test_is_subdomain_url_returns_true_for_nested_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertTrue($this->urlNormalizer->isSubdomainUrl('https://app.demo.sommeling.dev'));
+    }
+
+    public function test_is_subdomain_url_returns_false_for_base_host_itself(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertFalse($this->urlNormalizer->isSubdomainUrl('https://sommeling.dev/page'));
+    }
+
+    public function test_is_subdomain_url_returns_false_for_www_of_base_host(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertFalse($this->urlNormalizer->isSubdomainUrl('https://www.sommeling.dev/page'));
+    }
+
+    public function test_is_subdomain_url_returns_false_for_external_host(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertFalse($this->urlNormalizer->isSubdomainUrl('https://other.dev/page'));
+    }
+
+    public function test_is_subdomain_url_returns_false_for_similar_domain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertFalse($this->urlNormalizer->isSubdomainUrl('https://notsommeling.dev/page'));
+    }
+
+    public function test_is_subdomain_url_returns_false_for_relative_url(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+        $this->assertFalse($this->urlNormalizer->isSubdomainUrl('/page'));
+    }
+
     // ======================
     // Setter/Getter tests
     // ======================

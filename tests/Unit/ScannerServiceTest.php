@@ -507,6 +507,20 @@ class ScannerServiceTest extends TestCase
         $this->assertTrue($result['isOk']);
     }
 
+    public function test_form_endpoint_always_has_needs_verification_false(): void
+    {
+        $mockClient = $this->createMockClient(429);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertArrayHasKey('needsVerification', $result);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertArrayHasKey('verificationReason', $result);
+        $this->assertNull($result['verificationReason']);
+    }
+
     public function test_non_form_external_url_still_uses_head(): void
     {
         $mockClient = $this->createMock(Client::class);
@@ -522,5 +536,174 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(200, $result['status']);
     }
+
+    // ======================
+    // Verification flag tests
+    // ======================
+
+    public function test_process_external_url_propagates_verification_flags(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://external.com/page',
+            'https://example.com',
+            'a',
+            true,
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('js_bundle_extracted', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_403(): void
+    {
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_405(): void
+    {
+        $mockClient = $this->createMockClient(405);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_detects_bot_protection_timeout(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willThrowException(new \GuzzleHttp\Exception\ConnectException('Connection failed', new \GuzzleHttp\Psr7\Request('HEAD', 'https://external.com')));
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
+
+        $this->assertEquals('Timeout', $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_internal_url_propagates_verification_flags(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com',
+            'start',
+            'a',
+            true,
+            'indirect_reference'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('indirect_reference', $result['verificationReason']);
+    }
+
+    // ============================================
+    // Subdomain 200 → never needs verification
+    // ============================================
+
+    public function test_internal_subdomain_with_200_never_needs_verification(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://yoga-demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,           // flagged as needing verification
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertNull($result['verificationReason']);
+    }
+
+    public function test_nested_internal_subdomain_with_200_never_needs_verification(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://app.demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertNull($result['verificationReason']);
+    }
+
+    public function test_base_domain_with_200_still_propagates_verification_flag(): void
+    {
+        // Subdomains cleared, but the base domain itself is not affected
+        $html = '<html><body></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://sommeling.dev/page',
+            'start',
+            'a',
+            true,
+            'indirect_reference'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('indirect_reference', $result['verificationReason']);
+    }
+
+    public function test_internal_subdomain_with_non_200_keeps_verification_flag(): void
+    {
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://tree-demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,
+            'bot_protection'
+        );
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
 }
+
+
 

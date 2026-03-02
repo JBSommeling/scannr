@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VerificationReason;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -302,6 +303,10 @@ class HttpChecker
      *
      * Only 404, 500+, timeouts, and connection errors indicate a truly broken endpoint.
      *
+     * Responses of 403, 405, Error, or Timeout also set `needsVerification = true`
+     * with reason `bot_protection`, as these may indicate bot-blocking rather than
+     * a genuinely broken endpoint.
+     *
      * @param string $url The form endpoint URL.
      * @param string $source The source page where this URL was found.
      * @param string $type 'internal' or 'external'.
@@ -348,6 +353,14 @@ class HttpChecker
         $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
         $isOk = ($status >= 200 && $status < 300) || in_array($status, $healthyFormStatuses);
 
+        // Detect bot protection: 403 Forbidden, 405 Method Not Allowed, or network errors
+        $needsVerification = false;
+        $verificationReason = null;
+        if (in_array($status, [403, 405]) || in_array($status, ['Error', 'Timeout'])) {
+            $needsVerification = true;
+            $verificationReason = VerificationReason::BotProtection->value;
+        }
+
         return [
             'url' => $url,
             'finalUrl' => $url,
@@ -361,6 +374,8 @@ class HttpChecker
             'sourceElement' => 'form',
             'extractedLinks' => [],
             'retryAfter' => $retryAfter,
+            'needsVerification' => $needsVerification,
+            'verificationReason' => $verificationReason,
         ];
     }
 }

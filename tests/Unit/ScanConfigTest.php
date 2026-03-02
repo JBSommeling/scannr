@@ -428,6 +428,114 @@ class ScanConfigTest extends TestCase
         $this->assertTrue($config->useJsRendering);
     }
 
+    // ==================
+    // showAdvanced tests
+    // ==================
+
+    public function test_scan_config_defaults_show_advanced_to_false(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertFalse($config->showAdvanced);
+    }
+
+    public function test_scan_config_show_advanced_can_be_enabled(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            showAdvanced: true,
+        );
+
+        $this->assertTrue($config->showAdvanced);
+    }
+
+    public function test_from_command_options_advanced_flag_disabled_by_default(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'advanced' => false,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertFalse($result['config']->showAdvanced);
+    }
+
+    public function test_from_command_options_advanced_flag_enabled(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'advanced' => true,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertTrue($result['config']->showAdvanced);
+    }
+
+    public function test_has_filter_not_affected_by_show_advanced(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            showAdvanced: true,
+        );
+
+        $this->assertFalse($config->hasFilter());
+    }
+
     public function test_from_command_options_js_flag_disabled_by_default(): void
     {
         $command = $this->createMockCommand([
@@ -495,6 +603,7 @@ class ScanConfigTest extends TestCase
         $this->assertEmpty($config->customTrackingParams);
         $this->assertFalse($config->useJsRendering);
         $this->assertTrue($config->respectRobots);
+        $this->assertFalse($config->showAdvanced);
         $this->assertEmpty($result['warnings']);
     }
 
@@ -597,6 +706,7 @@ class ScanConfigTest extends TestCase
         $this->assertEquals(['ref'], $array['customTrackingParams']);
         $this->assertTrue($array['useJsRendering']);
         $this->assertFalse($array['respectRobots']);
+        $this->assertFalse($array['showAdvanced']);
     }
 
     // ==================
@@ -636,6 +746,7 @@ class ScanConfigTest extends TestCase
         $this->assertEquals($original->customTrackingParams, $restored->customTrackingParams);
         $this->assertEquals($original->useJsRendering, $restored->useJsRendering);
         $this->assertEquals($original->respectRobots, $restored->respectRobots);
+        $this->assertEquals($original->showAdvanced, $restored->showAdvanced);
     }
 
     private function createMockCommand(array $options): Command

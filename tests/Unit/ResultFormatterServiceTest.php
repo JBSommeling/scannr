@@ -6,7 +6,7 @@ use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
 use App\Services\ResultFormatterService;
 use App\Services\ScanStatistics;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ResultFormatterServiceTest extends TestCase
 {
@@ -35,6 +35,7 @@ class ResultFormatterServiceTest extends TestCase
             delayMax: $overrides['delayMax'] ?? 0,
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
+            showAdvanced: $overrides['showAdvanced'] ?? false,
         );
     }
 
@@ -1425,4 +1426,591 @@ class ResultFormatterServiceTest extends TestCase
 
         $this->assertArrayNotHasKey('error', $jsonArray);
     }
+
+    // ==================
+    // Noise URL filtering tests (--advanced flag)
+    // ==================
+
+    public function test_format_table_hides_noise_urls_by_default(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://fonts.googleapis.com',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://react.dev/errors',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => false]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Only 1 result should remain (noise filtered out)
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(1, $output->tables[0]['rows']);
+        $this->assertStringContainsString('example.com/page1', $output->tables[0]['rows'][0]['URL']);
+
+        // Total scanned should reflect filtered count
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('Total scanned:  1', $lines);
+
+        // Broken count should be 0 (the 404 fonts.googleapis.com is noise)
+        $this->assertStringContainsString('Broken:         0', $lines);
+    }
+
+    public function test_format_table_shows_noise_urls_with_advanced_flag(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://fonts.googleapis.com',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://react.dev/errors',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => true]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // All 4 results should be visible
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(4, $output->tables[0]['rows']);
+
+        // Total scanned should be 4
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('Total scanned:  4', $lines);
+    }
+
+    public function test_to_json_array_hides_noise_urls_by_default(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig(['showAdvanced' => false]);
+        $jsonArray = $this->formatter->toJsonArray($results, $config);
+
+        $this->assertCount(1, $jsonArray['results']);
+        $this->assertEquals('https://example.com/page1', $jsonArray['results'][0]['url']);
+        $this->assertEquals(1, $jsonArray['summary']['totalScanned']);
+    }
+
+    public function test_to_json_array_shows_noise_urls_with_advanced_flag(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig(['showAdvanced' => true]);
+        $jsonArray = $this->formatter->toJsonArray($results, $config);
+
+        $this->assertCount(2, $jsonArray['results']);
+        $this->assertEquals(2, $jsonArray['summary']['totalScanned']);
+    }
+
+    public function test_format_keeps_cdn_urls_with_paths(): void
+    {
+        $results = [
+            [
+                'url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://fonts.bunny.net/css?family=inter',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => false]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Both CDN URLs with paths should be kept (not noise)
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(2, $output->tables[0]['rows']);
+    }
+
+    // ======================
+    // Verification flag tests
+    // ======================
+
+    public function test_format_table_shows_verification_annotation_for_suspicious_url(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'indirect_reference',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('200 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_annotation_for_bot_protection(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/blocked',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('403 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_count_in_summary(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'js_bundle_extracted',
+            ],
+            [
+                'url' => 'https://example.com/test2',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $warnings = implode("\n", $output->warnings);
+        $this->assertStringContainsString('⚠ Needs verification: 2', $warnings);
+    }
+
+    public function test_format_json_includes_verification_fields(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'js_bundle_extracted',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        $this->assertTrue($decoded['results'][0]['needsVerification']);
+        $this->assertEquals('js_bundle_extracted', $decoded['results'][0]['verificationReason']);
+        $this->assertEquals(1, $decoded['summary']['needsVerificationCount']);
+    }
+
+    public function test_format_csv_includes_verification_columns(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/test',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'indirect_reference',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $csvLines = $output->lines;
+        $this->assertStringContainsString('NeedsVerification,VerificationReason', $csvLines[0]);
+        $this->assertStringContainsString('"true","indirect_reference"', $csvLines[1]);
+    }
+
+    public function test_format_table_shows_verification_annotation_for_suspicious_url_with_404(): void
+    {
+        $results = [
+            [
+                'url' => 'https://github.com/sommelingdev',
+                'sourcePage' => 'https://www.sommeling.dev',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'indirect_reference',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('404 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_shows_verification_annotation_for_developer_leftover(): void
+    {
+        $results = [
+            [
+                'url' => 'http://localhost',
+                'sourcePage' => 'https://yoga-demo.sommeling.dev',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'developer_leftover',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('200 (verify)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_form_endpoint_has_needs_verification_false(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.sommeling.dev/api/contacts',
+                'finalUrl' => 'https://app.sommeling.dev/api/contacts',
+                'sourcePage' => 'https://www.sommeling.dev',
+                'status' => 429,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'form',
+                'retryAfter' => null,
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // 429 (ok) — healthy form endpoint, no (verify) annotation
+        $this->assertNotEmpty($output->tables);
+        $this->assertEquals('429 (ok)', $output->tables[0]['rows'][0]['Status']);
+    }
+
+    public function test_format_table_displays_separate_verification_table(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/normal',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+            [
+                'url' => 'https://example.com/suspicious',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'indirect_reference',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Should have 2 tables: the main table and the verification table
+        $this->assertCount(2, $output->tables);
+
+        // Second table should be the verification table with the Reason column
+        $verificationTable = $output->tables[1];
+        $this->assertContains('Reason', $verificationTable['headers']);
+        $this->assertCount(1, $verificationTable['rows']);
+        $this->assertEquals('https://example.com/suspicious', $verificationTable['rows'][0]['URL']);
+        $this->assertEquals('indirect_reference', $verificationTable['rows'][0]['Reason']);
+    }
+
+    public function test_format_table_no_verification_table_when_none_flagged(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/normal',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => false,
+                'verificationReason' => null,
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Only the main table, no verification table
+        $this->assertCount(1, $output->tables);
+    }
+
+    public function test_format_table_verification_table_shows_reason_column(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/blocked',
+                'sourcePage' => 'https://example.com',
+                'status' => 403,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+                'needsVerification' => true,
+                'verificationReason' => 'bot_protection',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Broken links table + verification table (broken link with needsVerification)
+        $verificationTable = collect($output->tables)->first(fn($t) => in_array('Reason', $t['headers']));
+        $this->assertNotNull($verificationTable);
+        $this->assertEquals('bot_protection', $verificationTable['rows'][0]['Reason']);
+        $this->assertEquals('403 (verify)', $verificationTable['rows'][0]['Status']);
+    }
 }
+
+

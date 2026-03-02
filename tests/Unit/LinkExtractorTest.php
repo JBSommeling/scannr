@@ -985,4 +985,180 @@ class LinkExtractorTest extends TestCase
         $this->assertContains('https://myapp.example.com/page', $urls);
         $this->assertNotContains('https://cdn.jsdelivr.net/npm/lib', $urls);
     }
+
+    public function test_extract_links_js_bundle_flags_indirect_references(): void
+    {
+        $html = '<html><body><script>const urls=["https://alpinejs.dev/plugins/${r}",n,"https://atomiks.github.io/tippyjs/v6/all-props",`https://example.com/test`];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        // Find link with template literal
+        $suspiciousLink = null;
+        foreach ($links as $link) {
+            if (strpos($link['url'], 'alpinejs.dev') !== false) {
+                $suspiciousLink = $link;
+                break;
+            }
+        }
+
+        $this->assertNotNull($suspiciousLink);
+        $this->assertTrue($suspiciousLink['needsVerification'] ?? false);
+        $this->assertEquals('indirect_reference', $suspiciousLink['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_flags_clean_urls_for_verification(): void
+    {
+        $html = '<html><body><script>const docs="https://react.dev/reference";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $cleanLink = null;
+        foreach ($links as $link) {
+            if (strpos($link['url'], 'react.dev') !== false) {
+                $cleanLink = $link;
+                break;
+            }
+        }
+
+        $this->assertNotNull($cleanLink);
+        $this->assertTrue($cleanLink['needsVerification'] ?? false);
+        $this->assertEquals('js_bundle_extracted', $cleanLink['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_detects_backtick_in_url(): void
+    {
+        $html = '<html><body><script>const url="https://example.com/test`incomplete";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/test') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_detects_comma_suffix(): void
+    {
+        $html = '<html><body><script>const url="https://example.com/plugins/test",n</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/plugins') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_detects_curly_braces(): void
+    {
+        $html = '<html><body><script>const url="https://alpinejs.dev/plugins/${r}";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'alpinejs.dev') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_detects_standalone_curly_brace(): void
+    {
+        $html = '<html><body><script>const url="https://example.com/api/{id}/details";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/api') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_does_not_flag_internal_subdomains(): void
+    {
+        $html = '<html><body><script>const projects=[{url:"https://tree-demo.sommeling.dev/"},{url:"https://yoga-demo.sommeling.dev/"}];</script></body></html>';
+
+        // Set base URL so isInternalUrl knows what domain we're scanning
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://sommeling.dev', true);
+
+        // Both URLs should be extracted
+        $urls = array_column($links, 'url');
+        $this->assertContains('https://tree-demo.sommeling.dev', $urls);
+        $this->assertContains('https://yoga-demo.sommeling.dev', $urls);
+
+        // But they should NOT be flagged for verification (they're internal subdomains)
+        foreach ($links as $link) {
+            if (strpos($link['url'], 'tree-demo.sommeling.dev') !== false ||
+                strpos($link['url'], 'yoga-demo.sommeling.dev') !== false) {
+                $this->assertFalse($link['needsVerification'] ?? false, "Internal subdomain {$link['url']} should not need verification");
+            }
+        }
+    }
+
+    public function test_extract_links_js_bundle_flags_external_clean_urls(): void
+    {
+        $html = '<html><body><script>const docs="https://react.dev/reference";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'react.dev') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, 'External URL from JS bundle should need verification');
+        $this->assertEquals('js_bundle_extracted', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_flags_internal_suspicious_urls(): void
+    {
+        $html = '<html><body><script>const api="https://app.example.com/api/{userId}/profile";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, 'Internal URL with suspicious syntax should need verification');
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_flags_localhost_as_developer_leftover(): void
+    {
+        $html = '<html><body><script>const api="http://localhost/api/contacts";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, 'localhost URL from JS bundle should need verification');
+        $this->assertEquals('developer_leftover', $link['verificationReason'] ?? null);
+    }
+
+    public function test_extract_links_js_bundle_flags_127_0_0_1_as_developer_leftover(): void
+    {
+        $html = '<html><body><script>const api="http://127.0.0.1:8000/api/submit";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertTrue($link['needsVerification'] ?? false, '127.0.0.1 URL from JS bundle should need verification');
+        $this->assertEquals('developer_leftover', $link['verificationReason'] ?? null);
+    }
 }
+
+

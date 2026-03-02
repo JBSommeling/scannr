@@ -7,6 +7,7 @@ use App\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -408,6 +409,262 @@ class HttpCheckerTest extends TestCase
 
         $this->assertEquals(200, $result['finalStatus']);
         $this->assertNull($result['retryAfter']);
+    }
+
+    // ============================
+    // processFormEndpoint tests
+    // ============================
+
+    /**
+     * Build a RequestException whose getResponse() returns a mock with the given status.
+     */
+    private function createRequestException(int $statusCode, array $headers = []): RequestException
+    {
+        $mockResponse = $this->createMock(ResponseInterface::class);
+        $mockResponse->method('getStatusCode')->willReturn($statusCode);
+        $mockResponse->method('getHeaderLine')->willReturnCallback(fn ($name) => $headers[$name] ?? '');
+
+        $exception = $this->createMock(RequestException::class);
+        $exception->method('hasResponse')->willReturn(true);
+        $exception->method('getResponse')->willReturn($mockResponse);
+
+        return $exception;
+    }
+
+    public function test_process_form_endpoint_returns_correct_shape(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertArrayHasKey('url', $result);
+        $this->assertArrayHasKey('finalUrl', $result);
+        $this->assertArrayHasKey('sourcePage', $result);
+        $this->assertArrayHasKey('status', $result);
+        $this->assertArrayHasKey('type', $result);
+        $this->assertArrayHasKey('redirectChain', $result);
+        $this->assertArrayHasKey('isOk', $result);
+        $this->assertArrayHasKey('isLoop', $result);
+        $this->assertArrayHasKey('hasHttpsDowngrade', $result);
+        $this->assertArrayHasKey('sourceElement', $result);
+        $this->assertArrayHasKey('extractedLinks', $result);
+        $this->assertArrayHasKey('retryAfter', $result);
+        $this->assertArrayHasKey('needsVerification', $result);
+        $this->assertArrayHasKey('verificationReason', $result);
+    }
+
+    public function test_process_form_endpoint_200_is_ok_no_verification(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertNull($result['verificationReason']);
+        $this->assertEquals('form', $result['sourceElement']);
+        $this->assertEquals('internal', $result['type']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('healthyFormStatusProvider')]
+    public function test_process_form_endpoint_healthy_statuses_are_ok(int $status): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException($status)
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals($status, $result['status']);
+        $this->assertTrue($result['isOk'], "Status {$status} should be considered healthy");
+    }
+
+    public static function healthyFormStatusProvider(): array
+    {
+        return [
+            'bad request'               => [400],
+            'unauthorized'              => [401],
+            'unprocessable entity'      => [422],
+            'too many requests'         => [429],
+        ];
+    }
+
+    public function test_process_form_endpoint_403_is_ok_and_needs_verification(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(403)
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_form_endpoint_405_is_ok_and_needs_verification(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(405)
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_form_endpoint_404_is_not_ok(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(404)
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/missing', 'https://example.com');
+
+        $this->assertEquals(404, $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertFalse($result['needsVerification']);
+    }
+
+    public function test_process_form_endpoint_500_is_not_ok(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(500)
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(500, $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertFalse($result['needsVerification']);
+    }
+
+    public function test_process_form_endpoint_timeout_needs_verification(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            new ConnectException('Connection timed out', new Request('POST', 'https://example.com/submit'))
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals('Timeout', $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_form_endpoint_connection_error_needs_verification(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            new ConnectException('Connection refused', new Request('POST', 'https://example.com/submit'))
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals('Error', $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_form_endpoint_request_exception_without_response_is_error(): void
+    {
+        $exception = $this->createMock(RequestException::class);
+        $exception->method('hasResponse')->willReturn(false);
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException($exception);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals('Error', $result['status']);
+        $this->assertFalse($result['isOk']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_form_endpoint_429_extracts_retry_after(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(429, ['Retry-After' => '30'])
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertTrue($result['isOk']);
+        $this->assertEquals(30, $result['retryAfter']);
+        $this->assertFalse($result['needsVerification']);
+    }
+
+    public function test_process_form_endpoint_429_ignores_non_numeric_retry_after(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createRequestException(429, ['Retry-After' => 'Wed, 21 Oct 2025 07:28:00 GMT'])
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals(429, $result['status']);
+        $this->assertNull($result['retryAfter']);
+    }
+
+    public function test_process_form_endpoint_uses_external_type(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://external.com/submit', 'https://example.com', 'external');
+
+        $this->assertEquals('external', $result['type']);
+    }
+
+    public function test_process_form_endpoint_sets_source_page(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com/contact');
+
+        $this->assertEquals('https://example.com/contact', $result['sourcePage']);
+    }
+
+    public function test_process_form_endpoint_redirect_chain_is_always_empty(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEmpty($result['redirectChain']);
+        $this->assertFalse($result['isLoop']);
+        $this->assertFalse($result['hasHttpsDowngrade']);
     }
 
 }

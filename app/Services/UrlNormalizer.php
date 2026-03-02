@@ -340,6 +340,35 @@ class UrlNormalizer
     }
 
     /**
+     * Check if a URL is a subdomain of the base host (but not the base host itself).
+     *
+     * Returns true only when the URL's host is a proper subdomain of the base host,
+     * e.g. yoga-demo.sommeling.dev is a subdomain of sommeling.dev.
+     * Returns false when the URL host equals the base host (with or without www).
+     *
+     * @param  string  $url  The URL to check.
+     * @return bool True if the URL is a proper subdomain of the base host.
+     */
+    public function isSubdomainUrl(string $url): bool
+    {
+        $parsed = parse_url($url);
+
+        if (!isset($parsed['host'])) {
+            return false;
+        }
+
+        // Normalize URL host by removing www. prefix
+        $urlHost = preg_replace('/^www\./i', '', $parsed['host']);
+
+        // Must be a proper subdomain (not the base host itself)
+        if ($urlHost === $this->baseHost) {
+            return false;
+        }
+
+        return str_ends_with($urlHost, '.' . $this->baseHost);
+    }
+
+    /**
      * Check if a URL is internal to the base host.
      *
      * A URL is considered internal if its host matches the base host
