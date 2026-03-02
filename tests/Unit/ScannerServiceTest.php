@@ -614,12 +614,12 @@ class ScannerServiceTest extends TestCase
             'start',
             'a',
             true,
-            'suspicious_dynamic_url'
+            'indirect_reference'
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('suspicious_dynamic_url', $result['verificationReason']);
+        $this->assertEquals('indirect_reference', $result['verificationReason']);
     }
 
     // ============================================
@@ -677,12 +677,12 @@ class ScannerServiceTest extends TestCase
             'start',
             'a',
             true,
-            'suspicious_dynamic_url'
+            'indirect_reference'
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('suspicious_dynamic_url', $result['verificationReason']);
+        $this->assertEquals('indirect_reference', $result['verificationReason']);
     }
 
     public function test_internal_subdomain_with_non_200_keeps_verification_flag(): void

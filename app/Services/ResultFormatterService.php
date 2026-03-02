@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
+use App\Enums\VerificationReason;
 
 /**
  * Service for formatting and displaying scan results.
@@ -332,12 +333,16 @@ class ResultFormatterService
         if ($needsVerification && $isTableOutput) {
             // For bot protection (403/405/Error/Timeout) and suspicious URLs (any status),
             // always show annotation
-            if (in_array($verificationReason, ['bot_protection', 'suspicious_dynamic_url', 'developer_leftover'])) {
+            if (in_array($verificationReason, [
+                VerificationReason::BotProtection->value,
+                VerificationReason::IndirectReference->value,
+                VerificationReason::DeveloperLeftover->value,
+            ])) {
                 return "{$status} (verify)";
             }
 
             // For JS bundle extracted, only show annotation for 200 status
-            if ($status === 200 && $verificationReason === 'js_bundle_extracted') {
+            if ($status === 200 && $verificationReason === VerificationReason::JsBundleExtracted->value) {
                 return "{$status} (verify)";
             }
         }

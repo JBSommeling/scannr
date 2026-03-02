@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VerificationReason;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -357,7 +358,7 @@ class HttpChecker
         $verificationReason = null;
         if (in_array($status, [403, 405]) || in_array($status, ['Error', 'Timeout'])) {
             $needsVerification = true;
-            $verificationReason = 'bot_protection';
+            $verificationReason = VerificationReason::BotProtection->value;
         }
 
         return [

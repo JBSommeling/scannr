@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VerificationReason;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -591,11 +592,11 @@ class LinkExtractor
                         $isLoopback = in_array($parsedHost, ['localhost', '127.0.0.1', '::1'], true);
 
                         if ($hasSuspiciousSyntax) {
-                            $verificationReason = 'suspicious_dynamic_url';
+                            $verificationReason = VerificationReason::IndirectReference->value;
                         } elseif ($isLoopback) {
-                            $verificationReason = 'developer_leftover';
+                            $verificationReason = VerificationReason::DeveloperLeftover->value;
                         } else {
-                            $verificationReason = 'js_bundle_extracted';
+                            $verificationReason = VerificationReason::JsBundleExtracted->value;
                         }
                     }
 

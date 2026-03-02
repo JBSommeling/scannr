@@ -1685,7 +1685,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'suspicious_dynamic_url',
+                'verificationReason' => 'indirect_reference',
             ],
         ];
 
@@ -1810,7 +1810,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'suspicious_dynamic_url',
+                'verificationReason' => 'indirect_reference',
             ],
         ];
 
@@ -1821,7 +1821,7 @@ class ResultFormatterServiceTest extends TestCase
 
         $csvLines = $output->lines;
         $this->assertStringContainsString('NeedsVerification,VerificationReason', $csvLines[0]);
-        $this->assertStringContainsString('"true","suspicious_dynamic_url"', $csvLines[1]);
+        $this->assertStringContainsString('"true","indirect_reference"', $csvLines[1]);
     }
 
     public function test_format_table_shows_verification_annotation_for_suspicious_url_with_404(): void
@@ -1838,7 +1838,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'suspicious_dynamic_url',
+                'verificationReason' => 'indirect_reference',
             ],
         ];
 
@@ -1935,7 +1935,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'suspicious_dynamic_url',
+                'verificationReason' => 'indirect_reference',
             ],
         ];
 
@@ -1952,7 +1952,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertContains('Reason', $verificationTable['headers']);
         $this->assertCount(1, $verificationTable['rows']);
         $this->assertEquals('https://example.com/suspicious', $verificationTable['rows'][0]['URL']);
-        $this->assertEquals('suspicious_dynamic_url', $verificationTable['rows'][0]['Reason']);
+        $this->assertEquals('indirect_reference', $verificationTable['rows'][0]['Reason']);
     }
 
     public function test_format_table_no_verification_table_when_none_flagged(): void

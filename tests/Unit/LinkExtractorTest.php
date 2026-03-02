@@ -986,7 +986,7 @@ class LinkExtractorTest extends TestCase
         $this->assertNotContains('https://cdn.jsdelivr.net/npm/lib', $urls);
     }
 
-    public function test_extract_links_js_bundle_flags_suspicious_dynamic_urls(): void
+    public function test_extract_links_js_bundle_flags_indirect_references(): void
     {
         $html = '<html><body><script>const urls=["https://alpinejs.dev/plugins/${r}",n,"https://atomiks.github.io/tippyjs/v6/all-props",`https://example.com/test`];</script></body></html>';
 
@@ -1003,7 +1003,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($suspiciousLink);
         $this->assertTrue($suspiciousLink['needsVerification'] ?? false);
-        $this->assertEquals('suspicious_dynamic_url', $suspiciousLink['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $suspiciousLink['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_flags_clean_urls_for_verification(): void
@@ -1035,7 +1035,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_detects_comma_suffix(): void
@@ -1048,7 +1048,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_detects_curly_braces(): void
@@ -1061,7 +1061,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_detects_standalone_curly_brace(): void
@@ -1074,7 +1074,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_does_not_flag_internal_subdomains(): void
@@ -1127,7 +1127,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertTrue($link['needsVerification'] ?? false, 'Internal URL with suspicious syntax should need verification');
-        $this->assertEquals('suspicious_dynamic_url', $link['verificationReason'] ?? null);
+        $this->assertEquals('indirect_reference', $link['verificationReason'] ?? null);
     }
 
     public function test_extract_links_js_bundle_flags_localhost_as_developer_leftover(): void

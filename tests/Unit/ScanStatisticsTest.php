@@ -448,7 +448,7 @@ class ScanStatisticsTest extends TestCase
     {
         $results = [
             ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'js_bundle_extracted'],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'suspicious_dynamic_url'],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'indirect_reference'],
             ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => false],
             ['isOk' => false, 'status' => 403, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'bot_protection'],
         ];
