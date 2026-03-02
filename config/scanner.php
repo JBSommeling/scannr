@@ -209,5 +209,48 @@ return [
         'max_429_before_abort' => 5,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Noise URLs (hidden without --advanced)
+    |--------------------------------------------------------------------------
+    |
+    | URLs matching these patterns are hidden from scan output by default.
+    | They are XML namespaces, CDN root domains, or JS framework error
+    | documentation links — not real navigation links. Use --advanced to
+    | include them in the output.
+    |
+    | 'exact': URLs that must match exactly (e.g., CDN preconnect hints).
+    | 'prefix': URLs matched by prefix (e.g., namespace URIs, error docs).
+    |
+    */
+
+    'noise_urls' => [
+        'exact' => [
+            // CDN / font root domains (bare domain without path = preconnect hints, not real pages)
+            'https://fonts.googleapis.com',
+            'https://fonts.gstatic.com',
+            'https://fonts.bunny.net',
+        ],
+
+        'prefix' => [
+            // XML Namespaces (W3C, SVG, MathML, XLink, xml:)
+            'http://www.w3.org/2000/svg',
+            'http://www.w3.org/1998/Math/MathML',
+            'http://www.w3.org/1999/xlink',
+            'http://www.w3.org/XML/1998/namespace',
+            'https://www.w3.org/2000/svg',
+            'https://www.w3.org/1998/Math/MathML',
+            'https://www.w3.org/1999/xlink',
+            'https://www.w3.org/XML/1998/namespace',
+            'https://schema.org',
+            'http://schema.org',
+
+            // JS framework error documentation links
+            'https://react.dev/errors',
+            'https://reactjs.org/docs/error',
+            'https://vuejs.org/error-reference',
+        ],
+    ],
+
 ];
 

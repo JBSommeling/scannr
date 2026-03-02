@@ -266,4 +266,133 @@ class ScanStatisticsTest extends TestCase
         }
     }
 
+    // =========================
+    // filterNoiseUrls tests
+    // =========================
+
+    private function getNoisePatterns(): array
+    {
+        return [
+            'exact' => [
+                'https://fonts.googleapis.com',
+                'https://fonts.gstatic.com',
+                'https://fonts.bunny.net',
+            ],
+            'prefix' => [
+                'http://www.w3.org/2000/svg',
+                'http://www.w3.org/1998/Math/MathML',
+                'http://www.w3.org/1999/xlink',
+                'http://www.w3.org/XML/1998/namespace',
+                'https://www.w3.org/2000/svg',
+                'https://www.w3.org/1998/Math/MathML',
+                'https://www.w3.org/1999/xlink',
+                'https://www.w3.org/XML/1998/namespace',
+                'https://schema.org',
+                'http://schema.org',
+                'https://react.dev/errors',
+                'https://reactjs.org/docs/error',
+                'https://vuejs.org/error-reference',
+            ],
+        ];
+    }
+
+    public function test_filter_noise_urls_removes_xml_namespace_urls(): void
+    {
+        $results = [
+            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true],
+            ['url' => 'http://www.w3.org/1998/Math/MathML', 'isOk' => true],
+            ['url' => 'http://www.w3.org/1999/xlink', 'isOk' => true],
+            ['url' => 'http://www.w3.org/XML/1998/namespace', 'isOk' => true],
+            ['url' => 'https://schema.org', 'isOk' => true],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
+    }
+
+    public function test_filter_noise_urls_removes_cdn_root_domains_exact_only(): void
+    {
+        $results = [
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => false],
+            ['url' => 'https://fonts.gstatic.com', 'isOk' => false],
+            ['url' => 'https://fonts.bunny.net', 'isOk' => true],
+            // These should NOT be filtered (they have paths — real resources)
+            ['url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono', 'isOk' => true],
+            ['url' => 'https://fonts.bunny.net/css?family=inter', 'isOk' => true],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(3, $filtered);
+
+        $urls = array_column(array_values($filtered), 'url');
+        $this->assertContains('https://fonts.googleapis.com/css2?family=JetBrains+Mono', $urls);
+        $this->assertContains('https://fonts.bunny.net/css?family=inter', $urls);
+        $this->assertContains('https://example.com/page1', $urls);
+    }
+
+    public function test_filter_noise_urls_removes_js_framework_error_docs(): void
+    {
+        $results = [
+            ['url' => 'https://react.dev/errors', 'isOk' => true],
+            ['url' => 'https://react.dev/errors/123', 'isOk' => true],
+            ['url' => 'https://vuejs.org/error-reference', 'isOk' => true],
+            ['url' => 'https://vuejs.org/error-reference#runtime-errors', 'isOk' => true],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
+    }
+
+    public function test_filter_noise_urls_keeps_normal_urls(): void
+    {
+        $results = [
+            ['url' => 'https://example.com', 'isOk' => true],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+            ['url' => 'https://github.com/user', 'isOk' => true],
+            ['url' => 'https://linkedin.com/in/user', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(4, $filtered);
+    }
+
+    public function test_filter_noise_urls_handles_empty_results(): void
+    {
+        $filtered = $this->scanStatistics->filterNoiseUrls([], $this->getNoisePatterns());
+        $this->assertCount(0, $filtered);
+    }
+
+    public function test_filter_noise_urls_removes_https_variant_of_xml_namespaces(): void
+    {
+        $results = [
+            ['url' => 'https://www.w3.org/2000/svg', 'isOk' => true],
+            ['url' => 'https://www.w3.org/1998/Math/MathML', 'isOk' => true],
+            ['url' => 'https://www.w3.org/1999/xlink', 'isOk' => true],
+            ['url' => 'https://www.w3.org/XML/1998/namespace', 'isOk' => true],
+            ['url' => 'http://schema.org', 'isOk' => true],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
+    }
+
+    public function test_filter_noise_urls_passes_through_with_empty_patterns(): void
+    {
+        $results = [
+            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true],
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => false],
+            ['url' => 'https://example.com/page1', 'isOk' => true],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, ['exact' => [], 'prefix' => []]);
+        $this->assertCount(3, $filtered);
+    }
+
 }

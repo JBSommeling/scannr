@@ -87,5 +87,44 @@ class ScanStatistics
 
         return array_filter($results, fn($r) => ($r['sourceElement'] ?? 'a') === $element);
     }
+
+    /**
+     * Filter out noise URLs (XML namespaces, CDN root domains, JS framework docs).
+     *
+     * Uses two matching strategies:
+     * - 'exact': URL must match exactly (for bare CDN domains like preconnect hints).
+     * - 'prefix': URL must start with the pattern (for namespace URIs and framework docs).
+     *
+     * @param  array  $results        Array of scan result items.
+     * @param  array  $noisePatterns  Noise patterns array with 'exact' and 'prefix' keys.
+     * @return array Filtered results with noise URLs removed.
+     */
+    public function filterNoiseUrls(array $results, array $noisePatterns): array
+    {
+        $exactUrls = $noisePatterns['exact'] ?? [];
+        $prefixUrls = $noisePatterns['prefix'] ?? [];
+
+        if (empty($exactUrls) && empty($prefixUrls)) {
+            return $results;
+        }
+
+        return array_filter($results, function ($result) use ($exactUrls, $prefixUrls) {
+            $url = $result['url'] ?? '';
+
+            // Check exact matches (bare CDN domains)
+            if (in_array($url, $exactUrls, true)) {
+                return false;
+            }
+
+            // Check prefix matches (namespaces, JS framework docs)
+            foreach ($prefixUrls as $prefix) {
+                if (str_starts_with($url, $prefix)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
 }
 

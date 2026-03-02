@@ -6,7 +6,7 @@ use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
 use App\Services\ResultFormatterService;
 use App\Services\ScanStatistics;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ResultFormatterServiceTest extends TestCase
 {
@@ -35,6 +35,7 @@ class ResultFormatterServiceTest extends TestCase
             delayMax: $overrides['delayMax'] ?? 0,
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
+            showAdvanced: $overrides['showAdvanced'] ?? false,
         );
     }
 
@@ -1424,5 +1425,245 @@ class ResultFormatterServiceTest extends TestCase
         $jsonArray = $this->formatter->toJsonArray($results, $config, null);
 
         $this->assertArrayNotHasKey('error', $jsonArray);
+    }
+
+    // ==================
+    // Noise URL filtering tests (--advanced flag)
+    // ==================
+
+    public function test_format_table_hides_noise_urls_by_default(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://fonts.googleapis.com',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://react.dev/errors',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => false]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Only 1 result should remain (noise filtered out)
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(1, $output->tables[0]['rows']);
+        $this->assertStringContainsString('example.com/page1', $output->tables[0]['rows'][0]['URL']);
+
+        // Total scanned should reflect filtered count
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('Total scanned:  1', $lines);
+
+        // Broken count should be 0 (the 404 fonts.googleapis.com is noise)
+        $this->assertStringContainsString('Broken:         0', $lines);
+    }
+
+    public function test_format_table_shows_noise_urls_with_advanced_flag(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://fonts.googleapis.com',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => false,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://react.dev/errors',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => true]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // All 4 results should be visible
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(4, $output->tables[0]['rows']);
+
+        // Total scanned should be 4
+        $lines = implode("\n", $output->lines);
+        $this->assertStringContainsString('Total scanned:  4', $lines);
+    }
+
+    public function test_to_json_array_hides_noise_urls_by_default(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig(['showAdvanced' => false]);
+        $jsonArray = $this->formatter->toJsonArray($results, $config);
+
+        $this->assertCount(1, $jsonArray['results']);
+        $this->assertEquals('https://example.com/page1', $jsonArray['results'][0]['url']);
+        $this->assertEquals(1, $jsonArray['summary']['totalScanned']);
+    }
+
+    public function test_to_json_array_shows_noise_urls_with_advanced_flag(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'http://www.w3.org/2000/svg',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $config = $this->createConfig(['showAdvanced' => true]);
+        $jsonArray = $this->formatter->toJsonArray($results, $config);
+
+        $this->assertCount(2, $jsonArray['results']);
+        $this->assertEquals(2, $jsonArray['summary']['totalScanned']);
+    }
+
+    public function test_format_keeps_cdn_urls_with_paths(): void
+    {
+        $results = [
+            [
+                'url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://fonts.bunny.net/css?family=inter',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => [],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'link',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'showAdvanced' => false]);
+
+        $this->formatter->format($results, $config, $output);
+
+        // Both CDN URLs with paths should be kept (not noise)
+        $this->assertNotEmpty($output->tables);
+        $this->assertCount(2, $output->tables[0]['rows']);
     }
 }

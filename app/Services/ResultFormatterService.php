@@ -26,6 +26,11 @@ class ResultFormatterService
      */
     public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): void
     {
+        // Remove noise URLs unless --advanced is used
+        if (!$config->showAdvanced) {
+            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', ['exact' => [], 'prefix' => []]));
+        }
+
         // Filter results
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
@@ -157,6 +162,11 @@ class ResultFormatterService
      */
     public function toJsonArray(array $results, ScanConfig $config, ?string $error = null): array
     {
+        // Remove noise URLs unless --advanced is used
+        if (!$config->showAdvanced) {
+            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', ['exact' => [], 'prefix' => []]));
+        }
+
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 

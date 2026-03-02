@@ -26,6 +26,7 @@ readonly class ScanConfig
         public array $customTrackingParams,
         public bool $useJsRendering = false,
         public bool $respectRobots = true,
+        public bool $showAdvanced = false,
     ) {}
 
     /**
@@ -83,6 +84,7 @@ readonly class ScanConfig
             customTrackingParams: $data['customTrackingParams'] ?? [],
             useJsRendering: (bool) ($data['useJsRendering'] ?? false),
             respectRobots: (bool) ($data['respectRobots'] ?? true),
+            showAdvanced: (bool) ($data['showAdvanced'] ?? false),
         );
 
         return ['config' => $config, 'warnings' => $warnings];
@@ -122,6 +124,7 @@ readonly class ScanConfig
             'customTrackingParams' => $customTrackingParams,
             'useJsRendering' => (bool) $command->option('js'),
             'respectRobots' => !$command->option('no-robots'),
+            'showAdvanced' => (bool) $command->option('advanced'),
         ]);
     }
 
@@ -147,6 +150,7 @@ readonly class ScanConfig
             'customTrackingParams' => $this->customTrackingParams,
             'useJsRendering' => $this->useJsRendering,
             'respectRobots' => $this->respectRobots,
+            'showAdvanced' => $this->showAdvanced,
         ];
     }
 
