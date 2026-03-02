@@ -1157,9 +1157,83 @@ class ResultFormatterServiceTest extends TestCase
         $jsonOutput = implode("\n", $output->lines);
         $decoded = json_decode($jsonOutput, true);
 
+        // External redirect chains are excluded from stats (not actionable for site owners)
+        $this->assertEquals(0, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(0, $decoded['summary']['totalRedirectHops']);
+        $this->assertContains('https://external.com/final', $decoded['results'][0]['redirectChain']);
+    }
+
+    public function test_format_table_redirect_chain_with_internal_urls(): void
+    {
+        // Test that internal redirect chains ARE counted in stats
+        $results = [
+            [
+                'url' => 'https://example.com/old-page',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/redirect', 'https://example.com/final'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // Internal redirect chains should be counted in stats
         $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
         $this->assertEquals(2, $decoded['summary']['totalRedirectHops']);
-        $this->assertContains('https://external.com/final', $decoded['results'][0]['redirectChain']);
+        $this->assertContains('https://example.com/redirect', $decoded['results'][0]['redirectChain']);
+        $this->assertContains('https://example.com/final', $decoded['results'][0]['redirectChain']);
+    }
+
+    public function test_format_table_redirect_chain_mixed_internal_and_external(): void
+    {
+        // Test that only internal chains are counted when mixed with external
+        $results = [
+            [
+                'url' => 'https://example.com/old-page',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirectChain' => ['https://example.com/step1', 'https://example.com/step2'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://external.com/page',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'external',
+                'redirectChain' => ['https://external.com/redirect', 'https://external.com/final'],
+                'isOk' => true,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $jsonOutput = implode("\n", $output->lines);
+        $decoded = json_decode($jsonOutput, true);
+
+        // Only internal chain should be counted (1 chain, 2 hops)
+        $this->assertEquals(1, $decoded['summary']['redirectChainCount']);
+        $this->assertEquals(2, $decoded['summary']['totalRedirectHops']);
     }
 
     public function test_format_verbose_table_no_redirect_row_when_no_chain(): void
