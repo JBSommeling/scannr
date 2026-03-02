@@ -106,6 +106,13 @@ class ScannerService
             }
         }
 
+        // A bare internal subdomain that responds with 200 is proven alive;
+        // no manual verification is ever needed regardless of how it was flagged.
+        if ($result['finalStatus'] === 200 && $this->urlNormalizer->isSubdomainUrl($url)) {
+            $needsVerification = false;
+            $verificationReason = null;
+        }
+
         return [
             'url' => $url,
             'finalUrl' => $result['finalUrl'],

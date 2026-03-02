@@ -621,6 +621,89 @@ class ScannerServiceTest extends TestCase
         $this->assertTrue($result['needsVerification']);
         $this->assertEquals('suspicious_dynamic_url', $result['verificationReason']);
     }
+
+    // ============================================
+    // Subdomain 200 → never needs verification
+    // ============================================
+
+    public function test_internal_subdomain_with_200_never_needs_verification(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://yoga-demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,           // flagged as needing verification
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertNull($result['verificationReason']);
+    }
+
+    public function test_nested_internal_subdomain_with_200_never_needs_verification(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>');
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://app.demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,
+            'js_bundle_extracted'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertFalse($result['needsVerification']);
+        $this->assertNull($result['verificationReason']);
+    }
+
+    public function test_base_domain_with_200_still_propagates_verification_flag(): void
+    {
+        // Subdomains cleared, but the base domain itself is not affected
+        $html = '<html><body></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://sommeling.dev/page',
+            'start',
+            'a',
+            true,
+            'suspicious_dynamic_url'
+        );
+
+        $this->assertEquals(200, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('suspicious_dynamic_url', $result['verificationReason']);
+    }
+
+    public function test_internal_subdomain_with_non_200_keeps_verification_flag(): void
+    {
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://sommeling.dev');
+
+        $result = $this->service->processInternalUrl(
+            'https://tree-demo.sommeling.dev',
+            'https://sommeling.dev',
+            'a',
+            true,
+            'bot_protection'
+        );
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
 }
+
 
 
