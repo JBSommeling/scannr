@@ -159,6 +159,33 @@ class LinkExtractor
                 $this->addLinksFromInlineJs($onclick, $sourceUrl, $links);
             });
 
+            // ALWAYS scan inline scripts for React Router links and URL constants
+            $crawler->filter('script:not([src])')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $content = $node->text('', false);
+                if ($content === '') {
+                    return;
+                }
+                $this->addReactRouterLinksFromScript($content, $sourceUrl, $links);
+            });
+
+            // ALWAYS scan external JS bundles for URLs (important for React/SPA apps)
+            $crawler->filter('script[src]')->each(function (Crawler $node) use ($sourceUrl, &$links) {
+                $src = $node->attr('src');
+                if ($src === null || $src === '') {
+                    return;
+                }
+
+                $scriptUrl = $this->urlNormalizer->normalizeUrl($src, $sourceUrl);
+                if ($scriptUrl === null || !$this->urlNormalizer->isInternalUrl($scriptUrl)) {
+                    return;
+                }
+
+                $content = $this->httpChecker->fetchScriptContent($scriptUrl);
+                if ($content !== null) {
+                    $this->addReactRouterLinksFromScript($content, $sourceUrl, $links);
+                }
+            });
+
             // Extract downloadable file URLs and form submission endpoints
             // from inline <script> contents and external JS bundles.
             if ($scanScriptContent) {
@@ -523,6 +550,57 @@ class LinkExtractor
             }
         }
     }
+
+    /**
+     * Extract links from React Router and other JavaScript frameworks.
+     *
+     * Searches for URL patterns in JavaScript code including:
+     * - href: "..." patterns
+     * - url: "..." patterns
+     * - link: "..." patterns
+     * - Full URL patterns (https://...)
+     *
+     * @param  string  $content    The JavaScript content to scan.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  array   &$links     Reference to the links array.
+     * @return void
+     */
+    protected function addReactRouterLinksFromScript(string $content, string $sourceUrl, array &$links): void
+    {
+        // Extract full URLs from JavaScript (https://... or http://...)
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)/i', $content, $matches)) {
+            foreach ($matches[1] as $url) {
+                // Clean up any trailing punctuation or quotes
+                $url = rtrim($url, '.,;:"\')}>]');
+
+                // Skip very common CDN/library URLs and analytics
+                if (preg_match('/(googleapis|gstatic|cloudflare|jsdelivr|unpkg|cdnjs|analytics|gtag|facebook\.net)/i', $url)) {
+                    continue;
+                }
+
+                $normalizedUrl = $this->urlNormalizer->normalizeUrl($url, $sourceUrl);
+
+                if ($normalizedUrl === null) {
+                    continue;
+                }
+
+                // Avoid duplicates
+                $alreadyAdded = false;
+                foreach ($links as $link) {
+                    if ($link['url'] === $normalizedUrl) {
+                        $alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!$alreadyAdded) {
+                    $links[] = [
+                        'url' => $normalizedUrl,
+                        'source' => $sourceUrl,
+                        'element' => 'a', // Treat as anchor link
+                    ];
+                }
+            }
+        }
+    }
 }
-
-
