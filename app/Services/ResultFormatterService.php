@@ -28,7 +28,7 @@ class ResultFormatterService
     {
         // Remove noise URLs unless --advanced is used
         if (!$config->showAdvanced) {
-            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', ['exact' => [], 'prefix' => []]));
+            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
         // Filter results
@@ -164,7 +164,7 @@ class ResultFormatterService
     {
         // Remove noise URLs unless --advanced is used
         if (!$config->showAdvanced) {
-            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', ['exact' => [], 'prefix' => []]));
+            $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);

@@ -21,6 +21,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Multiple Output Formats**: Table, JSON, or CSV output
 - **Rate Limiting**: Random delay (300-500ms) between requests to avoid overwhelming servers
 - **Rate Limit Backoff**: Automatic exponential backoff on HTTP 429 responses with configurable abort threshold
+- **Noise URL Filtering**: Automatically hides XML namespaces, CDN preconnect hints, and JS framework error docs (use `--advanced` to show)
 - **Hard Limits**: Configurable maximum caps for depth and URLs to prevent excessive resource usage
 - **Configurable**: Adjustable depth, max URLs, timeout, and tracking parameters
 
@@ -60,6 +61,7 @@ php artisan site:scan {url} [options]
 | `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
 | `--js` | false | Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer) |
 | `--no-robots` | false | Ignore robots.txt rules (Disallow/Crawl-delay) |
+| `--advanced` | false | Show XML namespaces, CDN preconnect hints, and JS framework error docs in output |
 | `--strip-params=PARAMS` | - | Additional tracking parameters to strip (comma-separated, e.g., `ref,tracker_*`) |
 
 ### Examples
@@ -164,6 +166,12 @@ php artisan site:scan https://example.com --strip-params=tracker_*,campaign_id
 
 ```bash
 php artisan site:scan https://example.com -v
+```
+
+**Include XML namespaces, CDN preconnect hints, and JS framework links in output:**
+
+```bash
+php artisan site:scan https://example.com --advanced
 ```
 
 ## Output
@@ -597,6 +605,65 @@ When the scan is aborted due to rate limiting:
 - **CSV output**: Includes comment line at the top: `# Error: Scan aborted due to rate limiting`
 - **Exit code**: Command returns failure exit code (1)
 - **Queued jobs**: Job status is set to `aborted` with error message stored
+
+## Noise URL Detection
+
+By default, the scanner hides URLs that are not real navigation links. These "noise" URLs clutter scan results and can produce false positives (e.g., a bare CDN domain returning 404). Use `--advanced` to include them in the output.
+
+### What Is Hidden
+
+| Category | Example | Why It's Noise |
+|----------|---------|----------------|
+| XML namespace URIs | `http://www.w3.org/2000/svg` | Namespace declarations, not real pages |
+| Schema.org URIs | `https://schema.org` | Structured data vocabulary, not navigable links |
+| CDN preconnect hints | `https://fonts.googleapis.com` | `<link rel="preconnect">` bare domains with no path |
+| JS framework error docs | `https://react.dev/errors/482` | Error references embedded in bundled JS code |
+
+### Detection Strategies
+
+The scanner uses three dynamic strategies rather than a hardcoded list of URLs:
+
+1. **Namespace domains**: Any URL on a known namespace-hosting domain (e.g., `w3.org`, `schema.org`) is filtered — regardless of the path. This catches all current and future namespace URIs automatically.
+
+2. **Preconnect detection**: Any external `<link>` URL that is a bare domain (no path, no query string) is treated as a `<link rel="preconnect">` or `<link rel="dns-prefetch">` hint and hidden. This catches any CDN or font service without needing to list specific domains. URLs with a path (e.g., `https://fonts.googleapis.com/css2?family=...`) are kept.
+
+3. **Framework error patterns**: Regex patterns match error/debug documentation URLs embedded by JS frameworks. Covers React, Vue, Angular, Svelte, Next.js, and Nuxt out of the box.
+
+### Showing Hidden URLs
+
+To include all noise URLs in the output:
+
+```bash
+php artisan site:scan https://example.com --advanced
+```
+
+### Configuration
+
+Noise detection rules can be customized in `config/scanner.php`:
+
+```php
+'noise_urls' => [
+    // Domains hosting namespace URIs — any URL on these domains is hidden
+    'namespace_domains' => ['www.w3.org', 'w3.org', 'schema.org', 'www.schema.org'],
+
+    // Auto-detect bare-domain <link> elements as preconnect hints
+    'detect_preconnect' => true,
+
+    // Regex patterns for JS framework error documentation URLs
+    'framework_error_patterns' => [
+        '#^https?://react\.dev/errors#',
+        '#^https?://vuejs\.org/error-reference#',
+        '#^https?://angular\.(io|dev)/errors#',
+        // Add more patterns as needed
+    ],
+
+    // Additional exact-match URLs to hide
+    'exact' => [],
+
+    // Additional prefix-match URLs to hide
+    'prefix' => [],
+],
+```
 
 ## Hard Limits
 

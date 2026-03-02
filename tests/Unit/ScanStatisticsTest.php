@@ -273,38 +273,35 @@ class ScanStatisticsTest extends TestCase
     private function getNoisePatterns(): array
     {
         return [
-            'exact' => [
-                'https://fonts.googleapis.com',
-                'https://fonts.gstatic.com',
-                'https://fonts.bunny.net',
+            'namespace_domains' => [
+                'www.w3.org',
+                'w3.org',
+                'schema.org',
+                'www.schema.org',
             ],
-            'prefix' => [
-                'http://www.w3.org/2000/svg',
-                'http://www.w3.org/1998/Math/MathML',
-                'http://www.w3.org/1999/xlink',
-                'http://www.w3.org/XML/1998/namespace',
-                'https://www.w3.org/2000/svg',
-                'https://www.w3.org/1998/Math/MathML',
-                'https://www.w3.org/1999/xlink',
-                'https://www.w3.org/XML/1998/namespace',
-                'https://schema.org',
-                'http://schema.org',
-                'https://react.dev/errors',
-                'https://reactjs.org/docs/error',
-                'https://vuejs.org/error-reference',
+            'detect_preconnect' => true,
+            'framework_error_patterns' => [
+                '#^https?://react\.dev/errors#',
+                '#^https?://reactjs\.org/docs/error#',
+                '#^https?://vuejs\.org/error-reference#',
+                '#^https?://angular\.(io|dev)/errors#',
+                '#^https?://svelte\.dev/e/#',
+                '#^https?://nextjs\.org/docs/messages/#',
             ],
+            'exact' => [],
+            'prefix' => [],
         ];
     }
 
     public function test_filter_noise_urls_removes_xml_namespace_urls(): void
     {
         $results = [
-            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true],
-            ['url' => 'http://www.w3.org/1998/Math/MathML', 'isOk' => true],
-            ['url' => 'http://www.w3.org/1999/xlink', 'isOk' => true],
-            ['url' => 'http://www.w3.org/XML/1998/namespace', 'isOk' => true],
-            ['url' => 'https://schema.org', 'isOk' => true],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
+            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'http://www.w3.org/1998/Math/MathML', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'http://www.w3.org/1999/xlink', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'http://www.w3.org/XML/1998/namespace', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://schema.org', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
@@ -312,35 +309,43 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
     }
 
-    public function test_filter_noise_urls_removes_cdn_root_domains_exact_only(): void
+    public function test_filter_noise_urls_detects_preconnect_bare_domains(): void
     {
         $results = [
-            ['url' => 'https://fonts.googleapis.com', 'isOk' => false],
-            ['url' => 'https://fonts.gstatic.com', 'isOk' => false],
-            ['url' => 'https://fonts.bunny.net', 'isOk' => true],
-            // These should NOT be filtered (they have paths — real resources)
-            ['url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono', 'isOk' => true],
-            ['url' => 'https://fonts.bunny.net/css?family=inter', 'isOk' => true],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
+            // Bare domains in <link> — preconnect hints, should be filtered
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://fonts.gstatic.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://fonts.bunny.net', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://cdn.example.com/', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // CDN with path — real resource, should NOT be filtered
+            ['url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://fonts.bunny.net/css?family=inter', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // Bare domain in <a> — not preconnect, should NOT be filtered
+            ['url' => 'https://some-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
-        $this->assertCount(3, $filtered);
+        $this->assertCount(4, $filtered);
 
         $urls = array_column(array_values($filtered), 'url');
         $this->assertContains('https://fonts.googleapis.com/css2?family=JetBrains+Mono', $urls);
         $this->assertContains('https://fonts.bunny.net/css?family=inter', $urls);
+        $this->assertContains('https://some-cdn.example.com', $urls);
         $this->assertContains('https://example.com/page1', $urls);
     }
 
     public function test_filter_noise_urls_removes_js_framework_error_docs(): void
     {
         $results = [
-            ['url' => 'https://react.dev/errors', 'isOk' => true],
-            ['url' => 'https://react.dev/errors/123', 'isOk' => true],
-            ['url' => 'https://vuejs.org/error-reference', 'isOk' => true],
-            ['url' => 'https://vuejs.org/error-reference#runtime-errors', 'isOk' => true],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
+            ['url' => 'https://react.dev/errors', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://react.dev/errors/123', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://vuejs.org/error-reference', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://vuejs.org/error-reference#runtime-errors', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://angular.dev/errors/NG0100', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://svelte.dev/e/some-error', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://nextjs.org/docs/messages/some-error', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
@@ -351,10 +356,10 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_noise_urls_keeps_normal_urls(): void
     {
         $results = [
-            ['url' => 'https://example.com', 'isOk' => true],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
-            ['url' => 'https://github.com/user', 'isOk' => true],
-            ['url' => 'https://linkedin.com/in/user', 'isOk' => true],
+            ['url' => 'https://example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
+            ['url' => 'https://github.com/user', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://linkedin.com/in/user', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
@@ -370,12 +375,12 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_noise_urls_removes_https_variant_of_xml_namespaces(): void
     {
         $results = [
-            ['url' => 'https://www.w3.org/2000/svg', 'isOk' => true],
-            ['url' => 'https://www.w3.org/1998/Math/MathML', 'isOk' => true],
-            ['url' => 'https://www.w3.org/1999/xlink', 'isOk' => true],
-            ['url' => 'https://www.w3.org/XML/1998/namespace', 'isOk' => true],
-            ['url' => 'http://schema.org', 'isOk' => true],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
+            ['url' => 'https://www.w3.org/2000/svg', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://www.w3.org/1998/Math/MathML', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://www.w3.org/1999/xlink', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://www.w3.org/XML/1998/namespace', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'http://schema.org', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
@@ -386,13 +391,57 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_noise_urls_passes_through_with_empty_patterns(): void
     {
         $results = [
-            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true],
-            ['url' => 'https://fonts.googleapis.com', 'isOk' => false],
-            ['url' => 'https://example.com/page1', 'isOk' => true],
+            ['url' => 'http://www.w3.org/2000/svg', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
         ];
 
-        $filtered = $this->scanStatistics->filterNoiseUrls($results, ['exact' => [], 'prefix' => []]);
+        $emptyPatterns = ['namespace_domains' => [], 'detect_preconnect' => false, 'framework_error_patterns' => [], 'exact' => [], 'prefix' => []];
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $emptyPatterns);
         $this->assertCount(3, $filtered);
+    }
+
+    public function test_filter_noise_urls_preconnect_only_filters_external_link_elements(): void
+    {
+        $results = [
+            // <link> bare external domain — filtered (preconnect hint)
+            ['url' => 'https://cdn.example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // <a> bare external domain — NOT filtered (could be a real link)
+            ['url' => 'https://other-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            // <link> with path — NOT filtered (real resource)
+            ['url' => 'https://cdn.example.com/style.css', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // internal <link> bare domain — NOT filtered (preconnect is only external)
+            ['url' => 'https://example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'internal'],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
+        $this->assertCount(3, $filtered);
+
+        $filteredUrls = array_map(fn($r) => $r['url'] . '|' . $r['sourceElement'], array_values($filtered));
+        $this->assertContains('https://other-cdn.example.com|a', $filteredUrls);
+        $this->assertContains('https://cdn.example.com/style.css|link', $filteredUrls);
+        $this->assertContains('https://example.com|link', $filteredUrls);
+    }
+
+    public function test_filter_noise_urls_exact_and_prefix_fallback(): void
+    {
+        $patterns = [
+            'namespace_domains' => [],
+            'detect_preconnect' => false,
+            'framework_error_patterns' => [],
+            'exact' => ['https://custom-noise.example.com'],
+            'prefix' => ['https://another-noise.example.com/docs'],
+        ];
+
+        $results = [
+            ['url' => 'https://custom-noise.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://another-noise.example.com/docs/something', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
+        ];
+
+        $filtered = $this->scanStatistics->filterNoiseUrls($results, $patterns);
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
     }
 
 }

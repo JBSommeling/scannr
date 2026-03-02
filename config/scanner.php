@@ -13,6 +13,14 @@ return [
     |
     */
 
+    'tracking_params' => [
+        'utm_*',
+        'fbclid',
+        'gclid',
+        'ref',
+        'source',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | User Agent
@@ -25,14 +33,6 @@ return [
     */
 
     'user_agent' => 'ScannrBot/1.0 (+https://scannr.io)',
-
-    'tracking_params' => [
-        'utm_*',
-        'fbclid',
-        'gclid',
-        'ref',
-        'source',
-    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -211,46 +211,62 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Noise URLs (hidden without --advanced)
+    | Noise URL Detection (hidden without --advanced)
     |--------------------------------------------------------------------------
     |
-    | URLs matching these patterns are hidden from scan output by default.
-    | They are XML namespaces, CDN root domains, or JS framework error
-    | documentation links — not real navigation links. Use --advanced to
-    | include them in the output.
+    | URLs matching these rules are hidden from scan output by default.
+    | They are not real navigation links but namespace URIs, preconnect
+    | hints, or framework-internal references. Use --advanced to show them.
     |
-    | 'exact': URLs that must match exactly (e.g., CDN preconnect hints).
-    | 'prefix': URLs matched by prefix (e.g., namespace URIs, error docs).
+    | Detection uses three dynamic strategies:
+    |
+    | 1. 'namespace_domains': Domains that host XML/RDF namespace URIs.
+    |    Any URL on these domains is treated as a namespace, not a page.
+    |
+    | 2. 'detect_preconnect': When enabled, bare external domain URLs
+    |    (no path) found in <link> elements are treated as preconnect/
+    |    dns-prefetch hints and hidden. e.g. https://fonts.googleapis.com
+    |
+    | 3. 'framework_error_patterns': Regex patterns matching error/debug
+    |    documentation URLs embedded by JS frameworks in bundled code.
+    |    These are not real links placed by the site author.
+    |
+    | You can also add extra 'exact' and 'prefix' entries for edge cases.
     |
     */
 
     'noise_urls' => [
-        'exact' => [
-            // CDN / font root domains (bare domain without path = preconnect hints, not real pages)
-            'https://fonts.googleapis.com',
-            'https://fonts.gstatic.com',
-            'https://fonts.bunny.net',
+
+        // Domains that host namespace URIs (W3C, Schema.org, etc.)
+        // Any URL on these domains is considered a namespace declaration.
+        'namespace_domains' => [
+            'www.w3.org',
+            'w3.org',
+            'schema.org',
+            'www.schema.org',
         ],
 
-        'prefix' => [
-            // XML Namespaces (W3C, SVG, MathML, XLink, xml:)
-            'http://www.w3.org/2000/svg',
-            'http://www.w3.org/1998/Math/MathML',
-            'http://www.w3.org/1999/xlink',
-            'http://www.w3.org/XML/1998/namespace',
-            'https://www.w3.org/2000/svg',
-            'https://www.w3.org/1998/Math/MathML',
-            'https://www.w3.org/1999/xlink',
-            'https://www.w3.org/XML/1998/namespace',
-            'https://schema.org',
-            'http://schema.org',
+        // Auto-detect bare-domain <link> elements as preconnect/dns-prefetch hints.
+        // A bare domain is an external URL with no path (e.g., https://fonts.googleapis.com).
+        'detect_preconnect' => true,
 
-            // JS framework error documentation links
-            'https://react.dev/errors',
-            'https://reactjs.org/docs/error',
-            'https://vuejs.org/error-reference',
+        // Regex patterns for JS framework error/debug documentation URLs.
+        // Matched against the full URL. Use # as delimiter.
+        'framework_error_patterns' => [
+            '#^https?://react\.dev/errors#',
+            '#^https?://reactjs\.org/docs/error#',
+            '#^https?://vuejs\.org/error-reference#',
+            '#^https?://angular\.(io|dev)/errors#',
+            '#^https?://svelte\.dev/e/#',
+            '#^https?://nextjs\.org/docs/messages/#',
+            '#^https?://nuxt\.com/docs/guide/concepts/error-handling#',
         ],
+
+        // Additional exact-match URLs to hide (for edge cases not caught above).
+        'exact' => [],
+
+        // Additional prefix-match URLs to hide (for edge cases not caught above).
+        'prefix' => [],
     ],
-
 ];
 

@@ -89,34 +89,68 @@ class ScanStatistics
     }
 
     /**
-     * Filter out noise URLs (XML namespaces, CDN root domains, JS framework docs).
+     * Filter out noise URLs (XML namespaces, preconnect hints, JS framework docs).
      *
-     * Uses two matching strategies:
-     * - 'exact': URL must match exactly (for bare CDN domains like preconnect hints).
-     * - 'prefix': URL must start with the pattern (for namespace URIs and framework docs).
+     * Uses dynamic detection strategies from the noise config:
+     * - 'namespace_domains': Any URL on known namespace-hosting domains.
+     * - 'detect_preconnect': Bare external domain URLs from <link> elements.
+     * - 'framework_error_patterns': Regex patterns for JS framework error docs.
+     * - 'exact': Additional exact URL matches.
+     * - 'prefix': Additional URL prefix matches.
      *
      * @param  array  $results        Array of scan result items.
-     * @param  array  $noisePatterns  Noise patterns array with 'exact' and 'prefix' keys.
+     * @param  array  $noisePatterns  Noise config array.
      * @return array Filtered results with noise URLs removed.
      */
     public function filterNoiseUrls(array $results, array $noisePatterns): array
     {
+        $namespaceDomains = $noisePatterns['namespace_domains'] ?? [];
+        $detectPreconnect = $noisePatterns['detect_preconnect'] ?? false;
+        $frameworkPatterns = $noisePatterns['framework_error_patterns'] ?? [];
         $exactUrls = $noisePatterns['exact'] ?? [];
         $prefixUrls = $noisePatterns['prefix'] ?? [];
 
-        if (empty($exactUrls) && empty($prefixUrls)) {
+        if (empty($namespaceDomains) && !$detectPreconnect && empty($frameworkPatterns) && empty($exactUrls) && empty($prefixUrls)) {
             return $results;
         }
 
-        return array_filter($results, function ($result) use ($exactUrls, $prefixUrls) {
+        return array_filter($results, function ($result) use ($namespaceDomains, $detectPreconnect, $frameworkPatterns, $exactUrls, $prefixUrls) {
             $url = $result['url'] ?? '';
+            $element = $result['sourceElement'] ?? 'a';
+            $type = $result['type'] ?? 'internal';
 
-            // Check exact matches (bare CDN domains)
+            // 1. Namespace domain detection — any URL on a known namespace domain
+            if (!empty($namespaceDomains)) {
+                $host = parse_url($url, PHP_URL_HOST);
+                if ($host !== null && $host !== false && in_array($host, $namespaceDomains, true)) {
+                    return false;
+                }
+            }
+
+            // 2. Preconnect/dns-prefetch detection — bare external domain in <link>
+            if ($detectPreconnect && $element === 'link' && $type === 'external') {
+                $parsed = parse_url($url);
+                $path = $parsed['path'] ?? '';
+                $hasQuery = isset($parsed['query']);
+                // Bare domain: no path (or just "/") and no query string
+                if (($path === '' || $path === '/') && !$hasQuery) {
+                    return false;
+                }
+            }
+
+            // 3. Framework error pattern detection
+            foreach ($frameworkPatterns as $pattern) {
+                if (preg_match($pattern, $url)) {
+                    return false;
+                }
+            }
+
+            // 4. Exact match fallback
             if (in_array($url, $exactUrls, true)) {
                 return false;
             }
 
-            // Check prefix matches (namespaces, JS framework docs)
+            // 5. Prefix match fallback
             foreach ($prefixUrls as $prefix) {
                 if (str_starts_with($url, $prefix)) {
                     return false;
