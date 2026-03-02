@@ -469,7 +469,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals('internal', $result['type']);
     }
 
-    /** @dataProvider healthyFormStatusProvider */
+    #[\PHPUnit\Framework\Attributes\DataProvider('healthyFormStatusProvider')]
     public function test_process_form_endpoint_healthy_statuses_are_ok(int $status): void
     {
         $mockClient = $this->createMock(Client::class);
