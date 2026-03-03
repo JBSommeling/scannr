@@ -1739,7 +1739,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'js_bundle_extracted',
+                'verificationReasons' => ['js_bundle_extracted'],
             ],
             [
                 'url' => 'https://example.com/test2',
@@ -1752,7 +1752,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'bot_protection',
+                'verificationReasons' => ['bot_protection'],
             ],
         ];
 
@@ -1779,7 +1779,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'js_bundle_extracted',
+                'verificationReasons' => ['js_bundle_extracted'],
             ],
         ];
 
@@ -1792,7 +1792,7 @@ class ResultFormatterServiceTest extends TestCase
         $decoded = json_decode($jsonOutput, true);
 
         $this->assertTrue($decoded['results'][0]['needsVerification']);
-        $this->assertEquals('js_bundle_extracted', $decoded['results'][0]['verificationReason']);
+        $this->assertEquals(['js_bundle_extracted'], $decoded['results'][0]['verificationReasons']);
         $this->assertEquals(1, $decoded['summary']['needsVerificationCount']);
     }
 
