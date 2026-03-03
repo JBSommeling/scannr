@@ -1439,7 +1439,7 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link, 'Localhost URL should be extracted');
         $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
-        $this->assertContains('localhost_url', $link['flags'] ?? []);
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_127_0_0_1_url_is_flagged(): void
@@ -1451,7 +1451,7 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '127.0.0.1 URL should be extracted');
-        $this->assertContains('localhost_url', $link['flags'] ?? []);
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_dot_local_url_is_flagged(): void
@@ -1463,7 +1463,7 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'myapp.local') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '.local URL should be extracted');
-        $this->assertContains('localhost_url', $link['flags'] ?? []);
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_dot_test_url_is_flagged(): void
@@ -1475,7 +1475,7 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.test') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '.test URL should be extracted');
-        $this->assertContains('localhost_url', $link['flags'] ?? []);
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_production_url_not_flagged_as_localhost(): void
@@ -1489,6 +1489,6 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.sommeling.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'Production URL should be extracted');
-        $this->assertNotContains('localhost_url', $link['flags'] ?? []);
+        $this->assertNotContains('developer_leftover', $link['flags'] ?? []);
     }
 }
