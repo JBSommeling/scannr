@@ -80,9 +80,9 @@ class VerificationService
      * no manual verification is needed regardless of how it was flagged.
      *
      * @param string $url The URL that was checked.
-     * @param int $status The HTTP status code received.
+     * @param int|string $status The HTTP status code received (may be 'Timeout' or 'Error').
      */
-    public function shouldClearForSubdomain(string $url, int $status): bool
+    public function shouldClearForSubdomain(string $url, int|string $status): bool
     {
         return $status === 200 && $this->urlNormalizer->isSubdomainUrl($url);
     }
