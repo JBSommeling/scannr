@@ -618,7 +618,7 @@ class LinkExtractor
      * Detects patterns like:
      * - ${variable} - JavaScript template literal syntax
      * - #{variable} - Ruby/CoffeeScript interpolation
-     * - {variable} or {{variable}} - Vue, Angular, Handlebars interpolation
+     * - {variable} - Vue, Angular, Handlebars interpolation (with letter after brace)
      * - Backticks (`) - Incomplete template literal delimiters
      * - Unencoded commas or newlines - Malformed URLs
      * - Quotes followed by comma (array/concatenation fragments)
@@ -628,8 +628,9 @@ class LinkExtractor
      */
     protected function hasSuspiciousDynamicUrlSyntax(string $url): bool
     {
-        // Check for template literal syntax, curly braces, backticks, newlines, trailing commas, or quote+comma patterns
-        if (preg_match('/\$\{|\#\{|\{|\}|`|,\w+$|"\s*,|\n/', $url)) {
+        // Check for template literal syntax, curly braces with variable names, backticks, newlines, trailing commas, or quote+comma patterns
+        // Note: \{[a-zA-Z] requires a letter after the brace to avoid matching URL-encoded braces like %7B
+        if (preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url)) {
             return true;
         }
 

@@ -133,6 +133,7 @@ class ScannerService
             $flags = array_filter($flags, fn($f) => !in_array($f, [
                 LinkFlag::DETECTED_IN_JS_BUNDLE,
                 LinkFlag::INDIRECT_REFERENCE,
+                LinkFlag::MALFORMED_URL,
                 LinkFlag::UNVERIFIED,
             ], true));
         }

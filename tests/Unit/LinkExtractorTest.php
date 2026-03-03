@@ -1167,6 +1167,93 @@ class LinkExtractorTest extends TestCase
         // 127.0.0.1 URLs from JS bundles should have detected_in_js_bundle flag
         $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
+
+    // ===================
+    // Clean subdomain URL tests (should NOT be flagged as malformed)
+    // ===================
+
+    public function test_extract_links_js_bundle_clean_subdomain_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const demo="https://yoga-demo.sommeling.dev";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'yoga-demo') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        // Should NOT have malformed_url or indirect_reference flags
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_clean_subdomain_with_path_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const app="https://app.sommeling.dev/dashboard";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.sommeling') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Should NOT have malformed_url flag
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_clean_external_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const docs="https://docs.laravel.com/10.x/routing";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Should NOT have malformed_url flag
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_query_params_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const api="https://api.example.com/search?q=test&limit=10";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Query params should not trigger malformed_url
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_template_literal_is_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const user="https://api.example.com/user/${userId}";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Template literal syntax SHOULD trigger malformed_url
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const profile="https://example.com/user/{userId}/profile";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'user/') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Vue/Angular interpolation syntax SHOULD trigger malformed_url
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+    }
 }
-
-

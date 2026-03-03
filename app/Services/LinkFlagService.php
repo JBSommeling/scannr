@@ -208,8 +208,9 @@ class LinkFlagService
      */
     protected function hasMalformedSyntax(string $url): bool
     {
-        // Check for template literal syntax, curly braces, backticks, etc.
-        return (bool) preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}|`|,\w+$|"\s*,|\n/', $url);
+        // Check for template literal syntax with variable names, backticks, etc.
+        // Note: \{[a-zA-Z] requires a letter after the brace to avoid false positives
+        return (bool) preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url);
     }
 
     /**
