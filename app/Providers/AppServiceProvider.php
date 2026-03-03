@@ -9,6 +9,7 @@ use App\Services\ScannerService;
 use App\Services\ScanStatistics;
 use App\Services\SitemapService;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,8 +25,17 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->alias('url-normalizer', UrlNormalizer::class);
 
+        $this->app->singleton('verification-service', function ($app) {
+            return new VerificationService($app->make('url-normalizer'));
+        });
+
+        $this->app->alias('verification-service', VerificationService::class);
+
         $this->app->singleton('http-checker', function ($app) {
-            return new HttpChecker($app->make('url-normalizer'));
+            return new HttpChecker(
+                $app->make('url-normalizer'),
+                $app->make('verification-service'),
+            );
         });
 
         $this->app->alias('http-checker', HttpChecker::class);
@@ -34,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
             return new LinkExtractor(
                 $app->make('url-normalizer'),
                 $app->make('http-checker'),
+                $app->make('verification-service'),
             );
         });
 
@@ -51,6 +62,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make('link-extractor'),
                 $app->make('url-normalizer'),
                 $app->make('scan-stats'),
+                $app->make('verification-service'),
             );
         });
 

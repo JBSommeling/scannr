@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -15,13 +16,15 @@ class LinkExtractorTest extends TestCase
     private LinkExtractor $linkExtractor;
     private UrlNormalizer $urlNormalizer;
     private HttpChecker $httpChecker;
+    private VerificationService $verificationService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->httpChecker = new HttpChecker($this->urlNormalizer);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker);
+        $this->verificationService = new VerificationService($this->urlNormalizer);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
     }
 
     /**

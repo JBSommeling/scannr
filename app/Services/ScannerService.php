@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Enums\VerificationReason;
+use App\DTO\VerificationStatus;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 
@@ -26,12 +26,14 @@ class ScannerService
      * @param  LinkExtractor  $linkExtractor  The link extractor for parsing HTML content.
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving and classifying URLs.
      * @param  ScanStatistics $scanStatistics The statistics calculator for scan results.
+     * @param  VerificationService $verificationService The verification service for detecting verification needs.
      */
     public function __construct(
         protected HttpChecker $httpChecker,
         protected LinkExtractor $linkExtractor,
         protected UrlNormalizer $urlNormalizer,
         protected ScanStatistics $scanStatistics,
+        protected VerificationService $verificationService,
     ) {}
 
     /**
@@ -70,13 +72,14 @@ class ScannerService
      * @param string $url The internal URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
-     * @param bool $needsVerification Whether this URL needs manual verification.
-     * @param string|null $verificationReason Reason for verification flag.
+     * @param VerificationStatus $verification The verification status from extraction.
      * @return array
      * @throws GuzzleException
      */
-    public function processInternalUrl(string $url, string $source, string $element = 'a', bool $needsVerification = false, ?string $verificationReason = null): array
+    public function processInternalUrl(string $url, string $source, string $element = 'a', ?VerificationStatus $verification = null): array
     {
+        $verification ??= VerificationStatus::none();
+
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
             return $this->httpChecker->processFormEndpoint($url, $source, 'internal');
@@ -109,9 +112,8 @@ class ScannerService
 
         // A bare internal subdomain that responds with 200 is proven alive;
         // no manual verification is ever needed regardless of how it was flagged.
-        if ($result['finalStatus'] === 200 && $this->urlNormalizer->isSubdomainUrl($url)) {
-            $needsVerification = false;
-            $verificationReason = null;
+        if ($this->verificationService->shouldClearForSubdomain($url, $result['finalStatus'])) {
+            $verification = VerificationStatus::none();
         }
 
         return [
@@ -127,8 +129,7 @@ class ScannerService
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
             'retryAfter' => $result['retryAfter'],
-            'needsVerification' => $needsVerification,
-            'verificationReason' => $verificationReason,
+            ...$verification->toArray(),
         ];
     }
 
@@ -142,13 +143,14 @@ class ScannerService
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
-     * @param bool $needsVerification Whether this URL needs manual verification.
-     * @param string|null $verificationReason Reason for verification flag.
+     * @param VerificationStatus $verification The verification status from extraction.
      * @return array
      * @throws GuzzleException
      */
-    public function processExternalUrl(string $url, string $source, string $element = 'a', bool $needsVerification = false, ?string $verificationReason = null): array
+    public function processExternalUrl(string $url, string $source, string $element = 'a', ?VerificationStatus $verification = null): array
     {
+        $verification ??= VerificationStatus::none();
+
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
             return $this->httpChecker->processFormEndpoint($url, $source, 'external');
@@ -160,12 +162,10 @@ class ScannerService
         // We don't care about external redirect chains, only whether the link works.
         $firstRedirect = !empty($result['chain']) ? [$result['chain'][0]] : [];
 
-        // Detect bot protection: 403 Forbidden, 405 Method Not Allowed, or network errors
+        // Detect bot protection and merge with existing verification status
         $status = $result['finalStatus'];
-        if (in_array($status, [403, 405]) || in_array($status, ['Error', 'Timeout'])) {
-            $needsVerification = true;
-            $verificationReason = VerificationReason::BotProtection->value;
-        }
+        $httpVerification = $this->verificationService->detectFromHttpResponse($status);
+        $verification = $verification->merge($httpVerification);
 
         return [
             'url' => $url,
@@ -178,8 +178,7 @@ class ScannerService
             'hasHttpsDowngrade' => false,
             'sourceElement' => $element,
             'retryAfter' => $result['retryAfter'],
-            'needsVerification' => $needsVerification,
-            'verificationReason' => $verificationReason,
+            ...$verification->toArray(),
         ];
     }
 }

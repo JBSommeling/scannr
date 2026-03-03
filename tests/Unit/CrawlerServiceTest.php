@@ -11,6 +11,7 @@ use App\Services\ScannerService;
 use App\Services\ScanStatistics;
 use App\Services\SitemapService;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
@@ -52,19 +53,32 @@ class CrawlerServiceTest extends TestCase
         );
     }
 
+    /**
+     * Create the services needed for testing.
+     *
+     * @return array{urlNormalizer: UrlNormalizer, verificationService: VerificationService, httpChecker: HttpChecker, linkExtractor: LinkExtractor, scanStatistics: ScanStatistics, scannerService: ScannerService, sitemapService: SitemapService}
+     */
+    private function createServices(): array
+    {
+        $urlNormalizer = new UrlNormalizer();
+        $verificationService = new VerificationService($urlNormalizer);
+        $httpChecker = new HttpChecker($urlNormalizer, $verificationService);
+        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker, $verificationService);
+        $scanStatistics = new ScanStatistics();
+        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics, $verificationService);
+        $sitemapService = new SitemapService(null, $urlNormalizer);
+
+        return compact('urlNormalizer', 'verificationService', 'httpChecker', 'linkExtractor', 'scanStatistics', 'scannerService', 'sitemapService');
+    }
+
     // ==================
     // Constructor tests
     // ==================
 
     public function test_crawler_service_can_be_instantiated(): void
     {
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
 
         $this->assertInstanceOf(CrawlerService::class, $crawler);
     }
@@ -85,13 +99,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html><body>Page 1</body></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 2]);
@@ -123,13 +132,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 2]);
@@ -150,23 +154,19 @@ class CrawlerServiceTest extends TestCase
         $html1 = '<html><body><a href="/level2">Level 2</a></body></html>';
         // Page at depth 2 links to page at depth 3
         $html2 = '<html><body><a href="/level3">Level 3</a></body></html>';
-        // Page at depth 3 (should not be crawled with maxDepth=2)
+        // Page at depth 3 (should not be visited if maxDepth = 2)
         $html3 = '<html><body>Level 3</body></html>';
 
-        $client = $this->createMockClient([
+        $responses = [
             new Response(200, ['Content-Type' => 'text/html'], $html0),
             new Response(200, ['Content-Type' => 'text/html'], $html1),
             new Response(200, ['Content-Type' => 'text/html'], $html2),
             new Response(200, ['Content-Type' => 'text/html'], $html3),
-        ]);
+        ];
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $client = $this->createMockClient($responses);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxDepth' => 2, 'maxUrls' => 10]);
@@ -199,13 +199,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -227,13 +222,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $progressCalls = [];
@@ -256,13 +246,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, [], ''), // HEAD request for external URL
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -285,13 +270,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, [], ''),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // Only scan 'a' elements
@@ -315,13 +295,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig([
@@ -350,13 +325,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -379,13 +349,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -409,13 +374,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -447,13 +407,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $sitemapMessages = [];
@@ -488,13 +443,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -517,13 +467,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -543,13 +488,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10]);
@@ -578,13 +518,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig([
@@ -616,13 +551,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig([
@@ -652,13 +582,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], $html),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $messages = [];
@@ -689,13 +614,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $messages = [];
@@ -724,14 +644,10 @@ class CrawlerServiceTest extends TestCase
             new Response(200, [], ''),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
 
-        // Inject a mock BrowsershotFetcher directly into the scanner service
         $renderedHtml = '<html><body><div id="root"><img src="https://cdn.example.com/hero.webp" /></div></body></html>';
         $mockFetcher = $this->createMock(BrowsershotFetcher::class);
         $mockFetcher->method('fetch')->willReturn([
@@ -739,10 +655,7 @@ class CrawlerServiceTest extends TestCase
             'body' => $renderedHtml,
             'finalUrl' => 'https://example.com',
         ]);
-        $scannerService->setBrowsershotFetcher($mockFetcher);
-
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
-        $crawler->setClient($client);
+        $services['scannerService']->setBrowsershotFetcher($mockFetcher);
 
         $config = $this->createConfig(['maxUrls' => 5, 'scanElements' => ['a', 'img']]);
         $crawlResult = $crawler->crawl($config);
@@ -761,16 +674,10 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], $spaShell),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
-        // No JS rendering, no BrowsershotFetcher
         $config = $this->createConfig(['maxUrls' => 5]);
         $crawlResult = $crawler->crawl($config);
 
@@ -789,14 +696,10 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], '<html></html>'),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
 
-        // Browsershot fails
         $mockFetcher = $this->createMock(BrowsershotFetcher::class);
         $mockFetcher->method('fetch')->willReturn([
             'status' => 'Error',
@@ -804,10 +707,7 @@ class CrawlerServiceTest extends TestCase
             'finalUrl' => 'https://example.com',
             'error' => 'Chrome crashed',
         ]);
-        $scannerService->setBrowsershotFetcher($mockFetcher);
-
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
-        $crawler->setClient($client);
+        $services['scannerService']->setBrowsershotFetcher($mockFetcher);
 
         $config = $this->createConfig(['maxUrls' => 5]);
         $crawlResult = $crawler->crawl($config);
@@ -845,13 +745,8 @@ class CrawlerServiceTest extends TestCase
             ],
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig(['maxUrls' => 10, 'delayMin' => 0, 'delayMax' => 0]);
@@ -880,13 +775,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // Set low backoff for test speed
@@ -911,13 +801,8 @@ class CrawlerServiceTest extends TestCase
         $responses = array_fill(0, 20, new Response(429, ['Content-Type' => 'text/html'], ''));
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // Set low backoff with enough retries to reach abort threshold
@@ -947,13 +832,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         config(['scanner.rate_limit' => [
@@ -984,13 +864,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // Set specific backoff delay
@@ -1023,13 +898,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // Set escalating backoff delays: 200ms, then 400ms
@@ -1066,13 +936,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         // With 2 backoff delays, we can retry up to 2 times per URL
@@ -1120,13 +985,8 @@ class CrawlerServiceTest extends TestCase
             new Response(200, ['Content-Type' => 'text/html'], ''),
         ]);
 
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         $config = $this->createConfig([
@@ -1159,13 +1019,8 @@ class CrawlerServiceTest extends TestCase
         ];
 
         $client = $this->createMockClient($responses);
-        $urlNormalizer = new UrlNormalizer();
-        $httpChecker = new HttpChecker($urlNormalizer);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker);
-        $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics);
-        $sitemapService = new SitemapService(null, $urlNormalizer);
-        $crawler = new CrawlerService($scannerService, $urlNormalizer, $httpChecker, $sitemapService);
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
         config(['scanner.rate_limit' => [

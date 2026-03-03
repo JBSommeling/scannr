@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Enums\VerificationReason;
+use App\DTO\VerificationStatus;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -19,10 +19,12 @@ class LinkExtractor
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving URLs.
      * @param  HttpChecker    $httpChecker    The HTTP checker for fetching external script content.
+     * @param  VerificationService  $verificationService  The verification service for detecting verification needs.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
         protected HttpChecker $httpChecker,
+        protected VerificationService $verificationService,
     ) {}
 
     /**
@@ -581,31 +583,18 @@ class LinkExtractor
                     // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
                     $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
 
-                    // Only flag URLs that need verification:
-                    // - Internal URLs: only if they have suspicious syntax
-                    // - External URLs: always (could be library docs)
-                    $needsVerification = $hasSuspiciousSyntax || !$isInternal;
-                    $verificationReason = null;
-
-                    if ($needsVerification) {
-                        $parsedHost = parse_url($normalizedUrl, PHP_URL_HOST);
-                        $isLoopback = in_array($parsedHost, ['localhost', '127.0.0.1', '::1'], true);
-
-                        if ($hasSuspiciousSyntax) {
-                            $verificationReason = VerificationReason::IndirectReference->value;
-                        } elseif ($isLoopback) {
-                            $verificationReason = VerificationReason::DeveloperLeftover->value;
-                        } else {
-                            $verificationReason = VerificationReason::JsBundleExtracted->value;
-                        }
-                    }
+                    // Use verification service to determine verification status
+                    $verification = $this->verificationService->detectFromJsBundle(
+                        $normalizedUrl,
+                        $hasSuspiciousSyntax,
+                        $isInternal
+                    );
 
                     $links[] = [
                         'url' => $normalizedUrl,
                         'source' => $sourceUrl,
                         'element' => 'a', // Treat as anchor link
-                        'needsVerification' => $needsVerification,
-                        'verificationReason' => $verificationReason,
+                        ...$verification->toArray(),
                     ];
                 }
             }

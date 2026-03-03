@@ -8,8 +8,8 @@ use App\Services\LinkExtractor;
 use App\Services\ScannerService;
 use App\Services\ScanStatistics;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -21,19 +21,22 @@ class ScannerServiceTest extends TestCase
     private HttpChecker $httpChecker;
     private LinkExtractor $linkExtractor;
     private ScanStatistics $scanStatistics;
+    private VerificationService $verificationService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->httpChecker = new HttpChecker($this->urlNormalizer);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker);
+        $this->verificationService = new VerificationService($this->urlNormalizer);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
         $this->scanStatistics = new ScanStatistics();
         $this->service = new ScannerService(
             $this->httpChecker,
             $this->linkExtractor,
             $this->urlNormalizer,
             $this->scanStatistics,
+            $this->verificationService,
         );
     }
 
@@ -551,8 +554,7 @@ class ScannerServiceTest extends TestCase
             'https://external.com/page',
             'https://example.com',
             'a',
-            true,
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
         );
 
         $this->assertEquals(200, $result['status']);
@@ -613,8 +615,7 @@ class ScannerServiceTest extends TestCase
             'https://example.com',
             'start',
             'a',
-            true,
-            'indirect_reference'
+            \App\DTO\VerificationStatus::forIndirectReference()
         );
 
         $this->assertEquals(200, $result['status']);
@@ -636,8 +637,7 @@ class ScannerServiceTest extends TestCase
             'https://yoga-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,           // flagged as needing verification
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()  // flagged as needing verification
         );
 
         $this->assertEquals(200, $result['status']);
@@ -655,8 +655,7 @@ class ScannerServiceTest extends TestCase
             'https://app.demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
         );
 
         $this->assertEquals(200, $result['status']);
@@ -676,8 +675,7 @@ class ScannerServiceTest extends TestCase
             'https://sommeling.dev/page',
             'start',
             'a',
-            true,
-            'indirect_reference'
+            \App\DTO\VerificationStatus::forIndirectReference()
         );
 
         $this->assertEquals(200, $result['status']);
@@ -695,8 +693,7 @@ class ScannerServiceTest extends TestCase
             'https://tree-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,
-            'bot_protection'
+            \App\DTO\VerificationStatus::forBotProtection()
         );
 
         $this->assertEquals(403, $result['status']);

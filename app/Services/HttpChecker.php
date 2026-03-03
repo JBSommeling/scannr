@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Enums\VerificationReason;
+use App\DTO\VerificationStatus;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -30,10 +30,12 @@ class HttpChecker
      * Create a new HttpChecker instance.
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving redirect URLs.
+     * @param  VerificationService  $verificationService  The verification service for detecting verification needs.
      * @param  Client|null    $client         Optional Guzzle HTTP client instance.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
+        protected VerificationService $verificationService,
         ?Client $client = null,
     ) {
         $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
@@ -353,13 +355,8 @@ class HttpChecker
         $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
         $isOk = ($status >= 200 && $status < 300) || in_array($status, $healthyFormStatuses);
 
-        // Detect bot protection: 403 Forbidden, 405 Method Not Allowed, or network errors
-        $needsVerification = false;
-        $verificationReason = null;
-        if (in_array($status, [403, 405]) || in_array($status, ['Error', 'Timeout'])) {
-            $needsVerification = true;
-            $verificationReason = VerificationReason::BotProtection->value;
-        }
+        // Detect bot protection using verification service
+        $verification = $this->verificationService->detectFromHttpResponse($status);
 
         return [
             'url' => $url,
@@ -374,8 +371,7 @@ class HttpChecker
             'sourceElement' => 'form',
             'extractedLinks' => [],
             'retryAfter' => $retryAfter,
-            'needsVerification' => $needsVerification,
-            'verificationReason' => $verificationReason,
+            ...$verification->toArray(),
         ];
     }
 }

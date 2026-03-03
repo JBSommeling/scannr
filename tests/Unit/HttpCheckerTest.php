@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\HttpChecker;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -17,12 +18,14 @@ class HttpCheckerTest extends TestCase
 {
     private HttpChecker $httpChecker;
     private UrlNormalizer $urlNormalizer;
+    private VerificationService $verificationService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->httpChecker = new HttpChecker($this->urlNormalizer);
+        $this->verificationService = new VerificationService($this->urlNormalizer);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
     }
 
     /**
@@ -348,7 +351,8 @@ class HttpCheckerTest extends TestCase
 
     public function test_default_client_uses_scannrbot_user_agent(): void
     {
-        $service = new HttpChecker(new UrlNormalizer());
+        $urlNormalizer = new UrlNormalizer();
+        $service = new HttpChecker($urlNormalizer, new VerificationService($urlNormalizer));
 
         $reflection = new \ReflectionClass($service);
         $clientProperty = $reflection->getProperty('client');
