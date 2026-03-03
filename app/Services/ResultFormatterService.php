@@ -145,8 +145,8 @@ class ResultFormatterService
 
         $output->table($headers, $tableData);
 
-        // Display broken links separately (non-2xx status)
-        $brokenLinks = array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? ''));
+        // Display broken links separately (non-2xx status, excluding healthy form endpoints)
+        $brokenLinks = array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r));
         if (!empty($brokenLinks)) {
             $output->newLine();
             $output->error('Broken Links:');
@@ -212,7 +212,7 @@ class ResultFormatterService
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 
-        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$this->isOkStatus($r['status'] ?? '')));
+        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
 
         $summary = ['totalScanned' => $totalScanned];
 
@@ -241,7 +241,7 @@ class ResultFormatterService
      */
     protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
-        $brokenLinks = array_values(array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '')));
+        $brokenLinks = array_values(array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
 
         // Build summary
         $summary = ['totalScanned' => $totalScanned];
@@ -324,6 +324,15 @@ class ResultFormatterService
             return $statusInt >= 200 && $statusInt < 300;
         }
         return false;
+    }
+
+    /**
+     * Check if a result is a healthy form endpoint (has form_endpoint flag).
+     */
+    protected function isHealthyFormEndpoint(array $result): bool
+    {
+        $flags = $result['analysis']['flags'] ?? [];
+        return in_array('form_endpoint', $flags, true);
     }
 
     /**

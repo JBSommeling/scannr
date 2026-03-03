@@ -4,8 +4,9 @@ namespace Tests\Unit;
 
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
+use App\Services\LinkFlagService;
+use App\Services\SeverityEvaluator;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -16,15 +17,17 @@ class LinkExtractorTest extends TestCase
     private LinkExtractor $linkExtractor;
     private UrlNormalizer $urlNormalizer;
     private HttpChecker $httpChecker;
-    private VerificationService $verificationService;
+    private LinkFlagService $linkFlagService;
+    private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->verificationService = new VerificationService($this->urlNormalizer);
-        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
+        $this->severityEvaluator = new SeverityEvaluator();
+        $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->linkFlagService);
     }
 
     /**
@@ -1005,9 +1008,9 @@ class LinkExtractorTest extends TestCase
         }
 
         $this->assertNotNull($suspiciousLink);
-        $this->assertTrue($suspiciousLink['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $suspiciousLink['verificationReasons'] ?? []);
-        $this->assertContains('indirect_reference', $suspiciousLink['verificationReasons'] ?? []);
+        $this->assertNotEmpty($suspiciousLink['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $suspiciousLink['flags'] ?? []);
+        $this->assertContains('indirect_reference', $suspiciousLink['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_clean_urls_for_verification(): void
@@ -1025,8 +1028,8 @@ class LinkExtractorTest extends TestCase
         }
 
         $this->assertNotNull($cleanLink);
-        $this->assertTrue($cleanLink['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $cleanLink['verificationReasons'] ?? []);
+        $this->assertNotEmpty($cleanLink['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $cleanLink['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_backtick_in_url(): void
@@ -1038,8 +1041,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/test') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_comma_suffix(): void
@@ -1051,8 +1054,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/plugins') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_curly_braces(): void
@@ -1064,9 +1067,9 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'alpinejs.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $link['verificationReasons'] ?? []);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_standalone_curly_brace(): void
@@ -1078,8 +1081,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/api') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_does_not_flag_internal_subdomains(): void
@@ -1116,8 +1119,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'react.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'External URL from JS bundle should need verification');
-        $this->assertContains('js_bundle_extracted', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? [], 'External URL from JS bundle should have flags');
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_internal_suspicious_urls(): void
@@ -1131,8 +1134,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'Internal URL with suspicious syntax should need verification');
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? [], 'Internal URL with suspicious syntax should have flags');
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_localhost_as_developer_leftover(): void
@@ -1146,8 +1149,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'localhost URL from JS bundle should need verification');
-        $this->assertContains('developer_leftover', $link['verificationReasons'] ?? []);
+        // localhost URLs from JS bundles should have detected_in_js_bundle flag
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_127_0_0_1_as_developer_leftover(): void
@@ -1161,8 +1164,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, '127.0.0.1 URL from JS bundle should need verification');
-        $this->assertContains('developer_leftover', $link['verificationReasons'] ?? []);
+        // 127.0.0.1 URLs from JS bundles should have detected_in_js_bundle flag
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
 }
 

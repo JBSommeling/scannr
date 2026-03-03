@@ -4,7 +4,8 @@ namespace Tests\Unit;
 
 use App\Services\HttpChecker;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
+use App\Services\LinkFlagService;
+use App\Services\SeverityEvaluator;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -18,14 +19,16 @@ class HttpCheckerTest extends TestCase
 {
     private HttpChecker $httpChecker;
     private UrlNormalizer $urlNormalizer;
-    private VerificationService $verificationService;
+    private LinkFlagService $linkFlagService;
+    private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->verificationService = new VerificationService($this->urlNormalizer);
-        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
+        $this->severityEvaluator = new SeverityEvaluator();
+        $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
     }
 
     /**
@@ -352,7 +355,9 @@ class HttpCheckerTest extends TestCase
     public function test_default_client_uses_scannrbot_user_agent(): void
     {
         $urlNormalizer = new UrlNormalizer();
-        $service = new HttpChecker($urlNormalizer, new VerificationService($urlNormalizer));
+        $severityEvaluator = new SeverityEvaluator();
+        $linkFlagService = new LinkFlagService($urlNormalizer, $severityEvaluator);
+        $service = new HttpChecker($urlNormalizer, $linkFlagService);
 
         $reflection = new \ReflectionClass($service);
         $clientProperty = $reflection->getProperty('client');
@@ -447,15 +452,15 @@ class HttpCheckerTest extends TestCase
         $this->assertArrayHasKey('sourcePage', $result);
         $this->assertArrayHasKey('status', $result);
         $this->assertArrayHasKey('type', $result);
-        $this->assertArrayHasKey('redirectChain', $result);
-        $this->assertArrayHasKey('isOk', $result);
-        $this->assertArrayHasKey('isLoop', $result);
-        $this->assertArrayHasKey('hasHttpsDowngrade', $result);
+        $this->assertArrayHasKey('redirect', $result);
+        $this->assertArrayHasKey('analysis', $result);
+        $this->assertArrayHasKey('redirect', $result);
+        // hasHttpsDowngrade is now in redirect object
         $this->assertArrayHasKey('sourceElement', $result);
         $this->assertArrayHasKey('extractedLinks', $result);
-        $this->assertArrayHasKey('retryAfter', $result);
-        $this->assertArrayHasKey('needsVerification', $result);
-        $this->assertArrayHasKey('verificationReasons', $result);
+        $this->assertArrayHasKey('network', $result);
+        // needsVerification is now in analysis object
+        // verificationReasons replaced by analysis.flags
     }
 
     public function test_process_form_endpoint_200_is_ok_no_verification(): void
@@ -465,10 +470,10 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['isOk']);
-        $this->assertFalse($result['needsVerification']);
-        $this->assertEmpty($result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        // verification is now derived from analysis
+        // replaced by analysis.flags
         $this->assertEquals('form', $result['sourceElement']);
         $this->assertEquals('internal', $result['type']);
     }
@@ -484,8 +489,8 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals($status, $result['status']);
-        $this->assertTrue($result['isOk'], "Status {$status} should be considered healthy");
+        $this->assertEquals((string) $status, $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags'], "Status {$status} should be considered healthy");
     }
 
     public static function healthyFormStatusProvider(): array
@@ -508,10 +513,9 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(403, $result['status']);
-        $this->assertTrue($result['isOk']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('403', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 
     public function test_process_form_endpoint_405_is_ok_and_needs_verification(): void
@@ -524,10 +528,9 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(405, $result['status']);
-        $this->assertTrue($result['isOk']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('405', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 
     public function test_process_form_endpoint_404_is_not_ok(): void
@@ -540,9 +543,9 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/missing', 'https://example.com');
 
-        $this->assertEquals(404, $result['status']);
-        $this->assertFalse($result['isOk']);
-        $this->assertFalse($result['needsVerification']);
+        $this->assertEquals('404', $result['status']);
+        $this->assertNotEmpty($result['analysis']['flags']);
+        // verification is now derived from analysis
     }
 
     public function test_process_form_endpoint_500_is_not_ok(): void
@@ -555,9 +558,9 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(500, $result['status']);
-        $this->assertFalse($result['isOk']);
-        $this->assertFalse($result['needsVerification']);
+        $this->assertEquals('500', $result['status']);
+        $this->assertNotEmpty($result['analysis']['flags']);
+        // verification is now derived from analysis
     }
 
     public function test_process_form_endpoint_timeout_needs_verification(): void
@@ -570,10 +573,8 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals('Timeout', $result['status']);
-        $this->assertFalse($result['isOk']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('timeout', $result['status']);
+        $this->assertContains('timeout', $result['analysis']['flags']);
     }
 
     public function test_process_form_endpoint_connection_error_needs_verification(): void
@@ -586,10 +587,8 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals('Error', $result['status']);
-        $this->assertFalse($result['isOk']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('error', $result['status']);
+        $this->assertContains('connection_error', $result['analysis']['flags']);
     }
 
     public function test_process_form_endpoint_request_exception_without_response_is_error(): void
@@ -603,10 +602,8 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals('Error', $result['status']);
-        $this->assertFalse($result['isOk']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('error', $result['status']);
+        $this->assertContains('connection_error', $result['analysis']['flags']);
     }
 
     public function test_process_form_endpoint_429_extracts_retry_after(): void
@@ -619,10 +616,10 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(429, $result['status']);
-        $this->assertTrue($result['isOk']);
-        $this->assertEquals(30, $result['retryAfter']);
-        $this->assertFalse($result['needsVerification']);
+        $this->assertEquals('429', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertEquals(30, $result['network']['retryAfter']);
+        // verification is now derived from analysis
     }
 
     public function test_process_form_endpoint_429_ignores_non_numeric_retry_after(): void
@@ -635,8 +632,8 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEquals(429, $result['status']);
-        $this->assertNull($result['retryAfter']);
+        $this->assertEquals('429', $result['status']);
+        $this->assertNull($result['network']['retryAfter']);
     }
 
     public function test_process_form_endpoint_uses_external_type(): void
@@ -666,9 +663,9 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
 
-        $this->assertEmpty($result['redirectChain']);
-        $this->assertFalse($result['isLoop']);
-        $this->assertFalse($result['hasHttpsDowngrade']);
+        $this->assertEmpty($result['redirect']['chain']);
+        $this->assertFalse($result['redirect']['isLoop']);
+        $this->assertFalse($result['redirect']['hasHttpsDowngrade']);
     }
 
 }

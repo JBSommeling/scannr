@@ -291,7 +291,7 @@ class CrawlerService
             }
 
             // Check if we got a 429 response
-            if ($result !== null && $result['status'] === 429) {
+            if ($result !== null && (string) $result['status'] === '429') {
                 $this->total429Count++;
 
                 // Check if we should abort (always check before deciding to retry or return)
@@ -309,9 +309,10 @@ class CrawlerService
                 // Calculate backoff delay
                 $delayMs = $backoffDelays[$retryCount] ?? $backoffDelays[$maxRetries - 1];
 
-                // Check for Retry-After header
-                if ($respectRetryAfter && isset($result['retryAfter']) && $result['retryAfter'] > 0) {
-                    $delayMs = $result['retryAfter'] * 1000;
+                // Check for Retry-After header (check both old and new structure)
+                $retryAfter = $result['network']['retryAfter'] ?? $result['retryAfter'] ?? null;
+                if ($respectRetryAfter && $retryAfter !== null && $retryAfter > 0) {
+                    $delayMs = $retryAfter * 1000;
                 }
 
                 if ($onMessage !== null) {
