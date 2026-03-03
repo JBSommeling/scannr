@@ -132,6 +132,11 @@ class LinkFlagService
             $flags[] = LinkFlag::EXTERNAL_PLATFORM;
         }
 
+        // Check for localhost/development URLs
+        if ($this->isLocalhostUrl($url)) {
+            $flags[] = LinkFlag::LOCALHOST_URL;
+        }
+
         // Check for malformed URL syntax
         if ($this->hasMalformedSyntax($url)) {
             $flags[] = LinkFlag::MALFORMED_URL;
@@ -262,6 +267,40 @@ class LinkFlagService
         $host = parse_url($url, PHP_URL_HOST);
 
         return in_array($host, ['localhost', '127.0.0.1', '::1', '[::1]'], true);
+    }
+
+    /**
+     * Check if a URL points to localhost or a development environment.
+     *
+     * Detects:
+     * - localhost, 127.0.0.1, ::1, 0.0.0.0
+     * - .local, .test, .localhost, .invalid, .example TLDs (common dev domains)
+     */
+    public function isLocalhostUrl(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        if ($host === null || $host === false) {
+            return false;
+        }
+
+        $host = strtolower($host);
+
+        // Remove IPv6 brackets if present
+        $host = trim($host, '[]');
+
+        // Check for localhost variants
+        if (in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0'], true)) {
+            return true;
+        }
+
+        // Check for .local, .test, .localhost, .invalid TLDs (common dev domains)
+        // Note: .example is a reserved TLD, but example.com is a real domain
+        if (preg_match('/\.(local|test|localhost|invalid)$/i', $host)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

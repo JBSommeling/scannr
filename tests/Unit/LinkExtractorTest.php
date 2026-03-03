@@ -1424,4 +1424,71 @@ class LinkExtractorTest extends TestCase
         $this->assertNotNull($link, 'API URL should be extracted');
         $this->assertContains('malformed_url', $link['flags'] ?? []);
     }
+
+    // ===================
+    // JS Bundle extraction - Localhost URLs (should be flagged)
+    // ===================
+
+    public function test_extract_links_js_bundle_localhost_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://localhost:3000/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'Localhost URL should be extracted');
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        $this->assertContains('localhost_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_127_0_0_1_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://127.0.0.1:8080/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '127.0.0.1 URL should be extracted');
+        $this->assertContains('localhost_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_dot_local_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://myapp.local/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'myapp.local') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '.local URL should be extracted');
+        $this->assertContains('localhost_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_dot_test_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://laravel.test/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.test') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '.test URL should be extracted');
+        $this->assertContains('localhost_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_production_url_not_flagged_as_localhost(): void
+    {
+        $html = '<html><body><script>const api = "https://api.sommeling.dev/users";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.sommeling.dev') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'Production URL should be extracted');
+        $this->assertNotContains('localhost_url', $link['flags'] ?? []);
+    }
 }

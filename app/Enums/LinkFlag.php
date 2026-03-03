@@ -46,6 +46,9 @@ enum LinkFlag: string
     /** URL contains template literals, placeholders, or malformed syntax. */
     case MALFORMED_URL = 'malformed_url';
 
+    /** URL points to localhost or development environment (localhost, 127.0.0.1, .local, .test). */
+    case LOCALHOST_URL = 'localhost_url';
+
     /** HTTPS to HTTP downgrade detected in redirect chain. */
     case HTTP_ON_HTTPS = 'http_on_https';
 

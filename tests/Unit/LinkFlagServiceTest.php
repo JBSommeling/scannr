@@ -614,5 +614,135 @@ class LinkFlagServiceTest extends TestCase
     {
         $this->assertFalse($this->linkFlagService->isLoopbackUrl('https://example.com'));
     }
-}
 
+    // ===================
+    // isLocalhostUrl tests (comprehensive)
+    // ===================
+
+    public function test_localhost_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://localhost'));
+    }
+
+    public function test_localhost_with_port_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://localhost:3000'));
+    }
+
+    public function test_localhost_with_path_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://localhost/api/users'));
+    }
+
+    public function test_127_0_0_1_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://127.0.0.1:8080'));
+    }
+
+    public function test_ipv6_localhost_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://[::1]:8080'));
+    }
+
+    public function test_0_0_0_0_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://0.0.0.0:8000'));
+    }
+
+    public function test_dot_local_domain_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://myapp.local'));
+    }
+
+    public function test_dot_test_domain_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://myapp.test'));
+    }
+
+    public function test_dot_localhost_domain_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://dev.localhost'));
+    }
+
+    public function test_dot_invalid_domain_is_localhost_url(): void
+    {
+        $this->assertTrue($this->linkFlagService->isLocalhostUrl('http://test.invalid'));
+    }
+
+    public function test_production_url_is_not_localhost_url(): void
+    {
+        $this->assertFalse($this->linkFlagService->isLocalhostUrl('https://www.sommeling.dev'));
+    }
+
+    public function test_external_url_is_not_localhost_url(): void
+    {
+        $this->assertFalse($this->linkFlagService->isLocalhostUrl('https://github.com/JBSommeling'));
+    }
+
+    public function test_example_com_is_not_localhost_url(): void
+    {
+        // example.com is a real domain, not .example TLD
+        $this->assertFalse($this->linkFlagService->isLocalhostUrl('https://example.com'));
+    }
+
+    // ===================
+    // detectFromUrl with LOCALHOST_URL flag
+    // ===================
+
+    public function test_detect_from_url_flags_localhost(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('http://localhost', true);
+
+        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_flags_localhost_with_port(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('http://localhost:3000/api', true);
+
+        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_flags_127_0_0_1(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('http://127.0.0.1:8080', true);
+
+        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_flags_dot_local(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('http://myapp.local', true);
+
+        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_flags_dot_test(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('http://laravel.test', true);
+
+        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_does_not_flag_production_as_localhost(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('https://www.sommeling.dev', false);
+
+        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_does_not_flag_external_as_localhost(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('https://github.com/user', true);
+
+        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+
+    public function test_detect_from_url_does_not_flag_example_com_as_localhost(): void
+    {
+        // example.com is a real domain (not .example TLD)
+        $flags = $this->linkFlagService->detectFromUrl('https://example.com', true);
+
+        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+    }
+}
