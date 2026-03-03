@@ -15,7 +15,7 @@ class ScanStatistics
      * Calculate statistics from scan results.
      *
      * Computes counts for OK responses, redirects, broken links,
-     * timeouts, and other metrics.
+     * timeouts, and other metrics based on the new analysis structure.
      *
      * @param  array  $results  Array of scan result items.
      * @return array{
@@ -27,26 +27,44 @@ class ScanStatistics
      *     redirectChainCount: int,
      *     totalRedirectHops: int,
      *     httpsDowngrades: int,
-     *     needsVerificationCount: int
+     *     criticalCount: int,
+     *     warningCount: int,
+     *     lowConfidenceCount: int
      * }
      */
     public function calculateStats(array $results): array
     {
         $total = count($results);
-        $ok = count(array_filter($results, fn($r) => $r['isOk'] && empty($r['redirectChain'])));
-        $redirects = count(array_filter($results, fn($r) => !empty($r['redirectChain']) && $r['isOk']));
-        $broken = count(array_filter($results, fn($r) => !$r['isOk'] && $r['status'] !== 'Timeout'));
-        $timeouts = count(array_filter($results, fn($r) => $r['status'] === 'Timeout'));
+
+        // Determine if result is OK based on status (2xx)
+        $isOk = fn($r) => $this->isOkResult($r);
+
+        $ok = count(array_filter($results, fn($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
+        $redirects = count(array_filter($results, fn($r) => !empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
+        $broken = count(array_filter($results, fn($r) => !$isOk($r) && ($r['status'] ?? '') !== 'timeout'));
+        $timeouts = count(array_filter($results, fn($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
-        $redirectChainCount = count(array_filter($results, fn($r) => ($r['type'] ?? 'internal') === 'internal' && count($r['redirectChain'] ?? []) >= 2));
-        $totalRedirectHops = array_sum(array_map(fn($r) => ($r['type'] ?? 'internal') === 'internal' ? count($r['redirectChain'] ?? []) : 0, $results));
+        $redirectChainCount = count(array_filter($results, fn($r) =>
+            ($r['type'] ?? 'internal') === 'internal' &&
+            count($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) >= 2
+        ));
+        $totalRedirectHops = array_sum(array_map(fn($r) =>
+            ($r['type'] ?? 'internal') === 'internal'
+                ? count($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])
+                : 0,
+            $results
+        ));
 
         // HTTPS downgrade count
-        $httpsDowngrades = count(array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false));
+        $httpsDowngrades = count(array_filter($results, fn($r) =>
+            $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
+        ));
 
-        // Verification count — URLs that need manual verification
-        $needsVerificationCount = count(array_filter($results, fn($r) => $r['needsVerification'] ?? false));
+        // Severity counts from analysis
+        $criticalCount = count(array_filter($results, fn($r) => $this->hasSeverity($r, 'critical')));
+        $warningCount = count(array_filter($results, fn($r) => $this->hasSeverity($r, 'warning')));
+        $lowConfidenceCount = count(array_filter($results, fn($r) => $this->hasLowConfidence($r)));
 
         return [
             'total' => $total,
@@ -57,8 +75,63 @@ class ScanStatistics
             'redirectChainCount' => $redirectChainCount,
             'totalRedirectHops' => $totalRedirectHops,
             'httpsDowngrades' => $httpsDowngrades,
-            'needsVerificationCount' => $needsVerificationCount,
+            'criticalCount' => $criticalCount,
+            'warningCount' => $warningCount,
+            'lowConfidenceCount' => $lowConfidenceCount,
         ];
+    }
+
+    /**
+     * Check if a result is OK (2xx status).
+     */
+    protected function isOkResult(array $result): bool
+    {
+        $status = $result['status'] ?? '';
+
+        if (is_numeric($status)) {
+            $statusInt = (int) $status;
+            return $statusInt >= 200 && $statusInt < 300;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a result has a specific severity level.
+     */
+    protected function hasSeverity(array $result, string $severity): bool
+    {
+        // Check new analysis structure
+        if (isset($result['analysis'])) {
+            // Check if severity is derived from flags
+            $flags = $result['analysis']['flags'] ?? [];
+
+            // For now, check common flag patterns for severity
+            if ($severity === 'critical') {
+                return in_array('status_4xx', $flags, true) && !in_array('external_platform', $flags, true) && !in_array('bot_protection', $flags, true)
+                    || in_array('status_5xx', $flags, true)
+                    || (in_array('connection_error', $flags, true) && !in_array('external_platform', $flags, true));
+            }
+
+            if ($severity === 'warning') {
+                return in_array('malformed_url', $flags, true)
+                    || in_array('bot_protection', $flags, true)
+                    || in_array('timeout', $flags, true)
+                    || in_array('http_on_https', $flags, true)
+                    || in_array('excessive_redirects', $flags, true)
+                    || (in_array('status_4xx', $flags, true) && in_array('external_platform', $flags, true));
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a result has low confidence.
+     */
+    protected function hasLowConfidence(array $result): bool
+    {
+        return ($result['analysis']['confidence'] ?? '') === 'low';
     }
 
     /**
@@ -71,8 +144,8 @@ class ScanStatistics
     public function filterResults(array $results, string $filter): array
     {
         return match ($filter) {
-            'ok' => array_filter($results, fn($r) => $r['isOk']),
-            'broken' => array_filter($results, fn($r) => !$r['isOk']),
+            'ok' => array_filter($results, fn($r) => $this->isOkResult($r)),
+            'broken' => array_filter($results, fn($r) => !$this->isOkResult($r)),
             default => $results,
         };
     }

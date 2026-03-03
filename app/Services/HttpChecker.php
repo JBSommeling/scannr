@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\DTO\VerificationStatus;
+use App\Enums\LinkFlag;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -30,12 +30,12 @@ class HttpChecker
      * Create a new HttpChecker instance.
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving redirect URLs.
-     * @param  VerificationService  $verificationService  The verification service for detecting verification needs.
+     * @param  LinkFlagService  $linkFlagService  The link flag service for detecting flags.
      * @param  Client|null    $client         Optional Guzzle HTTP client instance.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
-        protected VerificationService $verificationService,
+        protected LinkFlagService $linkFlagService,
         ?Client $client = null,
     ) {
         $defaultUserAgent = 'ScannrBot/1.0 (+https://scannr.io)';
@@ -305,10 +305,6 @@ class HttpChecker
      *
      * Only 404, 500+, timeouts, and connection errors indicate a truly broken endpoint.
      *
-     * Responses of 403, 405, Error, or Timeout also set `needsVerification = true`
-     * with reason `bot_protection`, as these may indicate bot-blocking rather than
-     * a genuinely broken endpoint.
-     *
      * @param string $url The form endpoint URL.
      * @param string $source The source page where this URL was found.
      * @param string $type 'internal' or 'external'.
@@ -350,28 +346,39 @@ class HttpChecker
             $status = 'Error';
         }
 
-        // These statuses confirm the endpoint exists and is functional,
-        // even though the request itself was rejected (no valid form data sent)
-        $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
-        $isOk = ($status >= 200 && $status < 300) || in_array($status, $healthyFormStatuses);
+        $isExternal = $type === 'external';
 
-        // Detect bot protection using verification service
-        $verification = $this->verificationService->detectFromHttpResponse($status);
+        // Collect flags
+        $flags = $this->linkFlagService->detectFormEndpoint();
+        $flags = array_merge($flags, $this->linkFlagService->detectFromHttpResponse($status));
+
+        if ($isExternal) {
+            $flags = array_merge($flags, $this->linkFlagService->detectFromUrl($url, true));
+        }
+
+        // Build analysis
+        $analysis = $this->linkFlagService->buildAnalysis($flags, $status, $isExternal);
+
+        // Format status string
+        $statusString = is_int($status) ? (string) $status : strtolower($status);
 
         return [
             'url' => $url,
             'finalUrl' => $url,
             'sourcePage' => $source,
-            'status' => $status,
+            'status' => $statusString,
             'type' => $type,
-            'redirectChain' => [],
-            'isOk' => $isOk,
-            'isLoop' => false,
-            'hasHttpsDowngrade' => false,
             'sourceElement' => 'form',
             'extractedLinks' => [],
-            'retryAfter' => $retryAfter,
-            ...$verification->toArray(),
+            'analysis' => $analysis->toArray(),
+            'redirect' => [
+                'chain' => [],
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+            ],
+            'network' => [
+                'retryAfter' => $retryAfter,
+            ],
         ];
     }
 }

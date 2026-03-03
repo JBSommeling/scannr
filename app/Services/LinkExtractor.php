@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\DTO\VerificationStatus;
+use App\Enums\LinkFlag;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -19,12 +19,12 @@ class LinkExtractor
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving URLs.
      * @param  HttpChecker    $httpChecker    The HTTP checker for fetching external script content.
-     * @param  VerificationService  $verificationService  The verification service for detecting verification needs.
+     * @param  LinkFlagService  $linkFlagService  The link flag service for detecting flags.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
         protected HttpChecker $httpChecker,
-        protected VerificationService $verificationService,
+        protected LinkFlagService $linkFlagService,
     ) {}
 
     /**
@@ -583,18 +583,29 @@ class LinkExtractor
                     // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
                     $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
 
-                    // Use verification service to determine verification status
-                    $verification = $this->verificationService->detectFromJsBundle(
-                        $normalizedUrl,
-                        $hasSuspiciousSyntax,
-                        $isInternal
+                    // Build discovery flags for JS bundle extracted URLs
+                    $discoveryFlags = $this->linkFlagService->detectFromDiscovery(
+                        isJsRendered: false,
+                        fromJsBundle: true,
+                        hasSuspiciousSyntax: $hasSuspiciousSyntax
                     );
+
+                    // Add URL-based flags
+                    $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, !$isInternal);
+
+                    // Combine flags
+                    $flags = array_merge($discoveryFlags, $urlFlags);
+
+                    // Internal URLs without suspicious syntax don't need special flags
+                    if ($isInternal && !$hasSuspiciousSyntax) {
+                        $flags = [LinkFlag::DETECTED_IN_JS_BUNDLE];
+                    }
 
                     $links[] = [
                         'url' => $normalizedUrl,
                         'source' => $sourceUrl,
                         'element' => 'a', // Treat as anchor link
-                        ...$verification->toArray(),
+                        'flags' => array_map(fn(LinkFlag $f) => $f->value, $flags),
                     ];
                 }
             }

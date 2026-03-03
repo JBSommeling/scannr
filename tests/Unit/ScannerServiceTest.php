@@ -5,10 +5,11 @@ namespace Tests\Unit;
 use App\Services\BrowsershotFetcher;
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
+use App\Services\LinkFlagService;
 use App\Services\ScannerService;
 use App\Services\ScanStatistics;
+use App\Services\SeverityEvaluator;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -21,22 +22,24 @@ class ScannerServiceTest extends TestCase
     private HttpChecker $httpChecker;
     private LinkExtractor $linkExtractor;
     private ScanStatistics $scanStatistics;
-    private VerificationService $verificationService;
+    private LinkFlagService $linkFlagService;
+    private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->verificationService = new VerificationService($this->urlNormalizer);
-        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
+        $this->severityEvaluator = new SeverityEvaluator();
+        $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->linkFlagService);
         $this->scanStatistics = new ScanStatistics();
         $this->service = new ScannerService(
             $this->httpChecker,
             $this->linkExtractor,
             $this->urlNormalizer,
             $this->scanStatistics,
-            $this->verificationService,
+            $this->linkFlagService,
         );
     }
 
@@ -94,9 +97,11 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals('https://example.com', $result['url']);
         $this->assertEquals('start', $result['sourcePage']);
-        $this->assertEquals(200, $result['status']);
+        $this->assertEquals('200', $result['status']);
         $this->assertEquals('internal', $result['type']);
-        $this->assertTrue($result['isOk']);
+        $this->assertArrayHasKey('analysis', $result);
+        $this->assertArrayHasKey('redirect', $result);
+        $this->assertArrayHasKey('network', $result);
         $this->assertArrayHasKey('extractedLinks', $result);
     }
 
@@ -114,9 +119,9 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals('https://external.com/page', $result['url']);
         $this->assertEquals('https://example.com', $result['sourcePage']);
-        $this->assertEquals(200, $result['status']);
+        $this->assertEquals('200', $result['status']);
         $this->assertEquals('external', $result['type']);
-        $this->assertTrue($result['isOk']);
+        $this->assertArrayHasKey('analysis', $result);
         $this->assertArrayNotHasKey('extractedLinks', $result);
     }
 
@@ -164,8 +169,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processInternalUrl('https://example.com', 'start');
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertArrayHasKey('analysis', $result);
 
         // Should have extracted links from the rendered HTML, not the SPA shell
         $extractedUrls = array_column($result['extractedLinks'], 'url');
@@ -254,8 +259,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processInternalUrl('https://example.com/missing', 'start');
 
-        $this->assertEquals(404, $result['status']);
-        $this->assertFalse($result['isOk']);
+        $this->assertEquals('404', $result['status']);
+        $this->assertContains('status_4xx', $result['analysis']['flags']);
         $this->assertEmpty($result['extractedLinks']);
     }
 
@@ -365,8 +370,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processInternalUrl('https://example.com/page', 'start');
 
-        $this->assertEquals(429, $result['status']);
-        $this->assertEquals(10, $result['retryAfter']);
+        $this->assertEquals('429', $result['status']);
+        $this->assertEquals(10, $result['network']['retryAfter']);
     }
 
 
@@ -378,8 +383,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
 
-        $this->assertEquals(429, $result['status']);
-        $this->assertEquals(15, $result['retryAfter']);
+        $this->assertEquals('429', $result['status']);
+        $this->assertEquals(15, $result['network']['retryAfter']);
     }
 
 
@@ -403,8 +408,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(422, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('422', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
         $this->assertEquals('form', $result['sourceElement']);
     }
 
@@ -421,8 +426,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processInternalUrl('https://example.com/api/contact', 'https://example.com', 'form');
 
-        $this->assertEquals(422, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('422', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
         $this->assertEquals('form', $result['sourceElement']);
     }
 
@@ -434,8 +439,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(422, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('422', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_400_is_healthy(): void
@@ -446,8 +451,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(400, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('400', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_401_is_healthy(): void
@@ -458,8 +463,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(401, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('401', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_405_is_healthy(): void
@@ -470,8 +475,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(405, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('405', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_404_is_broken(): void
@@ -482,8 +487,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(404, $result['status']);
-        $this->assertFalse($result['isOk']);
+        $this->assertEquals('404', $result['status']);
+        $this->assertContains('status_4xx', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_500_is_broken(): void
@@ -494,8 +499,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(500, $result['status']);
-        $this->assertFalse($result['isOk']);
+        $this->assertEquals('500', $result['status']);
+        $this->assertContains('status_5xx', $result['analysis']['flags']);
     }
 
     public function test_form_endpoint_200_is_healthy(): void
@@ -506,11 +511,11 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['isOk']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
     }
 
-    public function test_form_endpoint_always_has_needs_verification_false(): void
+    public function test_form_endpoint_has_analysis_structure(): void
     {
         $mockClient = $this->createMockClient(429);
         $this->httpChecker->setClient($mockClient);
@@ -518,10 +523,10 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
 
-        $this->assertArrayHasKey('needsVerification', $result);
-        $this->assertFalse($result['needsVerification']);
-        $this->assertArrayHasKey('verificationReasons', $result);
-        $this->assertEmpty($result['verificationReasons']);
+        $this->assertArrayHasKey('analysis', $result);
+        $this->assertArrayHasKey('flags', $result['analysis']);
+        $this->assertArrayHasKey('confidence', $result['analysis']);
+        $this->assertArrayHasKey('verification', $result['analysis']);
     }
 
     public function test_non_form_external_url_still_uses_head(): void
@@ -537,7 +542,7 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com', 'a');
 
-        $this->assertEquals(200, $result['status']);
+        $this->assertEquals('200', $result['status']);
     }
 
     // ======================
@@ -554,12 +559,11 @@ class ScannerServiceTest extends TestCase
             'https://external.com/page',
             'https://example.com',
             'a',
-            \App\DTO\VerificationStatus::forJsBundleExtracted()
+            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('js_bundle_extracted', $result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('detected_in_js_bundle', $result['analysis']['flags']);
     }
 
     public function test_process_external_url_detects_bot_protection_403(): void
@@ -570,9 +574,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
 
-        $this->assertEquals(403, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('403', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 
     public function test_process_external_url_detects_bot_protection_405(): void
@@ -583,14 +586,13 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
 
-        $this->assertEquals(405, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('405', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 
     public function test_process_external_url_bot_protection_combines_with_js_bundle_extracted(): void
     {
-        // A URL flagged as js_bundle_extracted during extraction should have
+        // A URL flagged as detected_in_js_bundle during extraction should have
         // bot_protection added when the HTTP response indicates bot protection (403/405)
         $mockClient = $this->createMockClient(403);
         $this->httpChecker->setClient($mockClient);
@@ -600,13 +602,12 @@ class ScannerServiceTest extends TestCase
             'https://linkedin.com/in/user',
             'https://example.com',
             'a',
-            \App\DTO\VerificationStatus::forJsBundleExtracted()
+            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
-        $this->assertEquals(403, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
-        $this->assertContains('js_bundle_extracted', $result['verificationReasons']);
+        $this->assertEquals('403', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+        $this->assertContains('detected_in_js_bundle', $result['analysis']['flags']);
     }
 
     public function test_process_external_url_bot_protection_combines_with_indirect_reference(): void
@@ -621,13 +622,12 @@ class ScannerServiceTest extends TestCase
             'https://www.linkedin.com/in/user',
             'https://example.com',
             'a',
-            \App\DTO\VerificationStatus::forIndirectReference()
+            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
-        $this->assertEquals(405, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
-        $this->assertContains('indirect_reference', $result['verificationReasons']);
+        $this->assertEquals('405', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+        $this->assertContains('indirect_reference', $result['analysis']['flags']);
     }
 
     public function test_process_external_url_detects_bot_protection_timeout(): void
@@ -641,9 +641,8 @@ class ScannerServiceTest extends TestCase
 
         $result = $this->service->processExternalUrl('https://external.com/page', 'https://example.com');
 
-        $this->assertEquals('Timeout', $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('timeout', $result['status']);
+        $this->assertContains('timeout', $result['analysis']['flags']);
     }
 
     public function test_process_internal_url_propagates_verification_flags(): void
@@ -657,12 +656,11 @@ class ScannerServiceTest extends TestCase
             'https://example.com',
             'start',
             'a',
-            \App\DTO\VerificationStatus::forIndirectReference()
+            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('indirect_reference', $result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('indirect_reference', $result['analysis']['flags']);
     }
 
     // ============================================
@@ -679,12 +677,12 @@ class ScannerServiceTest extends TestCase
             'https://yoga-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            \App\DTO\VerificationStatus::forJsBundleExtracted()  // flagged as needing verification
+            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]  // flagged as needing verification
         );
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertFalse($result['needsVerification']);
-        $this->assertEmpty($result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        // Subdomain with 200 should clear js-bundle flags
+        $this->assertNotContains('detected_in_js_bundle', $result['analysis']['flags']);
     }
 
     public function test_nested_internal_subdomain_with_200_never_needs_verification(): void
@@ -697,12 +695,11 @@ class ScannerServiceTest extends TestCase
             'https://app.demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            \App\DTO\VerificationStatus::forJsBundleExtracted()
+            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertFalse($result['needsVerification']);
-        $this->assertEmpty($result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertNotContains('detected_in_js_bundle', $result['analysis']['flags']);
     }
 
     public function test_base_domain_with_200_still_propagates_verification_flag(): void
@@ -717,12 +714,11 @@ class ScannerServiceTest extends TestCase
             'https://sommeling.dev/page',
             'start',
             'a',
-            \App\DTO\VerificationStatus::forIndirectReference()
+            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
-        $this->assertEquals(200, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('indirect_reference', $result['verificationReasons']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('indirect_reference', $result['analysis']['flags']);
     }
 
     public function test_internal_subdomain_with_non_200_keeps_verification_flag(): void
@@ -735,12 +731,11 @@ class ScannerServiceTest extends TestCase
             'https://tree-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            \App\DTO\VerificationStatus::forBotProtection()
+            [\App\Enums\LinkFlag::BOT_PROTECTION]
         );
 
-        $this->assertEquals(403, $result['status']);
-        $this->assertTrue($result['needsVerification']);
-        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertEquals('403', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 }
 
