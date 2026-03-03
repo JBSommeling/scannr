@@ -217,6 +217,41 @@ class VerificationStatusTest extends TestCase
         $this->assertSame(VerificationReason::BotProtection, $merged->reason);
     }
 
+    public function test_merge_bot_protection_always_wins_over_other_reasons(): void
+    {
+        // BotProtection should win even when it's the second status,
+        // because it represents actual HTTP evidence vs speculative extraction-time guesses
+        $indirectReference = VerificationStatus::forIndirectReference();
+        $botProtection = VerificationStatus::forBotProtection();
+
+        $merged = $indirectReference->merge($botProtection);
+
+        $this->assertTrue($merged->needsVerification);
+        $this->assertSame(VerificationReason::BotProtection, $merged->reason);
+    }
+
+    public function test_merge_bot_protection_wins_over_js_bundle_extracted(): void
+    {
+        $jsBundleExtracted = VerificationStatus::forJsBundleExtracted();
+        $botProtection = VerificationStatus::forBotProtection();
+
+        $merged = $jsBundleExtracted->merge($botProtection);
+
+        $this->assertTrue($merged->needsVerification);
+        $this->assertSame(VerificationReason::BotProtection, $merged->reason);
+    }
+
+    public function test_merge_bot_protection_wins_over_developer_leftover(): void
+    {
+        $developerLeftover = VerificationStatus::forDeveloperLeftover();
+        $botProtection = VerificationStatus::forBotProtection();
+
+        $merged = $developerLeftover->merge($botProtection);
+
+        $this->assertTrue($merged->needsVerification);
+        $this->assertSame(VerificationReason::BotProtection, $merged->reason);
+    }
+
     public function test_merge_verification_without_reason_prefers_other_with_reason(): void
     {
         $withoutReason = new VerificationStatus(true, null);

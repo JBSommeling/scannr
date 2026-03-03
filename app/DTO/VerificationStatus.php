@@ -88,7 +88,9 @@ readonly class VerificationStatus
      * Merge with another status, returning the more severe one.
      *
      * If either status needs verification, the result needs verification.
-     * Prefers the current reason if both have reasons, unless current has none.
+     * BotProtection always wins because it represents actual HTTP evidence,
+     * while other reasons are speculative guesses from extraction time.
+     * Otherwise, prefers the current reason if both have reasons.
      */
     public function merge(self $other): self
     {
@@ -96,6 +98,16 @@ readonly class VerificationStatus
             return self::none();
         }
 
+        // BotProtection always wins - it's based on actual HTTP response
+        if ($other->reason === VerificationReason::BotProtection) {
+            return $other;
+        }
+
+        if ($this->reason === VerificationReason::BotProtection) {
+            return $this;
+        }
+
+        // Otherwise prefer the first with a reason
         if ($this->needsVerification && $this->reason !== null) {
             return $this;
         }

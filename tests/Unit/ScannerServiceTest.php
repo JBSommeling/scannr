@@ -588,6 +588,46 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('bot_protection', $result['verificationReason']);
     }
 
+    public function test_process_external_url_bot_protection_overrides_js_bundle_extracted(): void
+    {
+        // A URL flagged as js_bundle_extracted during extraction should be upgraded
+        // to bot_protection when the HTTP response indicates bot protection (403/405)
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://linkedin.com/in/user',
+            'https://example.com',
+            'a',
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
+        );
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
+    public function test_process_external_url_bot_protection_overrides_indirect_reference(): void
+    {
+        // A URL flagged as indirect_reference during extraction should be upgraded
+        // to bot_protection when the HTTP response indicates bot protection (405)
+        $mockClient = $this->createMockClient(405);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://www.linkedin.com/in/user',
+            'https://example.com',
+            'a',
+            \App\DTO\VerificationStatus::forIndirectReference()
+        );
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertEquals('bot_protection', $result['verificationReason']);
+    }
+
     public function test_process_external_url_detects_bot_protection_timeout(): void
     {
         $mockClient = $this->createMock(Client::class);
