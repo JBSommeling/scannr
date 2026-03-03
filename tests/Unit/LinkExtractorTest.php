@@ -1256,4 +1256,35 @@ class LinkExtractorTest extends TestCase
         // Vue/Angular interpolation syntax SHOULD trigger malformed_url
         $this->assertContains('malformed_url', $link['flags'] ?? []);
     }
+
+    public function test_extract_links_js_bundle_linkedin_url_in_array_not_flagged_as_malformed(): void
+    {
+        // URLs in arrays should NOT be flagged as malformed - the comma after the quote is normal array syntax
+        $html = '<html><body><script>const socials=["https://www.linkedin.com/in/jesse-sommeling","https://github.com/user"];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'linkedin.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'LinkedIn URL should be extracted from JS bundle');
+        // Should NOT have malformed_url flag - this is a clean URL in an array
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+        // Should still have detected_in_js_bundle since it came from JS
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_string_concatenation_is_flagged_as_malformed(): void
+    {
+        // URL followed by string concatenation SHOULD be flagged
+        $html = '<html><body><script>const url="https://api.example.com/user/",userId;</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // String concatenation pattern SHOULD trigger malformed_url
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+    }
 }

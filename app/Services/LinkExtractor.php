@@ -545,15 +545,17 @@ class LinkExtractor
     protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
     {
         // Extract full URLs from JavaScript (https://... or http://...)
-        // Capture up to 3 chars after URL to detect suspicious patterns (e.g., ",n or `,r)
-        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,]{0,3})/i', $content, $matches, PREG_SET_ORDER)) {
+        // Capture up to 6 chars after URL to detect suspicious patterns (e.g., ",userId or `,r)
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,a-zA-Z$_]{0,6})/i', $content, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $rawUrl = $match[1];
                 $postContext = $match[2] ?? '';
 
-                // Check for suspicious syntax in URL itself OR in the post-context
+                // Check for suspicious syntax in URL itself OR suspicious post-context patterns
+                // Post-context is suspicious if it has: quote+comma+letter (string concatenation)
+                // NOT suspicious: just quote+comma+quote (normal array/object syntax like ["url1", "url2"])
                 $hasSuspiciousSyntax = $this->hasSuspiciousDynamicUrlSyntax($rawUrl) ||
-                                      preg_match('/["\'`]\s*,/', $postContext);
+                                      preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
 
                 // Clean up any trailing punctuation or quotes
                 $url = rtrim($rawUrl, '.,;:"\')}>]');
