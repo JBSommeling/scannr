@@ -375,6 +375,228 @@ class LinkFlagServiceTest extends TestCase
     }
 
     // ===================
+    // LinkedIn URL specific tests
+    // ===================
+
+    public function test_linkedin_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://www.linkedin.com/in/jesse-sommeling';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        // Should only have external_platform flag
+        $this->assertContains(LinkFlag::EXTERNAL_PLATFORM, $flags);
+    }
+
+    public function test_linkedin_url_with_trailing_slash_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://www.linkedin.com/in/jesse-sommeling/';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_linkedin_company_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://www.linkedin.com/company/example-corp';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    // ===================
+    // Clean external URL tests (should NEVER be flagged as malformed)
+    // ===================
+
+    public function test_github_profile_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://github.com/JBSommeling';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertContains(LinkFlag::EXTERNAL_PLATFORM, $flags);
+    }
+
+    public function test_github_repo_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://github.com/laravel/framework';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_twitter_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://twitter.com/laaboratories';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_youtube_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_pusher_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://pusher.com';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_js_pusher_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://js.pusher.com';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_http_js_pusher_url_is_not_flagged_as_malformed(): void
+    {
+        $url = 'http://js.pusher.com';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_example_com_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_url_with_path_segments_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://docs.laravel.com/10.x/routing';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_hash_fragment_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com/page#section';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_port_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com:8080/api';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_username_password_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://user:pass@example.com/api';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_complex_query_string_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com/search?q=test&filter=active&sort=desc&page=1';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_encoded_characters_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com/search?q=hello%20world&name=John%20Doe';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_hyphen_in_domain_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://my-awesome-site.example.com/page';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_numbers_in_path_is_not_flagged_as_malformed(): void
+    {
+        $url = 'https://example.com/user/12345/profile';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    // ===================
+    // URLs that SHOULD be flagged as malformed
+    // ===================
+
+    public function test_url_with_dollar_brace_template_is_flagged(): void
+    {
+        $url = 'https://api.example.com/users/${userId}/profile';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_url_with_hash_brace_template_is_flagged(): void
+    {
+        $url = 'https://api.example.com/users/#{userId}/profile';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_single_brace_variable_is_flagged(): void
+    {
+        $url = 'https://api.example.com/users/{id}';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_backtick_is_flagged(): void
+    {
+        $url = 'https://example.com/path`';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_with_embedded_newline_is_flagged(): void
+    {
+        $url = "https://example.com/path\nmalicious";
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_url_ending_with_comma_and_word_is_flagged(): void
+    {
+        // This pattern suggests string concatenation: "url",variable
+        $url = 'https://example.com/api,userId';
+        $flags = $this->linkFlagService->detectFromUrl($url, true);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    // ===================
     // isLoopbackUrl tests
     // ===================
 

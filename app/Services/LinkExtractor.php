@@ -585,22 +585,22 @@ class LinkExtractor
                     // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
                     $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
 
-                    // Build discovery flags for JS bundle extracted URLs
-                    $discoveryFlags = $this->linkFlagService->detectFromDiscovery(
-                        isJsRendered: false,
-                        fromJsBundle: true,
-                        hasSuspiciousSyntax: $hasSuspiciousSyntax
-                    );
+                    // Start with base flag for JS bundle discovery
+                    $flags = [LinkFlag::DETECTED_IN_JS_BUNDLE];
 
-                    // Add URL-based flags
+                    // Add URL-based flags (external platform detection, malformed URL detection)
                     $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, !$isInternal);
+                    $flags = array_merge($flags, $urlFlags);
 
-                    // Combine flags
-                    $flags = array_merge($discoveryFlags, $urlFlags);
-
-                    // Internal URLs without suspicious syntax don't need special flags
-                    if ($isInternal && !$hasSuspiciousSyntax) {
-                        $flags = [LinkFlag::DETECTED_IN_JS_BUNDLE];
+                    // Only add malformed/indirect flags if the URL itself has suspicious syntax
+                    // (not based on post-context which can have false positives)
+                    if ($hasSuspiciousSyntax && $this->hasSuspiciousDynamicUrlSyntax($url)) {
+                        if (!in_array(LinkFlag::MALFORMED_URL, $flags, true)) {
+                            $flags[] = LinkFlag::MALFORMED_URL;
+                        }
+                        if (!in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true)) {
+                            $flags[] = LinkFlag::INDIRECT_REFERENCE;
+                        }
                     }
 
                     $links[] = [
