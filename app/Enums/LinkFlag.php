@@ -47,7 +47,7 @@ enum LinkFlag: string
     case MALFORMED_URL = 'malformed_url';
 
     /** URL points to localhost or development environment (localhost, 127.0.0.1, .local, .test). */
-    case LOCALHOST_URL = 'localhost_url';
+    case DEVELOPER_LEFTOVER = 'developer_leftover';
 
     /** HTTPS to HTTP downgrade detected in redirect chain. */
     case HTTP_ON_HTTPS = 'http_on_https';

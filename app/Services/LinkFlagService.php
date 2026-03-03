@@ -134,7 +134,7 @@ class LinkFlagService
 
         // Check for localhost/development URLs
         if ($this->isLocalhostUrl($url)) {
-            $flags[] = LinkFlag::LOCALHOST_URL;
+            $flags[] = LinkFlag::DEVELOPER_LEFTOVER;
         }
 
         // Check for malformed URL syntax

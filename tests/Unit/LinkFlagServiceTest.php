@@ -693,49 +693,49 @@ class LinkFlagServiceTest extends TestCase
     {
         $flags = $this->linkFlagService->detectFromUrl('http://localhost', true);
 
-        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_flags_localhost_with_port(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('http://localhost:3000/api', true);
 
-        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_flags_127_0_0_1(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('http://127.0.0.1:8080', true);
 
-        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_flags_dot_local(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('http://myapp.local', true);
 
-        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_flags_dot_test(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('http://laravel.test', true);
 
-        $this->assertContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_does_not_flag_production_as_localhost(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('https://www.sommeling.dev', false);
 
-        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertNotContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_does_not_flag_external_as_localhost(): void
     {
         $flags = $this->linkFlagService->detectFromUrl('https://github.com/user', true);
 
-        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertNotContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 
     public function test_detect_from_url_does_not_flag_example_com_as_localhost(): void
@@ -743,6 +743,6 @@ class LinkFlagServiceTest extends TestCase
         // example.com is a real domain (not .example TLD)
         $flags = $this->linkFlagService->detectFromUrl('https://example.com', true);
 
-        $this->assertNotContains(LinkFlag::LOCALHOST_URL, $flags);
+        $this->assertNotContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
 }
