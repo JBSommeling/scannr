@@ -7,15 +7,19 @@ use App\Enums\VerificationReason;
 /**
  * Value object representing the verification status of a URL.
  *
- * Encapsulates whether a URL needs manual verification and the reason why.
- * Provides factory methods for common verification scenarios and supports
- * backward-compatible array serialization.
+ * Encapsulates whether a URL needs manual verification and the reasons why.
+ * Supports multiple reasons (e.g., both js_bundle_extracted AND bot_protection).
+ * Provides factory methods for common verification scenarios.
  */
 readonly class VerificationStatus
 {
+    /**
+     * @param bool $needsVerification Whether the URL needs manual verification.
+     * @param array<VerificationReason> $reasons The reasons why verification is needed.
+     */
     public function __construct(
         public bool $needsVerification,
-        public ?VerificationReason $reason = null,
+        public array $reasons = [],
     ) {}
 
     /**
@@ -23,7 +27,7 @@ readonly class VerificationStatus
      */
     public static function none(): self
     {
-        return new self(false, null);
+        return new self(false, []);
     }
 
     /**
@@ -31,7 +35,7 @@ readonly class VerificationStatus
      */
     public static function forBotProtection(): self
     {
-        return new self(true, VerificationReason::BotProtection);
+        return new self(true, [VerificationReason::BotProtection]);
     }
 
     /**
@@ -39,7 +43,7 @@ readonly class VerificationStatus
      */
     public static function forIndirectReference(): self
     {
-        return new self(true, VerificationReason::IndirectReference);
+        return new self(true, [VerificationReason::IndirectReference]);
     }
 
     /**
@@ -47,7 +51,7 @@ readonly class VerificationStatus
      */
     public static function forDeveloperLeftover(): self
     {
-        return new self(true, VerificationReason::DeveloperLeftover);
+        return new self(true, [VerificationReason::DeveloperLeftover]);
     }
 
     /**
@@ -55,7 +59,7 @@ readonly class VerificationStatus
      */
     public static function forJsBundleExtracted(): self
     {
-        return new self(true, VerificationReason::JsBundleExtracted);
+        return new self(true, [VerificationReason::JsBundleExtracted]);
     }
 
     /**
@@ -63,34 +67,89 @@ readonly class VerificationStatus
      */
     public static function fromReason(VerificationReason $reason): self
     {
-        return new self(true, $reason);
+        return new self(true, [$reason]);
+    }
+
+    /**
+     * Create a status from multiple reasons.
+     *
+     * @param array<VerificationReason> $reasons
+     */
+    public static function fromReasons(array $reasons): self
+    {
+        if (empty($reasons)) {
+            return self::none();
+        }
+
+        return new self(true, array_values(array_unique($reasons, SORT_REGULAR)));
     }
 
     /**
      * Create a status from array data (for hydration from queue/results).
      *
-     * @param array{needsVerification?: bool, verificationReason?: string|null} $data
+     * @param array{needsVerification?: bool, verificationReasons?: array<string>} $data
      */
     public static function fromArray(array $data): self
     {
         $needsVerification = $data['needsVerification'] ?? false;
-        $reasonValue = $data['verificationReason'] ?? null;
 
-        $reason = null;
-        if ($reasonValue !== null) {
-            $reason = VerificationReason::tryFrom($reasonValue);
+        $reasons = [];
+        if (isset($data['verificationReasons']) && is_array($data['verificationReasons'])) {
+            foreach ($data['verificationReasons'] as $reasonValue) {
+                $reason = VerificationReason::tryFrom($reasonValue);
+                if ($reason !== null) {
+                    $reasons[] = $reason;
+                }
+            }
         }
 
-        return new self($needsVerification, $reason);
+        if (empty($reasons) && !$needsVerification) {
+            return self::none();
+        }
+
+        return new self($needsVerification, $reasons);
     }
 
     /**
-     * Merge with another status, returning the more severe one.
+     * Check if this status has a specific reason.
+     */
+    public function hasReason(VerificationReason $reason): bool
+    {
+        return in_array($reason, $this->reasons, true);
+    }
+
+    /**
+     * Get the primary reason (highest priority).
+     *
+     * Priority order: BotProtection > DeveloperLeftover > IndirectReference > JsBundleExtracted
+     */
+    public function getPrimaryReason(): ?VerificationReason
+    {
+        if (empty($this->reasons)) {
+            return null;
+        }
+
+        $priority = [
+            VerificationReason::BotProtection,
+            VerificationReason::DeveloperLeftover,
+            VerificationReason::IndirectReference,
+            VerificationReason::JsBundleExtracted,
+        ];
+
+        foreach ($priority as $reason) {
+            if (in_array($reason, $this->reasons, true)) {
+                return $reason;
+            }
+        }
+
+        return $this->reasons[0] ?? null;
+    }
+
+    /**
+     * Merge with another status, combining all reasons.
      *
      * If either status needs verification, the result needs verification.
-     * BotProtection always wins because it represents actual HTTP evidence,
-     * while other reasons are speculative guesses from extraction time.
-     * Otherwise, prefers the current reason if both have reasons.
+     * All unique reasons from both statuses are combined.
      */
     public function merge(self $other): self
     {
@@ -98,37 +157,36 @@ readonly class VerificationStatus
             return self::none();
         }
 
-        // BotProtection always wins - it's based on actual HTTP response
-        if ($other->reason === VerificationReason::BotProtection) {
-            return $other;
-        }
+        $combinedReasons = array_merge($this->reasons, $other->reasons);
+        $uniqueReasons = array_values(array_unique($combinedReasons, SORT_REGULAR));
 
-        if ($this->reason === VerificationReason::BotProtection) {
-            return $this;
-        }
-
-        // Otherwise prefer the first with a reason
-        if ($this->needsVerification && $this->reason !== null) {
-            return $this;
-        }
-
-        if ($other->needsVerification && $other->reason !== null) {
-            return $other;
-        }
-
-        return $this->needsVerification ? $this : $other;
+        return new self(true, $uniqueReasons);
     }
 
     /**
-     * Convert to array for backward-compatible serialization.
+     * Add a reason to this status.
+     */
+    public function withReason(VerificationReason $reason): self
+    {
+        if (in_array($reason, $this->reasons, true)) {
+            return $this;
+        }
+
+        return new self(true, [...$this->reasons, $reason]);
+    }
+
+    /**
+     * Convert to array for serialization.
      *
-     * @return array{needsVerification: bool, verificationReason: string|null}
+     * @return array{needsVerification: bool, verificationReasons: array<string>}
      */
     public function toArray(): array
     {
+        $reasonValues = array_map(fn($r) => $r->value, $this->reasons);
+
         return [
             'needsVerification' => $this->needsVerification,
-            'verificationReason' => $this->reason?->value,
+            'verificationReasons' => $reasonValues,
         ];
     }
 }

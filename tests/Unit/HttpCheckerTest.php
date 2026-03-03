@@ -455,7 +455,7 @@ class HttpCheckerTest extends TestCase
         $this->assertArrayHasKey('extractedLinks', $result);
         $this->assertArrayHasKey('retryAfter', $result);
         $this->assertArrayHasKey('needsVerification', $result);
-        $this->assertArrayHasKey('verificationReason', $result);
+        $this->assertArrayHasKey('verificationReasons', $result);
     }
 
     public function test_process_form_endpoint_200_is_ok_no_verification(): void
@@ -468,7 +468,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['isOk']);
         $this->assertFalse($result['needsVerification']);
-        $this->assertNull($result['verificationReason']);
+        $this->assertEmpty($result['verificationReasons']);
         $this->assertEquals('form', $result['sourceElement']);
         $this->assertEquals('internal', $result['type']);
     }
@@ -511,7 +511,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals(403, $result['status']);
         $this->assertTrue($result['isOk']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_form_endpoint_405_is_ok_and_needs_verification(): void
@@ -527,7 +527,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals(405, $result['status']);
         $this->assertTrue($result['isOk']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_form_endpoint_404_is_not_ok(): void
@@ -573,7 +573,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals('Timeout', $result['status']);
         $this->assertFalse($result['isOk']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_form_endpoint_connection_error_needs_verification(): void
@@ -589,7 +589,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals('Error', $result['status']);
         $this->assertFalse($result['isOk']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_form_endpoint_request_exception_without_response_is_error(): void
@@ -606,7 +606,7 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals('Error', $result['status']);
         $this->assertFalse($result['isOk']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_form_endpoint_429_extracts_retry_after(): void

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\DTO\VerificationStatus;
+use App\Enums\VerificationReason;
 
 /**
  * Service for determining URL verification requirements.
@@ -35,11 +36,11 @@ class VerificationService
     /**
      * Detect verification status for a URL extracted from a JS bundle.
      *
-     * Determines the appropriate verification reason based on:
-     * - Suspicious syntax (template literals, dynamic patterns) → IndirectReference
-     * - Loopback addresses (localhost, 127.0.0.1, ::1) → DeveloperLeftover
-     * - External URLs from JS bundles → JsBundleExtracted
-     * - Internal URLs without issues → None
+     * Returns multiple reasons when applicable:
+     * - JsBundleExtracted is always included for external URLs
+     * - IndirectReference is added if URL has suspicious syntax
+     * - DeveloperLeftover is added if URL points to loopback address
+     * - Internal URLs without issues return None
      *
      * @param string $url The extracted URL.
      * @param bool $hasSuspiciousSyntax Whether the URL contains suspicious dynamic syntax.
@@ -52,17 +53,24 @@ class VerificationService
             return VerificationStatus::none();
         }
 
-        // Determine the reason
+        $reasons = [];
+
+        // External URLs always get JsBundleExtracted
+        if (!$isInternal) {
+            $reasons[] = VerificationReason::JsBundleExtracted;
+        }
+
+        // Add IndirectReference if suspicious syntax
         if ($hasSuspiciousSyntax) {
-            return VerificationStatus::forIndirectReference();
+            $reasons[] = VerificationReason::IndirectReference;
         }
 
+        // Add DeveloperLeftover if loopback
         if ($this->isLoopbackUrl($url)) {
-            return VerificationStatus::forDeveloperLeftover();
+            $reasons[] = VerificationReason::DeveloperLeftover;
         }
 
-        // External URL from JS bundle
-        return VerificationStatus::forJsBundleExtracted();
+        return VerificationStatus::fromReasons($reasons);
     }
 
     /**

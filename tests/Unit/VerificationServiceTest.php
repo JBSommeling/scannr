@@ -30,7 +30,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(403);
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::BotProtection, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::BotProtection));
     }
 
     public function test_detect_from_http_response_405_returns_bot_protection(): void
@@ -38,7 +38,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(405);
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::BotProtection, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::BotProtection));
     }
 
     public function test_detect_from_http_response_error_returns_bot_protection(): void
@@ -46,7 +46,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse('Error');
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::BotProtection, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::BotProtection));
     }
 
     public function test_detect_from_http_response_timeout_returns_bot_protection(): void
@@ -54,7 +54,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse('Timeout');
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::BotProtection, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::BotProtection));
     }
 
     public function test_detect_from_http_response_200_returns_none(): void
@@ -62,7 +62,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(200);
 
         $this->assertFalse($status->needsVerification);
-        $this->assertNull($status->reason);
+        $this->assertEmpty($status->reasons);
     }
 
     public function test_detect_from_http_response_404_returns_none(): void
@@ -70,7 +70,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(404);
 
         $this->assertFalse($status->needsVerification);
-        $this->assertNull($status->reason);
+        $this->assertEmpty($status->reasons);
     }
 
     public function test_detect_from_http_response_500_returns_none(): void
@@ -78,7 +78,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(500);
 
         $this->assertFalse($status->needsVerification);
-        $this->assertNull($status->reason);
+        $this->assertEmpty($status->reasons);
     }
 
     public function test_detect_from_http_response_301_returns_none(): void
@@ -86,7 +86,7 @@ class VerificationServiceTest extends TestCase
         $status = $this->service->detectFromHttpResponse(301);
 
         $this->assertFalse($status->needsVerification);
-        $this->assertNull($status->reason);
+        $this->assertEmpty($status->reasons);
     }
 
     // ==================
@@ -102,7 +102,7 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertFalse($status->needsVerification);
-        $this->assertNull($status->reason);
+        $this->assertEmpty($status->reasons);
     }
 
     public function test_detect_from_js_bundle_with_suspicious_syntax_returns_indirect_reference(): void
@@ -114,10 +114,10 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::IndirectReference, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::IndirectReference));
     }
 
-    public function test_detect_from_js_bundle_external_with_suspicious_syntax_returns_indirect_reference(): void
+    public function test_detect_from_js_bundle_external_with_suspicious_syntax_returns_multiple_reasons(): void
     {
         $status = $this->service->detectFromJsBundle(
             'https://external.com/api/${id}',
@@ -126,7 +126,8 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::IndirectReference, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::JsBundleExtracted));
+        $this->assertTrue($status->hasReason(VerificationReason::IndirectReference));
     }
 
     public function test_detect_from_js_bundle_localhost_returns_developer_leftover(): void
@@ -138,7 +139,7 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::DeveloperLeftover, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::DeveloperLeftover));
     }
 
     public function test_detect_from_js_bundle_127_0_0_1_returns_developer_leftover(): void
@@ -150,7 +151,7 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::DeveloperLeftover, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::DeveloperLeftover));
     }
 
     public function test_detect_from_js_bundle_ipv6_loopback_returns_developer_leftover(): void
@@ -162,7 +163,7 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::DeveloperLeftover, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::DeveloperLeftover));
     }
 
     public function test_detect_from_js_bundle_external_url_returns_js_bundle_extracted(): void
@@ -174,12 +175,12 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::JsBundleExtracted, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::JsBundleExtracted));
     }
 
-    public function test_detect_from_js_bundle_suspicious_takes_precedence_over_loopback(): void
+    public function test_detect_from_js_bundle_suspicious_and_loopback_returns_multiple_reasons(): void
     {
-        // When both suspicious syntax and loopback are present, suspicious syntax wins
+        // When both suspicious syntax and loopback are present, both reasons are returned
         $status = $this->service->detectFromJsBundle(
             'http://localhost:3000/api/${id}',
             hasSuspiciousSyntax: true,
@@ -187,7 +188,8 @@ class VerificationServiceTest extends TestCase
         );
 
         $this->assertTrue($status->needsVerification);
-        $this->assertSame(VerificationReason::IndirectReference, $status->reason);
+        $this->assertTrue($status->hasReason(VerificationReason::IndirectReference));
+        $this->assertTrue($status->hasReason(VerificationReason::DeveloperLeftover));
     }
 
     // ==================
@@ -234,26 +236,26 @@ class VerificationServiceTest extends TestCase
     // Integration tests
     // ==================
 
-    public function test_to_array_output_is_backward_compatible(): void
+    public function test_to_array_output_has_verification_reasons(): void
     {
         $status = $this->service->detectFromHttpResponse(403);
         $array = $status->toArray();
 
         $this->assertArrayHasKey('needsVerification', $array);
-        $this->assertArrayHasKey('verificationReason', $array);
+        $this->assertArrayHasKey('verificationReasons', $array);
         $this->assertTrue($array['needsVerification']);
-        $this->assertSame('bot_protection', $array['verificationReason']);
+        $this->assertContains('bot_protection', $array['verificationReasons']);
     }
 
-    public function test_none_to_array_output_is_backward_compatible(): void
+    public function test_none_to_array_output_has_empty_reasons(): void
     {
         $status = $this->service->detectFromHttpResponse(200);
         $array = $status->toArray();
 
         $this->assertArrayHasKey('needsVerification', $array);
-        $this->assertArrayHasKey('verificationReason', $array);
+        $this->assertArrayHasKey('verificationReasons', $array);
         $this->assertFalse($array['needsVerification']);
-        $this->assertNull($array['verificationReason']);
+        $this->assertEmpty($array['verificationReasons']);
     }
 }
 

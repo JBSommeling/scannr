@@ -361,7 +361,7 @@ class CrawlerService
                         'source' => $url,
                         'element' => $linkElement,
                         'needsVerification' => $link['needsVerification'] ?? false,
-                        'verificationReason' => $link['verificationReason'] ?? null,
+                        'verificationReasons' => $link['verificationReasons'] ?? [],
                     ];
 
                     // Prioritize scanElements (except 'a') by adding to priority queue
