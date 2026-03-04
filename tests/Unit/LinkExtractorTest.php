@@ -4,8 +4,9 @@ namespace Tests\Unit;
 
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
+use App\Services\LinkFlagService;
+use App\Services\SeverityEvaluator;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -16,15 +17,17 @@ class LinkExtractorTest extends TestCase
     private LinkExtractor $linkExtractor;
     private UrlNormalizer $urlNormalizer;
     private HttpChecker $httpChecker;
-    private VerificationService $verificationService;
+    private LinkFlagService $linkFlagService;
+    private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->verificationService = new VerificationService($this->urlNormalizer);
-        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
+        $this->severityEvaluator = new SeverityEvaluator();
+        $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->linkFlagService);
     }
 
     /**
@@ -1005,9 +1008,9 @@ class LinkExtractorTest extends TestCase
         }
 
         $this->assertNotNull($suspiciousLink);
-        $this->assertTrue($suspiciousLink['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $suspiciousLink['verificationReasons'] ?? []);
-        $this->assertContains('indirect_reference', $suspiciousLink['verificationReasons'] ?? []);
+        $this->assertNotEmpty($suspiciousLink['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $suspiciousLink['flags'] ?? []);
+        $this->assertContains('indirect_reference', $suspiciousLink['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_clean_urls_for_verification(): void
@@ -1025,8 +1028,8 @@ class LinkExtractorTest extends TestCase
         }
 
         $this->assertNotNull($cleanLink);
-        $this->assertTrue($cleanLink['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $cleanLink['verificationReasons'] ?? []);
+        $this->assertNotEmpty($cleanLink['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $cleanLink['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_backtick_in_url(): void
@@ -1038,12 +1041,15 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/test') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
-    public function test_extract_links_js_bundle_detects_comma_suffix(): void
+    public function test_extract_links_js_bundle_comma_suffix_not_flagged_as_indirect(): void
     {
+        // URL with comma suffix in post-context should NOT be flagged as indirect_reference
+        // because the URL itself is valid - only the context suggests partial URL
+        // This avoids false positives for URLs in arrays
         $html = '<html><body><script>const url="https://example.com/plugins/test",n</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
@@ -1051,8 +1057,10 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/plugins') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        // Post-context patterns should NOT trigger indirect_reference (too many false positives)
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_curly_braces(): void
@@ -1064,9 +1072,9 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'alpinejs.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('js_bundle_extracted', $link['verificationReasons'] ?? []);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_detects_standalone_curly_brace(): void
@@ -1078,8 +1086,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/api') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false);
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_does_not_flag_internal_subdomains(): void
@@ -1116,8 +1124,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'react.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'External URL from JS bundle should need verification');
-        $this->assertContains('js_bundle_extracted', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? [], 'External URL from JS bundle should have flags');
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_internal_suspicious_urls(): void
@@ -1131,8 +1139,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'Internal URL with suspicious syntax should need verification');
-        $this->assertContains('indirect_reference', $link['verificationReasons'] ?? []);
+        $this->assertNotEmpty($link['flags'] ?? [], 'Internal URL with suspicious syntax should have flags');
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_localhost_as_developer_leftover(): void
@@ -1146,8 +1154,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, 'localhost URL from JS bundle should need verification');
-        $this->assertContains('developer_leftover', $link['verificationReasons'] ?? []);
+        // localhost URLs from JS bundles should have detected_in_js_bundle flag
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_flags_127_0_0_1_as_developer_leftover(): void
@@ -1161,9 +1169,326 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        $this->assertTrue($link['needsVerification'] ?? false, '127.0.0.1 URL from JS bundle should need verification');
-        $this->assertContains('developer_leftover', $link['verificationReasons'] ?? []);
+        // 127.0.0.1 URLs from JS bundles should have detected_in_js_bundle flag
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+    }
+
+    // ===================
+    // Clean subdomain URL tests (should NOT be flagged as malformed)
+    // ===================
+
+    public function test_extract_links_js_bundle_clean_subdomain_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const demo="https://yoga-demo.sommeling.dev";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'yoga-demo') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        // Should NOT have malformed_url or indirect_reference flags
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_clean_subdomain_with_path_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const app="https://app.sommeling.dev/dashboard";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.sommeling') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Should NOT have malformed_url flag
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_clean_external_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const docs="https://docs.laravel.com/10.x/routing";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Should NOT have malformed_url flag
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_query_params_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const api="https://api.example.com/search?q=test&limit=10";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Query params should not trigger malformed_url
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_template_literal_is_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const user="https://api.example.com/user/${userId}";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Template literal syntax SHOULD trigger malformed_url
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const profile="https://example.com/user/{userId}/profile";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'user/') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Vue/Angular interpolation syntax SHOULD trigger malformed_url
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_linkedin_url_in_array_not_flagged_as_malformed(): void
+    {
+        // URLs in arrays should NOT be flagged as malformed - the comma after the quote is normal array syntax
+        $html = '<html><body><script>const socials=["https://www.linkedin.com/in/jesse-sommeling","https://github.com/user"];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'linkedin.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'LinkedIn URL should be extracted from JS bundle');
+        // Should NOT have malformed_url flag - this is a clean URL in an array
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+        // Should still have detected_in_js_bundle since it came from JS
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_string_concatenation_not_flagged_as_malformed(): void
+    {
+        // URL followed by string concatenation should NOT be flagged as malformed
+        // because the URL itself is valid - only the context suggests it might be a partial URL
+        // This is a trade-off to avoid false positives like LinkedIn URLs in arrays
+        $html = '<html><body><script>const url="https://api.example.com/user/",userId;</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link);
+        // Post-context concatenation should NOT trigger malformed_url (too many false positives)
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        // Should still have detected_in_js_bundle
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+    }
+
+    // ===================
+    // JS Bundle extraction - Clean external URLs (from user's actual scan data)
+    // ===================
+
+    public function test_extract_links_js_bundle_github_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const github = "https://github.com/JBSommeling";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'github.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'GitHub URL should be extracted');
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_pusher_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const pusher = "https://pusher.com";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'pusher.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'Pusher URL should be extracted');
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_js_pusher_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const js = "https://js.pusher.com";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'JS Pusher URL should be extracted');
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_http_js_pusher_url_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const js = "http://js.pusher.com";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'HTTP JS Pusher URL should be extracted');
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_example_com_not_flagged_as_malformed(): void
+    {
+        $html = '<html><body><script>const example = "https://example.com";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => $l['url'] === 'https://example.com'))[0] ?? null;
+
+        $this->assertNotNull($link, 'Example.com URL should be extracted');
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_urls_in_array_not_flagged_as_malformed(): void
+    {
+        // Multiple URLs in an array - common pattern in JS
+        $html = '<html><body><script>const urls = ["https://github.com/user", "https://twitter.com/user", "https://linkedin.com/in/user"];</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        foreach ($links as $link) {
+            if (strpos($link['url'], 'github.com') !== false ||
+                strpos($link['url'], 'twitter.com') !== false ||
+                strpos($link['url'], 'linkedin.com') !== false) {
+                $this->assertNotContains('malformed_url', $link['flags'] ?? [], "URL {$link['url']} should not be flagged as malformed");
+                $this->assertNotContains('indirect_reference', $link['flags'] ?? [], "URL {$link['url']} should not be flagged as indirect_reference");
+            }
+        }
+    }
+
+    public function test_extract_links_js_bundle_url_in_object_not_flagged_as_malformed(): void
+    {
+        // URL in an object - common pattern in JS config
+        $html = '<html><body><script>const config = {social: "https://linkedin.com/in/user", repo: "https://github.com/user"};</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        foreach ($links as $link) {
+            if (strpos($link['url'], 'linkedin.com') !== false ||
+                strpos($link['url'], 'github.com') !== false) {
+                $this->assertNotContains('malformed_url', $link['flags'] ?? [], "URL {$link['url']} should not be flagged as malformed");
+            }
+        }
+    }
+
+    public function test_extract_links_js_bundle_url_with_actual_template_literal_is_flagged(): void
+    {
+        // URL with actual template literal syntax in the URL itself SHOULD be flagged
+        $html = '<html><body><script>const api = "https://api.example.com/users/${userId}";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'API URL should be extracted');
+        // URL itself contains ${userId} so it SHOULD be flagged
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_url_with_brace_variable_is_flagged(): void
+    {
+        // URL with {variable} syntax SHOULD be flagged
+        $html = '<html><body><script>const user = "https://api.example.com/users/{id}/profile";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'API URL should be extracted');
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+    }
+
+    // ===================
+    // JS Bundle extraction - Localhost URLs (should be flagged)
+    // ===================
+
+    public function test_extract_links_js_bundle_localhost_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://localhost:3000/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'Localhost URL should be extracted');
+        $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_127_0_0_1_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://127.0.0.1:8080/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '127.0.0.1 URL should be extracted');
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_dot_local_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://myapp.local/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'myapp.local') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '.local URL should be extracted');
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_dot_test_url_is_flagged(): void
+    {
+        $html = '<html><body><script>const api = "http://laravel.test/api";</script></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.test') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, '.test URL should be extracted');
+        $this->assertContains('developer_leftover', $link['flags'] ?? []);
+    }
+
+    public function test_extract_links_js_bundle_production_url_not_flagged_as_localhost(): void
+    {
+        $html = '<html><body><script>const api = "https://api.sommeling.dev/users";</script></body></html>';
+
+        $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
+
+        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.sommeling.dev') !== false))[0] ?? null;
+
+        $this->assertNotNull($link, 'Production URL should be extracted');
+        $this->assertNotContains('developer_leftover', $link['flags'] ?? []);
     }
 }
-
-

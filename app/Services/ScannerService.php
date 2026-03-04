@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\DTO\VerificationStatus;
+use App\DTO\LinkAnalysis;
+use App\Enums\LinkFlag;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 
@@ -26,14 +27,14 @@ class ScannerService
      * @param  LinkExtractor  $linkExtractor  The link extractor for parsing HTML content.
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving and classifying URLs.
      * @param  ScanStatistics $scanStatistics The statistics calculator for scan results.
-     * @param  VerificationService $verificationService The verification service for detecting verification needs.
+     * @param  LinkFlagService $linkFlagService The service for detecting link flags.
      */
     public function __construct(
         protected HttpChecker $httpChecker,
         protected LinkExtractor $linkExtractor,
         protected UrlNormalizer $urlNormalizer,
         protected ScanStatistics $scanStatistics,
-        protected VerificationService $verificationService,
+        protected LinkFlagService $linkFlagService,
     ) {}
 
     /**
@@ -72,14 +73,12 @@ class ScannerService
      * @param string $url The internal URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
-     * @param VerificationStatus $verification The verification status from extraction.
+     * @param array<LinkFlag> $discoveryFlags Flags from link discovery/extraction.
      * @return array
      * @throws GuzzleException
      */
-    public function processInternalUrl(string $url, string $source, string $element = 'a', ?VerificationStatus $verification = null): array
+    public function processInternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
     {
-        $verification ??= VerificationStatus::none();
-
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
             return $this->httpChecker->processFormEndpoint($url, $source, 'internal');
@@ -110,26 +109,58 @@ class ScannerService
             }
         }
 
+        $status = $result['finalStatus'];
+
+        // Collect all flags
+        $flags = $discoveryFlags;
+
+        // Add HTTP response flags
+        $flags = array_merge($flags, $this->linkFlagService->detectFromHttpResponse($status));
+
+        // Add URL-based flags
+        $flags = array_merge($flags, $this->linkFlagService->detectFromUrl($url, false));
+
+        // Add redirect flags
+        $flags = array_merge($flags, $this->linkFlagService->detectFromRedirect(
+            $result['chain'],
+            $result['loop'],
+            $result['hasHttpsDowngrade']
+        ));
+
         // A bare internal subdomain that responds with 200 is proven alive;
-        // no manual verification is ever needed regardless of how it was flagged.
-        if ($this->verificationService->shouldClearForSubdomain($url, $result['finalStatus'])) {
-            $verification = VerificationStatus::none();
+        // clear any flags that might indicate issues
+        if ($this->linkFlagService->shouldClearForSubdomain($url, $status)) {
+            $flags = array_filter($flags, fn($f) => !in_array($f, [
+                LinkFlag::DETECTED_IN_JS_BUNDLE,
+                LinkFlag::INDIRECT_REFERENCE,
+                LinkFlag::MALFORMED_URL,
+                LinkFlag::UNVERIFIED,
+            ], true));
         }
+
+        // Build analysis from flags
+        $analysis = $this->linkFlagService->buildAnalysis($flags, $status, false);
+
+        // Determine status string
+        $statusString = $this->formatStatusString($status);
 
         return [
             'url' => $url,
             'finalUrl' => $result['finalUrl'],
             'sourcePage' => $source,
-            'status' => $result['finalStatus'],
+            'status' => $statusString,
             'type' => 'internal',
-            'redirectChain' => $result['chain'],
-            'isOk' => $result['finalStatus'] >= 200 && $result['finalStatus'] < 300,
-            'isLoop' => $result['loop'],
-            'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
-            'retryAfter' => $result['retryAfter'],
-            ...$verification->toArray(),
+            'analysis' => $analysis->toArray(),
+            'redirect' => [
+                'chain' => $result['chain'],
+                'isLoop' => $result['loop'],
+                'hasHttpsDowngrade' => $result['hasHttpsDowngrade'],
+            ],
+            'network' => [
+                'retryAfter' => $result['retryAfter'],
+            ],
         ];
     }
 
@@ -143,14 +174,12 @@ class ScannerService
      * @param string $url The external URL to process.
      * @param string $source The source page where this URL was found.
      * @param string $element The HTML element type that contained this URL.
-     * @param VerificationStatus $verification The verification status from extraction.
+     * @param array<LinkFlag> $discoveryFlags Flags from link discovery/extraction.
      * @return array
      * @throws GuzzleException
      */
-    public function processExternalUrl(string $url, string $source, string $element = 'a', ?VerificationStatus $verification = null): array
+    public function processExternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
     {
-        $verification ??= VerificationStatus::none();
-
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
             return $this->httpChecker->processFormEndpoint($url, $source, 'external');
@@ -162,24 +191,53 @@ class ScannerService
         // We don't care about external redirect chains, only whether the link works.
         $firstRedirect = !empty($result['chain']) ? [$result['chain'][0]] : [];
 
-        // Detect bot protection and merge with existing verification status
         $status = $result['finalStatus'];
-        $httpVerification = $this->verificationService->detectFromHttpResponse($status);
-        $verification = $verification->merge($httpVerification);
+
+        // Collect all flags
+        $flags = $discoveryFlags;
+
+        // Add URL-based flags (including external platform detection)
+        $flags = array_merge($flags, $this->linkFlagService->detectFromUrl($url, true));
+
+        // Add HTTP response flags
+        $flags = array_merge($flags, $this->linkFlagService->detectFromHttpResponse($status));
+
+        // Build analysis from flags
+        $analysis = $this->linkFlagService->buildAnalysis($flags, $status, true);
+
+        // Determine status string
+        $statusString = $this->formatStatusString($status);
 
         return [
             'url' => $url,
             'sourcePage' => $source,
-            'status' => $status,
+            'status' => $statusString,
             'type' => 'external',
-            'redirectChain' => $firstRedirect,
-            'isOk' => is_int($status) && $status >= 200 && $status < 300,
-            'isLoop' => false,
-            'hasHttpsDowngrade' => false,
             'sourceElement' => $element,
-            'retryAfter' => $result['retryAfter'],
-            ...$verification->toArray(),
+            'analysis' => $analysis->toArray(),
+            'redirect' => [
+                'chain' => $firstRedirect,
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+            ],
+            'network' => [
+                'retryAfter' => $result['retryAfter'],
+            ],
         ];
+    }
+
+    /**
+     * Format status code/string for output.
+     *
+     * Converts integer status to string, keeps error strings as-is but lowercase.
+     */
+    protected function formatStatusString(int|string $status): string
+    {
+        if (is_int($status)) {
+            return (string) $status;
+        }
+
+        return strtolower($status);
     }
 }
 

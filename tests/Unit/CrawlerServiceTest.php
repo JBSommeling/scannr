@@ -11,7 +11,8 @@ use App\Services\ScannerService;
 use App\Services\ScanStatistics;
 use App\Services\SitemapService;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
+use App\Services\LinkFlagService;
+use App\Services\SeverityEvaluator;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
@@ -56,19 +57,20 @@ class CrawlerServiceTest extends TestCase
     /**
      * Create the services needed for testing.
      *
-     * @return array{urlNormalizer: UrlNormalizer, verificationService: VerificationService, httpChecker: HttpChecker, linkExtractor: LinkExtractor, scanStatistics: ScanStatistics, scannerService: ScannerService, sitemapService: SitemapService}
+     * @return array{urlNormalizer: UrlNormalizer, linkFlagService: LinkFlagService, httpChecker: HttpChecker, linkExtractor: LinkExtractor, scanStatistics: ScanStatistics, scannerService: ScannerService, sitemapService: SitemapService}
      */
     private function createServices(): array
     {
         $urlNormalizer = new UrlNormalizer();
-        $verificationService = new VerificationService($urlNormalizer);
-        $httpChecker = new HttpChecker($urlNormalizer, $verificationService);
-        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker, $verificationService);
+        $severityEvaluator = new SeverityEvaluator();
+        $linkFlagService = new LinkFlagService($urlNormalizer, $severityEvaluator);
+        $httpChecker = new HttpChecker($urlNormalizer, $linkFlagService);
+        $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker, $linkFlagService);
         $scanStatistics = new ScanStatistics();
-        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics, $verificationService);
+        $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics, $linkFlagService);
         $sitemapService = new SitemapService(null, $urlNormalizer);
 
-        return compact('urlNormalizer', 'verificationService', 'httpChecker', 'linkExtractor', 'scanStatistics', 'scannerService', 'sitemapService');
+        return compact('urlNormalizer', 'linkFlagService', 'httpChecker', 'linkExtractor', 'scanStatistics', 'scannerService', 'sitemapService');
     }
 
     // ==================
@@ -792,7 +794,7 @@ class CrawlerServiceTest extends TestCase
         $this->assertFalse($crawlResult['aborted']);
         $this->assertNull($crawlResult['error']);
         $this->assertNotEmpty($crawlResult['results']);
-        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+        $this->assertEquals('200', $crawlResult['results'][0]['status']);
     }
 
     public function test_crawl_aborts_after_max_429_responses(): void
@@ -850,7 +852,7 @@ class CrawlerServiceTest extends TestCase
         // Should have waited approximately 1 second due to Retry-After header
         $this->assertGreaterThan(0.9, $elapsed, 'Should have waited for Retry-After header');
         $this->assertFalse($crawlResult['aborted']);
-        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+        $this->assertEquals('200', $crawlResult['results'][0]['status']);
     }
 
     public function test_crawl_uses_backoff_delays_when_no_retry_after(): void
@@ -917,7 +919,7 @@ class CrawlerServiceTest extends TestCase
         // Should have waited 200ms + 400ms = ~600ms total
         $this->assertGreaterThan(0.5, $elapsed, 'Should have waited for both backoff delays');
         $this->assertFalse($crawlResult['aborted']);
-        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+        $this->assertEquals('200', $crawlResult['results'][0]['status']);
     }
 
     public function test_429_count_accumulates_across_urls(): void
@@ -1034,7 +1036,7 @@ class CrawlerServiceTest extends TestCase
 
         $this->assertFalse($crawlResult['aborted']);
         $this->assertNull($crawlResult['error']);
-        $this->assertEquals(200, $crawlResult['results'][0]['status']);
+        $this->assertEquals('200', $crawlResult['results'][0]['status']);
     }
 }
 
