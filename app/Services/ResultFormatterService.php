@@ -162,12 +162,13 @@ class ResultFormatterService
 
             $verificationTableData = [];
             foreach ($verificationLinks as $result) {
+                $reasons = $result['verificationReasons'] ?? [];
                 $verificationTableData[] = [
                     'URL' => $this->truncate($result['url'], 60),
                     'Source' => $this->truncate($result['sourcePage'], 40),
                     'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
                     'Status' => $this->formatStatus($result),
-                    'Reason' => $result['verificationReason'] ?? '',
+                    'Reason' => implode('|', $reasons),
                 ];
             }
 
@@ -265,7 +266,7 @@ class ResultFormatterService
             $output->line("# Error: {$error}");
         }
 
-        $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReason');
+        $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReasons');
 
         foreach ($results as $result) {
             $redirects = implode(' -> ', $result['redirectChain']);
@@ -273,7 +274,7 @@ class ResultFormatterService
             $httpsDowngrade = ($result['hasHttpsDowngrade'] ?? false) ? 'true' : 'false';
             $element = $result['sourceElement'] ?? 'a';
             $needsVerification = ($result['needsVerification'] ?? false) ? 'true' : 'false';
-            $verificationReason = $result['verificationReason'] ?? '';
+            $verificationReasons = implode('|', $result['verificationReasons'] ?? []);
 
             $output->line(sprintf(
                 '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"',
@@ -286,7 +287,7 @@ class ResultFormatterService
                 $isOk,
                 $httpsDowngrade,
                 $needsVerification,
-                $verificationReason
+                $verificationReasons
             ));
         }
     }
@@ -322,7 +323,7 @@ class ResultFormatterService
         $isOk = $result['isOk'] ?? false;
         $element = $result['sourceElement'] ?? 'a';
         $needsVerification = $result['needsVerification'] ?? false;
-        $verificationReason = $result['verificationReason'] ?? null;
+        $verificationReasons = $result['verificationReasons'] ?? [];
 
         // Annotate healthy non-2xx form endpoints so the user knows it's alive
         if ($element === 'form' && $isOk && is_int($status) && ($status < 200 || $status >= 300)) {
@@ -333,16 +334,14 @@ class ResultFormatterService
         if ($needsVerification && $isTableOutput) {
             // For bot protection (403/405/Error/Timeout) and suspicious URLs (any status),
             // always show annotation
-            if (in_array($verificationReason, [
-                VerificationReason::BotProtection->value,
-                VerificationReason::IndirectReference->value,
-                VerificationReason::DeveloperLeftover->value,
-            ])) {
+            if (in_array(VerificationReason::BotProtection->value, $verificationReasons, true) ||
+                in_array(VerificationReason::IndirectReference->value, $verificationReasons, true) ||
+                in_array(VerificationReason::DeveloperLeftover->value, $verificationReasons, true)) {
                 return "{$status} (verify)";
             }
 
             // For JS bundle extracted, only show annotation for 200 status
-            if ($status === 200 && $verificationReason === VerificationReason::JsBundleExtracted->value) {
+            if ($status === 200 && in_array(VerificationReason::JsBundleExtracted->value, $verificationReasons, true)) {
                 return "{$status} (verify)";
             }
         }

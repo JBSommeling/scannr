@@ -8,8 +8,8 @@ use App\Services\LinkExtractor;
 use App\Services\ScannerService;
 use App\Services\ScanStatistics;
 use App\Services\UrlNormalizer;
+use App\Services\VerificationService;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -21,19 +21,22 @@ class ScannerServiceTest extends TestCase
     private HttpChecker $httpChecker;
     private LinkExtractor $linkExtractor;
     private ScanStatistics $scanStatistics;
+    private VerificationService $verificationService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->urlNormalizer = new UrlNormalizer();
-        $this->httpChecker = new HttpChecker($this->urlNormalizer);
-        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker);
+        $this->verificationService = new VerificationService($this->urlNormalizer);
+        $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->verificationService);
+        $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->verificationService);
         $this->scanStatistics = new ScanStatistics();
         $this->service = new ScannerService(
             $this->httpChecker,
             $this->linkExtractor,
             $this->urlNormalizer,
             $this->scanStatistics,
+            $this->verificationService,
         );
     }
 
@@ -517,8 +520,8 @@ class ScannerServiceTest extends TestCase
 
         $this->assertArrayHasKey('needsVerification', $result);
         $this->assertFalse($result['needsVerification']);
-        $this->assertArrayHasKey('verificationReason', $result);
-        $this->assertNull($result['verificationReason']);
+        $this->assertArrayHasKey('verificationReasons', $result);
+        $this->assertEmpty($result['verificationReasons']);
     }
 
     public function test_non_form_external_url_still_uses_head(): void
@@ -551,13 +554,12 @@ class ScannerServiceTest extends TestCase
             'https://external.com/page',
             'https://example.com',
             'a',
-            true,
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('js_bundle_extracted', $result['verificationReason']);
+        $this->assertContains('js_bundle_extracted', $result['verificationReasons']);
     }
 
     public function test_process_external_url_detects_bot_protection_403(): void
@@ -570,7 +572,7 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(403, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_external_url_detects_bot_protection_405(): void
@@ -583,7 +585,49 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals(405, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
+    }
+
+    public function test_process_external_url_bot_protection_combines_with_js_bundle_extracted(): void
+    {
+        // A URL flagged as js_bundle_extracted during extraction should have
+        // bot_protection added when the HTTP response indicates bot protection (403/405)
+        $mockClient = $this->createMockClient(403);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://linkedin.com/in/user',
+            'https://example.com',
+            'a',
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
+        );
+
+        $this->assertEquals(403, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertContains('js_bundle_extracted', $result['verificationReasons']);
+    }
+
+    public function test_process_external_url_bot_protection_combines_with_indirect_reference(): void
+    {
+        // A URL flagged as indirect_reference during extraction should have
+        // bot_protection added when the HTTP response indicates bot protection (405)
+        $mockClient = $this->createMockClient(405);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://www.linkedin.com/in/user',
+            'https://example.com',
+            'a',
+            \App\DTO\VerificationStatus::forIndirectReference()
+        );
+
+        $this->assertEquals(405, $result['status']);
+        $this->assertTrue($result['needsVerification']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
+        $this->assertContains('indirect_reference', $result['verificationReasons']);
     }
 
     public function test_process_external_url_detects_bot_protection_timeout(): void
@@ -599,7 +643,7 @@ class ScannerServiceTest extends TestCase
 
         $this->assertEquals('Timeout', $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 
     public function test_process_internal_url_propagates_verification_flags(): void
@@ -613,13 +657,12 @@ class ScannerServiceTest extends TestCase
             'https://example.com',
             'start',
             'a',
-            true,
-            'indirect_reference'
+            \App\DTO\VerificationStatus::forIndirectReference()
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('indirect_reference', $result['verificationReason']);
+        $this->assertContains('indirect_reference', $result['verificationReasons']);
     }
 
     // ============================================
@@ -636,13 +679,12 @@ class ScannerServiceTest extends TestCase
             'https://yoga-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,           // flagged as needing verification
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()  // flagged as needing verification
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertFalse($result['needsVerification']);
-        $this->assertNull($result['verificationReason']);
+        $this->assertEmpty($result['verificationReasons']);
     }
 
     public function test_nested_internal_subdomain_with_200_never_needs_verification(): void
@@ -655,13 +697,12 @@ class ScannerServiceTest extends TestCase
             'https://app.demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,
-            'js_bundle_extracted'
+            \App\DTO\VerificationStatus::forJsBundleExtracted()
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertFalse($result['needsVerification']);
-        $this->assertNull($result['verificationReason']);
+        $this->assertEmpty($result['verificationReasons']);
     }
 
     public function test_base_domain_with_200_still_propagates_verification_flag(): void
@@ -676,13 +717,12 @@ class ScannerServiceTest extends TestCase
             'https://sommeling.dev/page',
             'start',
             'a',
-            true,
-            'indirect_reference'
+            \App\DTO\VerificationStatus::forIndirectReference()
         );
 
         $this->assertEquals(200, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('indirect_reference', $result['verificationReason']);
+        $this->assertContains('indirect_reference', $result['verificationReasons']);
     }
 
     public function test_internal_subdomain_with_non_200_keeps_verification_flag(): void
@@ -695,13 +735,12 @@ class ScannerServiceTest extends TestCase
             'https://tree-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            true,
-            'bot_protection'
+            \App\DTO\VerificationStatus::forBotProtection()
         );
 
         $this->assertEquals(403, $result['status']);
         $this->assertTrue($result['needsVerification']);
-        $this->assertEquals('bot_protection', $result['verificationReason']);
+        $this->assertContains('bot_protection', $result['verificationReasons']);
     }
 }
 

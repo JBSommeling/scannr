@@ -1685,7 +1685,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'indirect_reference',
+                'verificationReasons' => ['indirect_reference'],
             ],
         ];
 
@@ -1712,7 +1712,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'bot_protection',
+                'verificationReasons' => ['bot_protection'],
             ],
         ];
 
@@ -1739,7 +1739,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'js_bundle_extracted',
+                'verificationReasons' => ['js_bundle_extracted'],
             ],
             [
                 'url' => 'https://example.com/test2',
@@ -1752,7 +1752,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'bot_protection',
+                'verificationReasons' => ['bot_protection'],
             ],
         ];
 
@@ -1779,7 +1779,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'js_bundle_extracted',
+                'verificationReasons' => ['js_bundle_extracted'],
             ],
         ];
 
@@ -1792,7 +1792,7 @@ class ResultFormatterServiceTest extends TestCase
         $decoded = json_decode($jsonOutput, true);
 
         $this->assertTrue($decoded['results'][0]['needsVerification']);
-        $this->assertEquals('js_bundle_extracted', $decoded['results'][0]['verificationReason']);
+        $this->assertEquals(['js_bundle_extracted'], $decoded['results'][0]['verificationReasons']);
         $this->assertEquals(1, $decoded['summary']['needsVerificationCount']);
     }
 
@@ -1810,7 +1810,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'indirect_reference',
+                'verificationReasons' => ['indirect_reference'],
             ],
         ];
 
@@ -1820,7 +1820,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         $csvLines = $output->lines;
-        $this->assertStringContainsString('NeedsVerification,VerificationReason', $csvLines[0]);
+        $this->assertStringContainsString('NeedsVerification,VerificationReasons', $csvLines[0]);
         $this->assertStringContainsString('"true","indirect_reference"', $csvLines[1]);
     }
 
@@ -1838,7 +1838,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'indirect_reference',
+                'verificationReasons' => ['indirect_reference'],
             ],
         ];
 
@@ -1865,7 +1865,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'developer_leftover',
+                'verificationReasons' => ['developer_leftover'],
             ],
         ];
 
@@ -1894,7 +1894,7 @@ class ResultFormatterServiceTest extends TestCase
                 'sourceElement' => 'form',
                 'retryAfter' => null,
                 'needsVerification' => false,
-                'verificationReason' => null,
+                'verificationReasons' => [],
             ],
         ];
 
@@ -1922,7 +1922,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => false,
-                'verificationReason' => null,
+                'verificationReasons' => [],
             ],
             [
                 'url' => 'https://example.com/suspicious',
@@ -1935,7 +1935,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'indirect_reference',
+                'verificationReasons' => ['indirect_reference'],
             ],
         ];
 
@@ -1969,7 +1969,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => false,
-                'verificationReason' => null,
+                'verificationReasons' => [],
             ],
         ];
 
@@ -1996,7 +1996,7 @@ class ResultFormatterServiceTest extends TestCase
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
                 'needsVerification' => true,
-                'verificationReason' => 'bot_protection',
+                'verificationReasons' => ['bot_protection'],
             ],
         ];
 

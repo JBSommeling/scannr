@@ -447,10 +447,10 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_includes_needs_verification_count(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'js_bundle_extracted'],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'indirect_reference'],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['js_bundle_extracted']],
+            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['indirect_reference']],
             ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => false],
-            ['isOk' => false, 'status' => 403, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReason' => 'bot_protection'],
+            ['isOk' => false, 'status' => 403, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['bot_protection']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
