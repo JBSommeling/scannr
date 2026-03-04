@@ -82,6 +82,73 @@ class RobotsServiceTest extends TestCase
         $this->assertTrue($this->service->isAllowed('https://example.com/public'));
     }
 
+    public function test_fetch_and_parse_uses_root_origin_when_given_sub_path_url(): void
+    {
+        $robotsTxt = "User-agent: *\nDisallow: /admin\n";
+
+        // Capture the URL that was actually requested
+        $requestedUrl = null;
+        $mock = new MockHandler([
+            new Response(200, [], $robotsTxt),
+        ]);
+        $handlerStack = HandlerStack::create($mock);
+        $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
+            return function ($request, $options) use ($handler, &$requestedUrl) {
+                $requestedUrl = (string) $request->getUri();
+                return $handler($request, $options);
+            };
+        });
+        $client = new Client(['handler' => $handlerStack]);
+
+        $this->service->setClient($client);
+        $this->service->fetchAndParse('https://example.com/about/team');
+
+        $this->assertEquals('https://example.com/robots.txt', $requestedUrl);
+        $this->assertFalse($this->service->isAllowed('https://example.com/admin'));
+    }
+
+    public function test_fetch_and_parse_uses_root_origin_with_deep_path_and_query(): void
+    {
+        $requestedUrl = null;
+        $mock = new MockHandler([
+            new Response(404, [], ''),
+        ]);
+        $handlerStack = HandlerStack::create($mock);
+        $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
+            return function ($request, $options) use ($handler, &$requestedUrl) {
+                $requestedUrl = (string) $request->getUri();
+                return $handler($request, $options);
+            };
+        });
+        $client = new Client(['handler' => $handlerStack]);
+
+        $this->service->setClient($client);
+        $this->service->fetchAndParse('https://example.com/blog/2026/my-post?ref=newsletter');
+
+        $this->assertEquals('https://example.com/robots.txt', $requestedUrl);
+    }
+
+    public function test_fetch_and_parse_preserves_custom_port_in_robots_url(): void
+    {
+        $requestedUrl = null;
+        $mock = new MockHandler([
+            new Response(404, [], ''),
+        ]);
+        $handlerStack = HandlerStack::create($mock);
+        $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
+            return function ($request, $options) use ($handler, &$requestedUrl) {
+                $requestedUrl = (string) $request->getUri();
+                return $handler($request, $options);
+            };
+        });
+        $client = new Client(['handler' => $handlerStack]);
+
+        $this->service->setClient($client);
+        $this->service->fetchAndParse('https://example.com:8443/some/path');
+
+        $this->assertEquals('https://example.com:8443/robots.txt', $requestedUrl);
+    }
+
     // ===================
     // parseContent tests
     // ===================
