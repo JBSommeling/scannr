@@ -13,6 +13,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Redirect Chain Tracking**: Follows and reports redirect chains, including loop detection
 - **HTTPS Downgrade Detection**: Warns when redirects downgrade from HTTPS to HTTP
 - **JavaScript Rendering**: Scan SPAs (React, Vue, Angular) with headless browser support via `--js` flag
+- **Smart JS Detection**: Automatically detect SPAs and enable JS rendering only when needed via `--smart-js` flag
 - **Sitemap Integration**: Discover URLs from XML, HTML, or plain text sitemaps
 - **Sitemap Index Support**: Recursively parses sitemap index files
 - **robots.txt Support**: Automatically discovers sitemaps from robots.txt
@@ -60,6 +61,7 @@ php artisan site:scan {url} [options]
 | `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated list (e.g., `a,img`) |
 | `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
 | `--js` | false | Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer) |
+| `--smart-js` | false | Automatically enable JS rendering when SPA signals are detected |
 | `--no-robots` | false | Ignore robots.txt rules (Disallow/Crawl-delay) |
 | `--advanced` | false | Show XML namespaces, CDN preconnect hints, and JS framework error docs in output |
 | `--strip-params=PARAMS` | - | Additional tracking parameters to strip (comma-separated, e.g., `ref,tracker_*`) |
@@ -148,6 +150,18 @@ php artisan site:scan https://example.com --js
 
 ```bash
 php artisan site:scan https://example.com --js --sitemap --scan-elements=a,img --status=broken
+```
+
+**Auto-detect SPA sites and enable JS rendering only when needed:**
+
+```bash
+php artisan site:scan https://example.com --smart-js
+```
+
+**Combine smart JS detection with sitemap discovery:**
+
+```bash
+php artisan site:scan https://example.com --smart-js --sitemap --format=json
 ```
 
 **Ignore robots.txt rules (crawl everything including disallowed paths):**
@@ -286,7 +300,7 @@ URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
    - `[onclick]` - URLs in inline JS handlers (`location.href`, `window.open()`, `download()`)
    - Inline `<script>` content (with `--js`) - Download URLs in JS data blobs, JSON config, React/Next.js/Nuxt data
    - External JS bundles (with `--js`) - URLs and download links compiled into SPA bundles (React, Vue, Svelte, Angular — same-domain only)
-6. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.)
+6. **JavaScript Rendering** (optional): When `--js` is used, internal pages are rendered with a headless browser (Puppeteer) before extracting links, enabling detection of content injected by JavaScript frameworks (React, Vue, Angular, etc.). When `--smart-js` is used instead, the scanner automatically detects SPA signals on the first page and only activates JS rendering if needed
 7. **External Links**: External URLs are checked with HEAD requests for efficiency. Only the first redirect destination is tracked — external redirect chains are not reported since they are not actionable for site owners
 8. **Redirect Handling**: Internal redirects are followed up to 5 hops, with loop detection and HTTPS downgrade warnings. Redirect chain statistics only count internal URLs
 9. **Deduplication**: Each URL is only scanned once, regardless of how many pages link to it
@@ -476,6 +490,55 @@ JavaScript rendering is significantly slower than static HTML parsing because ea
 # Only check pages and images (faster than checking everything)
 php artisan site:scan https://example.com --js --scan-elements=a,img
 ```
+
+## Smart JS Detection
+
+The `--smart-js` flag provides intelligent, automatic JavaScript rendering. Instead of rendering every page with a headless browser (like `--js`), it first fetches pages as static HTML and only activates JS rendering when SPA signals are detected on the first page. This gives you the best of both worlds: fast scanning for traditional sites, automatic headless rendering for SPAs.
+
+### Usage
+
+```bash
+# Auto-detect whether JS rendering is needed
+php artisan site:scan https://example.com --smart-js
+
+# Works with all other options
+php artisan site:scan https://example.com --smart-js --sitemap --scan-elements=a,img
+```
+
+### How It Works
+
+1. The scanner fetches the first page as static HTML (same as a normal scan)
+2. The `SpaDetector` service analyses the response for SPA signals
+3. If signals are detected, Browsershot (headless Chrome) is activated and the page is re-processed
+4. All subsequent pages are rendered with JS for the remainder of the crawl
+5. If no signals are detected, the scan continues without JS rendering (faster)
+
+### What Is Detected
+
+| Signal | Examples |
+|--------|----------|
+| **No navigable links** | Page returns HTML but no `<a>` tags are extracted |
+| **Empty DOM body** | `<body>` contains only a mount-point div (e.g., `<div id="root"></div>`) with no meaningful text |
+| **Next.js** | `__NEXT_DATA__` script tag or `/_next/` asset paths |
+| **Nuxt.js** | `__NUXT__` global variable or `/_nuxt/` asset paths |
+| **React** | Empty `<div id="root"></div>` with scripts, or `data-reactroot` attribute |
+| **Vue.js** | Empty `<div id="app"></div>` with scripts |
+| **Angular** | `ng-version` attribute or empty `<app-root>` element |
+| **Gatsby** | `___gatsby` container div |
+| **SSR hydration** | `data-server-rendered` attribute (Vue/Nuxt SSR marker) |
+
+### Precedence
+
+- `--js` always takes precedence: if both `--js` and `--smart-js` are specified, `--smart-js` is ignored and every page is rendered with JS
+- `--smart-js` only checks the first internal page; once a decision is made, it applies to the entire crawl
+
+### When to Use Which
+
+| Flag | Best For |
+|------|----------|
+| *(neither)* | Traditional HTML sites (WordPress, static sites, server-rendered pages) |
+| `--smart-js` | Unknown sites, or when you're unsure whether the target uses a JS framework |
+| `--js` | Sites you know are SPAs (React, Vue, Angular, etc.) |
 
 ## URL Normalization
 
