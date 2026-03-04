@@ -1706,11 +1706,10 @@ class ResultFormatterServiceTest extends TestCase
                 'status' => 403,
                 'type' => 'external',
                 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
-                'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'analysis' => ['flags' => ['status_4xx', 'detected_in_js_bundle'], 'confidence' => 'low', 'verification' => 'recommended'],
                 'isLoop' => false,
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
-                'analysis' => ['flags' => ['detected_in_js_bundle'], 'confidence' => 'low', 'verification' => 'recommended'],
                 'verificationReasons' => ['bot_protection'],
             ],
         ];
