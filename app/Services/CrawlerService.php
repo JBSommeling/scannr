@@ -38,6 +38,21 @@ class CrawlerService
      */
     protected ?string $abortError = null;
 
+    /**
+     * Whether smart-JS has been activated during this crawl.
+     */
+    protected bool $smartJsActivated = false;
+
+    /**
+     * Current scan configuration (stored during crawl for smart-JS access).
+     */
+    protected ?ScanConfig $activeConfig = null;
+
+    /**
+     * Message callback (stored during crawl for smart-JS access).
+     */
+    protected ?Closure $activeOnMessage = null;
+
     public function __construct(
         protected ScannerService $scannerService,
         protected UrlNormalizer $urlNormalizer,
@@ -67,6 +82,10 @@ class CrawlerService
     public function crawl(ScanConfig $config, ?Closure $onProgress = null, ?Closure $onSitemapDiscovery = null): array
     {
         $this->resetState($config->baseUrl);
+
+        // Store config and message callback for smart-JS access during crawl
+        $this->activeConfig = $config;
+        $this->activeOnMessage = $onSitemapDiscovery;
 
         // Configure HTTP client (use injected client or create new one)
         $client = $this->client ?? $this->createHttpClient($config->timeout);
@@ -204,6 +223,9 @@ class CrawlerService
         $this->canonicalBaseResolved = false;
         $this->total429Count = 0;
         $this->abortError = null;
+        $this->smartJsActivated = false;
+        $this->activeConfig = null;
+        $this->activeOnMessage = null;
     }
 
     /**
@@ -356,9 +378,26 @@ class CrawlerService
 
         $result = $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
 
+        // Smart-JS: on the first internal page, check for SPA signals
+        // and re-process with JS rendering if detected
+        if (!$this->smartJsActivated
+            && $this->activeConfig !== null
+            && $this->activeConfig->useSmartJs
+        ) {
+            $reprocessed = $this->tryActivateSmartJs(
+                $result, $url, $source, $element, $scanElements, $discoveryFlags, $depth
+            );
+            if ($reprocessed !== null) {
+                $result = $reprocessed;
+            }
+        }
+
         // Extract links and remove from result
         $extractedLinks = $result['extractedLinks'] ?? [];
         unset($result['extractedLinks']);
+
+        // Remove rawBody from stored result (internal use only)
+        unset($result['rawBody']);
 
         // Only store result if element type is in scanElements
         if ($shouldStoreResult) {
@@ -482,6 +521,203 @@ class CrawlerService
                 $onMessage("  Warning: {$depCheck['message']} Falling back to static HTML.");
             }
         }
+    }
+
+    /**
+     * Detect SPA signals in raw HTML that indicate JavaScript rendering is needed.
+     *
+     * Checks for:
+     * - No navigable <a> links extracted
+     * - Empty or near-empty <body> (typical SPA shell with a single mount point)
+     * - Client-side routing / SPA framework markers in the HTML
+     *
+     * @param string|null $rawBody The raw HTML body from Guzzle (before any JS rendering).
+     * @param array $extractedLinks The links extracted from the static HTML.
+     * @return array{detected: bool, reason: string}
+     */
+    protected function detectSpaSignals(?string $rawBody, array $extractedLinks): array
+    {
+        // Check 1: No navigable <a> links found at all
+        $anchorLinks = array_filter($extractedLinks, fn($link) => ($link['element'] ?? '') === 'a');
+        if (empty($anchorLinks)) {
+            return ['detected' => true, 'reason' => 'no navigable links found'];
+        }
+
+        if ($rawBody === null || trim($rawBody) === '') {
+            return ['detected' => true, 'reason' => 'empty response body'];
+        }
+
+        // Check 2: Empty or near-empty <body>
+        if ($this->isBodyEffectivelyEmpty($rawBody)) {
+            return ['detected' => true, 'reason' => 'empty DOM body (SPA shell detected)'];
+        }
+
+        // Check 3: Client-side routing / SPA framework markers
+        $spaReason = $this->detectSpaFrameworkMarkers($rawBody);
+        if ($spaReason !== null) {
+            return ['detected' => true, 'reason' => $spaReason];
+        }
+
+        return ['detected' => false, 'reason' => ''];
+    }
+
+    /**
+     * Check if the <body> is effectively empty (typical SPA shell).
+     *
+     * SPA shells typically have a body with just a single mount-point div
+     * like <div id="root"></div> or <div id="app"></div> with no real text content.
+     */
+    protected function isBodyEffectivelyEmpty(string $html): bool
+    {
+        // Extract body content
+        if (preg_match('/<body[^>]*>(.*)<\/body>/si', $html, $matches)) {
+            $bodyContent = $matches[1];
+
+            // Strip script and style tags and their content
+            $stripped = preg_replace('/<script\b[^>]*>.*?<\/script>/si', '', $bodyContent);
+            $stripped = preg_replace('/<style\b[^>]*>.*?<\/style>/si', '', $stripped);
+            $stripped = preg_replace('/<noscript\b[^>]*>.*?<\/noscript>/si', '', $stripped);
+
+            // Strip all remaining HTML tags
+            $textContent = trim(strip_tags($stripped));
+
+            // If there's essentially no text content, it's likely an SPA shell
+            return strlen($textContent) < 50;
+        }
+
+        return false;
+    }
+
+    /**
+     * Detect SPA framework markers in the HTML source.
+     *
+     * @return string|null The detection reason, or null if no markers found.
+     */
+    protected function detectSpaFrameworkMarkers(string $html): ?string
+    {
+        // Next.js
+        if (str_contains($html, '__NEXT_DATA__') || str_contains($html, '/_next/')) {
+            return 'Next.js application detected';
+        }
+
+        // Nuxt.js
+        if (str_contains($html, '__NUXT__') || str_contains($html, '/_nuxt/')) {
+            return 'Nuxt.js application detected';
+        }
+
+        // React (Create React App or generic)
+        if (preg_match('/<div\s+id=["\']root["\']\s*>\s*<\/div>/i', $html)
+            && preg_match('/<script\b/i', $html)) {
+            return 'React application detected (empty root mount point)';
+        }
+
+        // Vue.js
+        if (preg_match('/<div\s+id=["\']app["\']\s*>\s*<\/div>/i', $html)
+            && preg_match('/<script\b/i', $html)) {
+            return 'Vue.js application detected (empty app mount point)';
+        }
+
+        // Angular
+        if (preg_match('/\bng-version\s*=\s*["\']/', $html)
+            || preg_match('/<app-root\b[^>]*>\s*<\/app-root>/i', $html)) {
+            return 'Angular application detected';
+        }
+
+        // Gatsby
+        if (str_contains($html, '___gatsby')) {
+            return 'Gatsby application detected';
+        }
+
+        // Generic SPA: data-server-rendered (SSR hydration marker for Vue/Nuxt)
+        if (str_contains($html, 'data-server-rendered')) {
+            return 'server-rendered SPA detected (hydration marker)';
+        }
+
+        // Generic SPA: single mount point with data-reactroot
+        if (str_contains($html, 'data-reactroot')) {
+            return 'React application detected (data-reactroot)';
+        }
+
+        return null;
+    }
+
+    /**
+     * Attempt to activate smart-JS rendering if SPA signals are detected.
+     *
+     * Called after the first internal page is processed. If SPA signals are found,
+     * enables Browsershot and re-processes the page with JS rendering.
+     *
+     * @param array $result The result from processInternalUrl (includes rawBody and extractedLinks).
+     * @param string $url The URL that was processed.
+     * @param string $source The source URL.
+     * @param string $element The element type.
+     * @param array<string> $scanElements Elements to scan.
+     * @param array<LinkFlag> $discoveryFlags Discovery flags.
+     * @param int $depth Current crawl depth.
+     * @return array|null The re-processed result if smart-JS was activated, or null if not.
+     */
+    protected function tryActivateSmartJs(
+        array $result,
+        string $url,
+        string $source,
+        string $element,
+        array $scanElements,
+        array $discoveryFlags,
+        int $depth,
+    ): ?array {
+        if ($this->activeConfig === null || !$this->activeConfig->useSmartJs) {
+            return null;
+        }
+
+        // Only attempt once
+        if ($this->smartJsActivated) {
+            return null;
+        }
+
+        $rawBody = $result['rawBody'] ?? null;
+        $extractedLinks = $result['extractedLinks'] ?? [];
+
+        $detection = $this->detectSpaSignals($rawBody, $extractedLinks);
+
+        if (!$detection['detected']) {
+            // No SPA signals — smart-JS stays off for the entire crawl
+            $this->smartJsActivated = true;
+            return null;
+        }
+
+        // SPA signals detected — try to activate JS rendering
+        $depCheck = BrowsershotFetcher::checkDependencies();
+        if (!$depCheck['available']) {
+            if ($this->activeOnMessage !== null) {
+                ($this->activeOnMessage)("  ⚠ Smart JS: {$detection['reason']}, but {$depCheck['message']} Falling back to static HTML.");
+            }
+            $this->smartJsActivated = true;
+            return null;
+        }
+
+        // Activate Browsershot
+        $fetcher = new BrowsershotFetcher();
+        $fetcher->setTimeout($this->activeConfig->timeout);
+
+        $jsConfig = config('scanner.js_rendering', []);
+        if (!empty($jsConfig)) {
+            $fetcher->configure($jsConfig);
+        }
+
+        $this->scannerService->setBrowsershotFetcher($fetcher);
+        $this->smartJsActivated = true;
+
+        if ($this->activeOnMessage !== null) {
+            ($this->activeOnMessage)("  🔄 Smart JS activated: {$detection['reason']} — re-scanning with headless browser");
+        }
+
+        // Re-process the current URL with JS rendering enabled
+        // First, remove the stale result we already stored
+        if (!empty($this->results)) {
+            array_pop($this->results);
+        }
+
+        return $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
     }
 
     /**

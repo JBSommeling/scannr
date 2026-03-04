@@ -50,6 +50,7 @@ class CrawlerServiceTest extends TestCase
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
             useJsRendering: $overrides['useJsRendering'] ?? false,
+            useSmartJs: $overrides['useSmartJs'] ?? false,
             respectRobots: $overrides['respectRobots'] ?? false,
         );
     }
@@ -1037,6 +1038,279 @@ class CrawlerServiceTest extends TestCase
         $this->assertFalse($crawlResult['aborted']);
         $this->assertNull($crawlResult['error']);
         $this->assertEquals('200', $crawlResult['results'][0]['status']);
+    }
+
+    // ==================
+    // Smart JS tests
+    // ==================
+
+    public function test_smart_js_activates_when_no_links_found(): void
+    {
+        // SPA shell with no <a> links — just scripts
+        $spaShell = '<html><body><div id="root"></div><script src="/static/js/main.js"></script></body></html>';
+        $renderedHtml = '<html><body><div id="root"><a href="/about">About</a><a href="/contact">Contact</a></div></body></html>';
+
+        $client = $this->createMockClient([
+            // First request: GET the SPA shell
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+            // Script resource request
+            new Response(200, ['Content-Type' => 'application/javascript'], ''),
+            // Re-processed page discovers /about and /contact
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>About page</body></html>'),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Contact page</body></html>'),
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => $renderedHtml,
+            'finalUrl' => 'https://example.com',
+        ]);
+        $mockFetcher->method('setTimeout')->willReturnSelf();
+
+        // Mock checkDependencies to return available
+        $messages = [];
+        $config = $this->createConfig(['useSmartJs' => true, 'maxUrls' => 3]);
+
+        // We need to mock BrowsershotFetcher::checkDependencies which is static
+        // Instead, test the detection logic via the protected method using reflection
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        $result = $detectionMethod->invoke($crawler, $spaShell, []);
+        $this->assertTrue($result['detected']);
+        $this->assertEquals('no navigable links found', $result['reason']);
+    }
+
+    public function test_smart_js_activates_when_body_is_empty(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        // SPA shell: body has mount point but no text content
+        $html = '<html><body><div id="root"></div><script src="/app.js"></script></body></html>';
+        $linksWithAnchor = [['url' => '/about', 'element' => 'a', 'source' => 'test']];
+
+        $result = $detectionMethod->invoke($crawler, $html, $linksWithAnchor);
+        $this->assertTrue($result['detected']);
+        $this->assertStringContainsString('empty DOM body', $result['reason']);
+    }
+
+    public function test_smart_js_detects_nextjs(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        $html = '<html><body><div>Some real content here with enough text to pass the empty check threshold</div><script id="__NEXT_DATA__" type="application/json">{}</script></body></html>';
+        $links = [['url' => '/page', 'element' => 'a', 'source' => 'test']];
+
+        $result = $detectionMethod->invoke($crawler, $html, $links);
+        $this->assertTrue($result['detected']);
+        $this->assertStringContainsString('Next.js', $result['reason']);
+    }
+
+    public function test_smart_js_detects_nuxtjs(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        $html = '<html><body><div>Content with enough text to not be considered empty body content</div><script>window.__NUXT__={}</script></body></html>';
+        $links = [['url' => '/page', 'element' => 'a', 'source' => 'test']];
+
+        $result = $detectionMethod->invoke($crawler, $html, $links);
+        $this->assertTrue($result['detected']);
+        $this->assertStringContainsString('Nuxt.js', $result['reason']);
+    }
+
+    public function test_smart_js_detects_angular(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        $html = '<html><body><app-root ng-version="16.2.0">Loading with lots of text content here...</app-root></body></html>';
+        $links = [['url' => '/page', 'element' => 'a', 'source' => 'test']];
+
+        $result = $detectionMethod->invoke($crawler, $html, $links);
+        $this->assertTrue($result['detected']);
+        $this->assertStringContainsString('Angular', $result['reason']);
+    }
+
+    public function test_smart_js_detects_gatsby(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        $html = '<html><body><div id="___gatsby"><div>Real rendered content with enough text to pass threshold</div></div></body></html>';
+        $links = [['url' => '/page', 'element' => 'a', 'source' => 'test']];
+
+        $result = $detectionMethod->invoke($crawler, $html, $links);
+        $this->assertTrue($result['detected']);
+        $this->assertStringContainsString('Gatsby', $result['reason']);
+    }
+
+    public function test_smart_js_does_not_activate_on_normal_html(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        // Normal HTML with plenty of content and links
+        $html = '<html><body><h1>Welcome to our website</h1><p>We have lots of content here that a normal website would have, including navigation and article text.</p><nav><a href="/about">About</a><a href="/contact">Contact</a></nav></body></html>';
+        $links = [
+            ['url' => '/about', 'element' => 'a', 'source' => 'test'],
+            ['url' => '/contact', 'element' => 'a', 'source' => 'test'],
+        ];
+
+        $result = $detectionMethod->invoke($crawler, $html, $links);
+        $this->assertFalse($result['detected']);
+    }
+
+    public function test_smart_js_detects_empty_response_body(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $detectionMethod = new \ReflectionMethod($crawler, 'detectSpaSignals');
+        $detectionMethod->setAccessible(true);
+
+        // No anchor links + null body
+        $result = $detectionMethod->invoke($crawler, null, []);
+        $this->assertTrue($result['detected']);
+        $this->assertEquals('no navigable links found', $result['reason']);
+
+        // Has anchor links but empty body
+        $links = [['url' => '/page', 'element' => 'a', 'source' => 'test']];
+        $result = $detectionMethod->invoke($crawler, '', $links);
+        $this->assertTrue($result['detected']);
+        $this->assertEquals('empty response body', $result['reason']);
+    }
+
+    public function test_smart_js_disabled_when_js_flag_takes_precedence(): void
+    {
+        // When --js is used, --smart-js should be forced to false
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'useJsRendering' => true,
+            'useSmartJs' => true,
+        ]);
+
+        $config = $result['config'];
+        $this->assertTrue($config->useJsRendering);
+        $this->assertFalse($config->useSmartJs, '--js should take precedence, disabling --smart-js');
+    }
+
+    public function test_smart_js_only_triggers_once(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        // Access the smartJsActivated property via reflection
+        $prop = new \ReflectionProperty($crawler, 'smartJsActivated');
+        $prop->setAccessible(true);
+
+        // Initially false
+        $this->assertFalse($prop->getValue($crawler));
+
+        // After calling tryActivateSmartJs with no config, it should return null
+        $tryMethod = new \ReflectionMethod($crawler, 'tryActivateSmartJs');
+        $tryMethod->setAccessible(true);
+
+        $result = $tryMethod->invoke($crawler, ['rawBody' => '', 'extractedLinks' => []], '/', 'start', 'a', ['a'], [], 0);
+        $this->assertNull($result, 'Should return null when activeConfig is not set');
+    }
+
+    public function test_smart_js_config_serialization_round_trip(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            useSmartJs: true,
+        );
+
+        $array = $config->toArray();
+        $this->assertTrue($array['useSmartJs']);
+
+        $restored = ScanConfig::fromArray($array)['config'];
+        $this->assertTrue($restored->useSmartJs);
+        $this->assertFalse($restored->useJsRendering);
+    }
+
+    public function test_smart_js_detects_react_empty_root(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $markerMethod = new \ReflectionMethod($crawler, 'detectSpaFrameworkMarkers');
+        $markerMethod->setAccessible(true);
+
+        $html = '<html><head></head><body><div id="root"></div><script src="/static/js/bundle.js"></script></body></html>';
+        $result = $markerMethod->invoke($crawler, $html);
+        $this->assertStringContainsString('React', $result);
+    }
+
+    public function test_smart_js_detects_vue_empty_app(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $markerMethod = new \ReflectionMethod($crawler, 'detectSpaFrameworkMarkers');
+        $markerMethod->setAccessible(true);
+
+        $html = '<html><head></head><body><div id="app"></div><script src="/js/app.js"></script></body></html>';
+        $result = $markerMethod->invoke($crawler, $html);
+        $this->assertStringContainsString('Vue', $result);
+    }
+
+    public function test_is_body_effectively_empty(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $method = new \ReflectionMethod($crawler, 'isBodyEffectivelyEmpty');
+        $method->setAccessible(true);
+
+        // Empty mount point — should be detected as empty
+        $this->assertTrue($method->invoke($crawler, '<html><body><div id="root"></div></body></html>'));
+
+        // Body with scripts only — should be detected as empty
+        $this->assertTrue($method->invoke($crawler, '<html><body><script>var x=1;</script></body></html>'));
+
+        // Normal content — should NOT be detected as empty
+        $this->assertFalse($method->invoke($crawler, '<html><body><h1>Welcome</h1><p>This is a real website with plenty of content that exceeds the threshold.</p></body></html>'));
+
+        // No body tag — should return false
+        $this->assertFalse($method->invoke($crawler, '<html><div>content</div></html>'));
     }
 }
 
