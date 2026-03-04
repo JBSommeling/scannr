@@ -22,6 +22,7 @@ A Laravel-based website scanner that crawls websites to detect broken links usin
 - **Multiple Output Formats**: Table, JSON, or CSV output
 - **Rate Limiting**: Random delay (300-500ms) between requests to avoid overwhelming servers
 - **Rate Limit Backoff**: Automatic exponential backoff on HTTP 429 responses with configurable abort threshold
+- **Link Flag System**: Every link is tagged with observation flags (discovery method, platform traits, technical anomalies, validation outcome) with derived severity, confidence, and verification recommendations
 - **Noise URL Filtering**: Automatically hides XML namespaces, CDN preconnect hints, and JS framework error docs (use `--advanced` to show)
 - **Hard Limits**: Configurable maximum caps for depth and URLs to prevent excessive resource usage
 - **Configurable**: Adjustable depth, max URLs, timeout, and tracking parameters
@@ -199,7 +200,7 @@ Site Scan: https://example.com
 ========================================
 
 Summary:
-  Total links:    150
+  Total scanned:  150
   Working (2xx):  142
   Redirects:      5
   Broken:         2
@@ -207,16 +208,18 @@ Summary:
 
   ⚠ Redirect chains: 5 chains, 8 total hops
   ⚠ HTTPS downgrades: 1
+  ⚠ Critical issues: 1
+  ⚠ Warnings: 2
 
-+--------------------------------------------------+------------------------------+---------+--------+----------+
-| URL                                              | Source                       | Element | Status | Type     |
-+--------------------------------------------------+------------------------------+---------+--------+----------+
-| https://example.com/about                        | https://example.com          | <a>     | 200    | internal |
-| https://example.com/style.css                    | https://example.com          | <link>  | 200    | internal |
-| https://example.com/app.js                       | https://example.com          | <script>| 200    | internal |
-| https://example.com/missing.png                  | https://example.com/about    | <img>   | 404    | internal |
-| https://external-site.com                        | https://example.com/links    | <a>     | 200    | external |
-+--------------------------------------------------+------------------------------+---------+--------+----------+
++--------------------------------------------------+------------------------------+---------+------------+----------+
+| URL                                              | Source                       | Element | Status     | Type     |
++--------------------------------------------------+------------------------------+---------+------------+----------+
+| https://example.com/about                        | https://example.com          | <a>     | 200        | internal |
+| https://example.com/style.css                    | https://example.com          | <link>  | 200        | internal |
+| https://example.com/app.js                       | https://example.com          | <script>| 200        | internal |
+| https://example.com/missing.png                  | https://example.com/about    | <img>   | 404        | internal |
+| https://linkedin.com/company/acme                | https://example.com/links    | <a>     | 403 (bot?) | external |
++--------------------------------------------------+------------------------------+---------+------------+----------+
 ```
 
 ### JSON Format
@@ -226,14 +229,17 @@ Returns structured JSON with summary and detailed results:
 ```json
 {
   "summary": {
-    "total": 150,
+    "totalScanned": 150,
     "ok": 142,
     "redirects": 5,
     "broken": 2,
     "timeouts": 1,
     "redirectChainCount": 5,
     "totalRedirectHops": 8,
-    "httpsDowngrades": 1
+    "httpsDowngrades": 1,
+    "criticalCount": 1,
+    "warningCount": 2,
+    "lowConfidenceCount": 1
   },
   "results": [
     {
@@ -242,21 +248,35 @@ Returns structured JSON with summary and detailed results:
       "sourceElement": "a",
       "status": 200,
       "type": "internal",
-      "redirectChain": [],
-      "isOk": true,
-      "isLoop": false,
-      "hasHttpsDowngrade": false
+      "redirect": {
+        "chain": [],
+        "isLoop": false,
+        "hasHttpsDowngrade": false
+      },
+      "analysis": {
+        "flags": ["static_html"],
+        "severity": "info",
+        "confidence": "high",
+        "verification": "none"
+      }
     },
     {
-      "url": "https://example.com/logo.png",
+      "url": "https://linkedin.com/company/acme",
       "sourcePage": "https://example.com",
-      "sourceElement": "img",
-      "status": 200,
-      "type": "internal",
-      "redirectChain": [],
-      "isOk": true,
-      "isLoop": false,
-      "hasHttpsDowngrade": false
+      "sourceElement": "a",
+      "status": 403,
+      "type": "external",
+      "redirect": {
+        "chain": [],
+        "isLoop": false,
+        "hasHttpsDowngrade": false
+      },
+      "analysis": {
+        "flags": ["static_html", "external_platform", "bot_protection", "status_4xx"],
+        "severity": "warning",
+        "confidence": "low",
+        "verification": "recommended"
+      }
     }
   ]
 }
@@ -267,10 +287,10 @@ Returns structured JSON with summary and detailed results:
 Outputs CSV data suitable for spreadsheet applications:
 
 ```csv
-URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade
-"https://example.com/about","https://example.com","a","200","internal","","true","false"
-"https://example.com/style.css","https://example.com","link","200","internal","","true","false"
-"https://example.com/missing.png","https://example.com/about","img","404","internal","","false","false"
+URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification
+"https://example.com/about","https://example.com","a","200","internal","","static_html","high","none"
+"https://example.com/style.css","https://example.com","link","200","internal","","static_html","high","none"
+"https://example.com/missing.png","https://example.com/about","img","404","internal","","static_html|status_4xx","high","none"
 ```
 
 ## How It Works
@@ -728,74 +748,218 @@ Noise detection rules can be customized in `config/scanner.php`:
 ],
 ```
 
-## URL Verification Warnings
+## Link Flag System
 
-Some URLs require manual verification because they may not be real site links or may have bot protection. The scanner automatically flags these URLs with verification warnings in all output formats.
+Every scanned link is analysed and tagged with **flags** — lightweight observations that describe *what was noticed* about the link. Flags are orthogonal (they can be combined freely) and carry no judgement on their own. A separate evaluation step derives **severity**, **confidence**, and a **verification recommendation** from the combination of flags on each link.
 
-### Verification Reasons
+### Architecture
 
-| Reason | What It Means | Example |
-|--------|---------------|---------|
-| `indirect_reference` | URL contains incomplete template literals or dynamic syntax | `https://alpinejs.dev/plugins/${r}` or `https://api.example.com/{id}` |
-| `js_bundle_extracted` | Clean URL found in JS bundle — may be library documentation | `https://atomiks.github.io/tippyjs/v6/all-props` |
-| `bot_protection` | Request returned 403/405 or network error — likely has bot protection | Status: `403 (verify)` |
+```
+URL → LinkFlagService (detect flags) → SeverityEvaluator (derive severity/confidence) → LinkAnalysis (DTO)
+```
 
-### How It Works
+| Concept | Description |
+|---------|-------------|
+| **Flag** (`LinkFlag`) | An observation about a link (e.g. "this URL timed out", "this was found in a JS bundle"). |
+| **Severity** (`Severity`) | Derived importance: `critical`, `warning`, or `info`. |
+| **Confidence** (`Confidence`) | How certain we are about the result: `high`, `medium`, or `low`. |
+| **Verification** | Recommendation for manual follow-up: `recommended`, `optional`, or `none`. |
 
-1. **Indirect References**: URLs extracted from JavaScript bundles are checked for incomplete template literals (`${`, `#{`, `{`, `}`), backticks, or malformed syntax (e.g., `",n`). These indicate the URL may be dynamically constructed and not fully resolved — an indirect reference to a real URL. Both internal and external URLs are flagged if they have suspicious syntax.
+### Flags Reference
 
-2. **JS Bundle URLs**: External URLs found in JavaScript bundles (when `--js` is enabled) are flagged since they're often references to library documentation embedded by bundled dependencies, not actual site links. **Internal URLs (same domain and subdomains) are NOT flagged** unless they have suspicious syntax.
+Flags are grouped into five categories:
 
-3. **Bot Protection**: External links returning 403 Forbidden, 405 Method Not Allowed, or network timeouts/errors are flagged as they may have bot protection blocking the scanner.
+#### A. Discovery — How was the link found?
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `STATIC_HTML` | `static_html` | Direct in HTML markup (standard DOM extraction) |
+| `RUNTIME_RENDERED` | `runtime_rendered` | Discovered via JavaScript rendering (headless browser) |
+| `INDIRECT_REFERENCE` | `indirect_reference` | Not explicitly in DOM, inferred from context |
+| `DETECTED_IN_JS_BUNDLE` | `detected_in_js_bundle` | Extracted from inline or external JS bundle parsing |
+
+#### B. Platform Characteristics
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `EXTERNAL_PLATFORM` | `external_platform` | External platform known for bot protection (GitHub, LinkedIn, etc.) |
+| `BOT_PROTECTION` | `bot_protection` | 403/405 or similar response indicating bot protection |
+| `RATE_LIMITED` | `rate_limited` | 429 Too Many Requests received |
+
+#### C. Technical Anomalies
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `MALFORMED_URL` | `malformed_url` | URL contains template literals, placeholders, or malformed syntax |
+| `DEVELOPER_LEFTOVER` | `developer_leftover` | URL points to localhost or development environment (`.local`, `.test`, etc.) |
+| `HTTP_ON_HTTPS` | `http_on_https` | HTTPS → HTTP downgrade detected in redirect chain |
+| `REDIRECT_CHAIN` | `redirect_chain` | URL has a redirect chain (2+ hops) |
+| `EXCESSIVE_REDIRECTS` | `excessive_redirects` | Excessive redirects (5+ hops or loop detected) |
+
+#### D. Validation Outcome
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `STATUS_4XX` | `status_4xx` | HTTP 4xx client error response |
+| `STATUS_5XX` | `status_5xx` | HTTP 5xx server error response |
+| `TIMEOUT` | `timeout` | Request timed out |
+| `CONNECTION_ERROR` | `connection_error` | Connection error (DNS failure, refused, etc.) |
+| `UNVERIFIED` | `unverified` | Could not be verified, needs manual check |
+
+#### E. Endpoint Type
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `FORM_ENDPOINT` | `form_endpoint` | Form submission endpoint (POST-based) |
+
+### Severity Evaluation
+
+Severity is derived from flag combinations:
+
+| Priority | Condition | Severity |
+|----------|-----------|----------|
+| 1 | `STATUS_4XX` (internal, no bot protection) | **Critical** |
+| 2 | `STATUS_5XX` | **Critical** |
+| 3 | `CONNECTION_ERROR` (non-external-platform) | **Critical** |
+| 4 | `MALFORMED_URL` | Warning |
+| 5 | `BOT_PROTECTION` | Warning |
+| 6 | `STATUS_4XX` on external platform | Warning |
+| 7 | `TIMEOUT` | Warning |
+| 8 | `HTTP_ON_HTTPS` | Warning |
+| 9 | `EXCESSIVE_REDIRECTS` | Warning |
+| — | Everything else | Info |
+
+### Confidence Evaluation
+
+Confidence indicates how certain the scanner is about the result:
+
+| Confidence | Condition | Example |
+|------------|-----------|---------|
+| **Low** | External platform + bot protection | LinkedIn returning 403 |
+| **Low** | Malformed URL or indirect reference | `https://api.example.com/${id}` |
+| **Low** | JS bundle URL (external) | Library docs embedded in a React bundle |
+| **Medium** | Timeout | Might be temporary |
+| **Medium** | 5xx error | Server might be temporarily down |
+| **Medium** | Redirect chain | Might be intentional |
+| **Medium** | JS bundle URL (internal) | Found in bundle but same domain |
+| **High** | Clear 2xx or clear 404 | Direct observation |
+
+### Verification Recommendation
+
+Derived from severity + confidence:
+
+| Confidence | Severity | Verification |
+|------------|----------|--------------|
+| Low | Any | `recommended` — likely false positive, manual check needed |
+| High | Critical | `none` — clearly broken, no doubt |
+| Medium | Any | `optional` — some uncertainty |
+| Any | Warning | `optional` — worth checking |
+| High | Info | `none` — everything looks fine |
 
 ### Output Formats
 
-**Table Output** — Shows `(verify)` annotation next to status code:
+The flag system data appears in all output formats.
+
+**Table Output** — Shows status annotations and dedicated sections:
 
 ```
+Summary:
+  Total scanned:  150
+  Working (2xx):  142
+  Redirects:      5
+  Broken:         2
+  Timeouts:       1
+
+  ⚠ Critical issues: 2
+  ⚠ Warnings: 3
+  ⚠ Low confidence (verify manually): 1
+
 +----------------------------------------------------+------------------------------+----------+---------------+----------+
 | URL                                                | Source                       | Element  | Status        | Type     |
 +----------------------------------------------------+------------------------------+----------+---------------+----------+
+| https://example.com/missing                        | https://example.com          | <a>      | 404           | internal |
+| https://linkedin.com/company/acme                  | https://example.com          | <a>      | 403 (bot?)    | external |
 | https://alpinejs.dev/plugins/${r}                  | https://example.com          | <a>      | 200 (verify)  | external |
-| https://external.com/api                           | https://example.com          | <a>      | 403 (verify)  | external |
 +----------------------------------------------------+------------------------------+----------+---------------+----------+
 
-Summary:
-  ⚠ Needs verification: 2
+Low Confidence (Manual Verification Recommended):
++----------------------------------------------------+------------------------------+----------+---------------+----------------------------+
+| URL                                                | Source                       | Element  | Status        | Flags                      |
++----------------------------------------------------+------------------------------+----------+---------------+----------------------------+
+| https://alpinejs.dev/plugins/${r}                  | https://example.com          | <a>      | 200 (verify)  | malformed_url|indirect_ref |
++----------------------------------------------------+------------------------------+----------+---------------+----------------------------+
 ```
 
-**JSON Output** — Includes `needsVerification` boolean and `verificationReason` string:
+Status annotations in table output:
+- `(verify)` — low confidence, manual verification recommended
+- `(bot?)` — bot protection suspected (403/405 from known platform)
+- `(ok)` — form endpoint returning expected non-2xx status (e.g. 422 Unprocessable Entity)
+
+**JSON Output** — Full analysis object on each result:
 
 ```json
 {
   "summary": {
-    "needsVerificationCount": 2
+    "totalScanned": 150,
+    "ok": 142,
+    "redirects": 5,
+    "broken": 2,
+    "timeouts": 1,
+    "criticalCount": 2,
+    "warningCount": 3,
+    "lowConfidenceCount": 1
   },
   "results": [
     {
-      "url": "https://alpinejs.dev/plugins/${r}",
+      "url": "https://example.com/about",
+      "sourcePage": "https://example.com",
+      "sourceElement": "a",
       "status": 200,
-      "needsVerification": true,
-      "verificationReason": "indirect_reference"
+      "type": "internal",
+      "analysis": {
+        "flags": ["static_html"],
+        "severity": "info",
+        "confidence": "high",
+        "verification": "none"
+      }
+    },
+    {
+      "url": "https://linkedin.com/company/acme",
+      "sourcePage": "https://example.com",
+      "sourceElement": "a",
+      "status": 403,
+      "type": "external",
+      "analysis": {
+        "flags": ["static_html", "external_platform", "bot_protection", "status_4xx"],
+        "severity": "warning",
+        "confidence": "low",
+        "verification": "recommended"
+      }
     }
   ]
 }
 ```
 
-**CSV Output** — Includes `NeedsVerification` and `VerificationReason` columns:
+**CSV Output** — Includes `Flags`, `Confidence`, and `Verification` columns:
 
 ```csv
-URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReason
-"https://alpinejs.dev/plugins/${r}","https://example.com","a","200","external","","true","false","true","indirect_reference"
+URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification
+"https://example.com/about","https://example.com","a","200","internal","","static_html","high","none"
+"https://example.com/style.css","https://example.com","link","200","internal","","static_html","high","none"
+"https://example.com/missing.png","https://example.com/about","img","404","internal","","static_html|status_4xx","high","none"
 ```
 
-### Interpreting Verification Flags
+### Interpreting Flags
 
-- **Suspicious dynamic URLs**: Manually inspect these in your source code. They may be incomplete string concatenations or framework-specific URL patterns that weren't fully resolved.
-  
-- **JS bundle URLs**: Check if these are actual site features or just library documentation. Library docs (React, Alpine.js, Tippy.js, etc.) bundled by dependencies can safely be ignored.
+- **`malformed_url` / `indirect_reference`**: Manually inspect in your source code. These may be incomplete string concatenations or framework-specific URL patterns that weren't fully resolved.
 
-- **Bot protection**: Try opening the URL in a browser. If it works there but fails in the scanner, the site likely blocks automated requests. Consider whitelisting your IP or using authentication if you control the target site.
+- **`detected_in_js_bundle`**: Check if these are actual site features or just library documentation. Library docs (React, Alpine.js, Tippy.js, etc.) bundled by dependencies can safely be ignored.
+
+- **`bot_protection` / `external_platform`**: Try opening the URL in a browser. If it works there but fails in the scanner, the site likely blocks automated requests.
+
+- **`developer_leftover`**: URLs pointing to `localhost`, `127.0.0.1`, or `.local`/`.test` domains are likely development artifacts that should be removed before production.
+
+- **`form_endpoint`**: POST-based form actions that return 4xx (e.g. 422 Unprocessable Entity) are expected — the endpoint exists and works, it just rejects empty submissions. These are marked `(ok)` in table output and excluded from the broken links count.
 
 ## Hard Limits
 
