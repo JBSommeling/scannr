@@ -21,9 +21,9 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_results_returns_all_for_all_filter(): void
     {
         $results = [
-            ['isOk' => true, 'url' => 'https://example.com/1'],
-            ['isOk' => false, 'url' => 'https://example.com/2'],
-            ['isOk' => true, 'url' => 'https://example.com/3'],
+            ['status' => '200', 'url' => 'https://example.com/1', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '404', 'url' => 'https://example.com/2', 'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'url' => 'https://example.com/3', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $result = $this->scanStatistics->filterResults($results, 'all');
@@ -33,30 +33,30 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_results_returns_only_ok_for_ok_filter(): void
     {
         $results = [
-            ['isOk' => true, 'url' => 'https://example.com/1'],
-            ['isOk' => false, 'url' => 'https://example.com/2'],
-            ['isOk' => true, 'url' => 'https://example.com/3'],
+            ['status' => '200', 'url' => 'https://example.com/1', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '404', 'url' => 'https://example.com/2', 'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'url' => 'https://example.com/3', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $result = $this->scanStatistics->filterResults($results, 'ok');
         $this->assertCount(2, $result);
         foreach ($result as $item) {
-            $this->assertTrue($item['isOk']);
+            $this->assertEquals('200', $item['status']);
         }
     }
 
     public function test_filter_results_returns_only_broken_for_broken_filter(): void
     {
         $results = [
-            ['isOk' => true, 'url' => 'https://example.com/1'],
-            ['isOk' => false, 'url' => 'https://example.com/2'],
-            ['isOk' => true, 'url' => 'https://example.com/3'],
+            ['status' => '200', 'url' => 'https://example.com/1', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '404', 'url' => 'https://example.com/2', 'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'url' => 'https://example.com/3', 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $result = $this->scanStatistics->filterResults($results, 'broken');
         $this->assertCount(1, $result);
         foreach ($result as $item) {
-            $this->assertFalse($item['isOk']);
+            $this->assertContains('status_4xx', $item['analysis']['flags']);
         }
     }
 
@@ -171,11 +171,11 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_counts_correctly(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => ['https://example.com/redirect'], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 404, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 500, 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => false, 'status' => 'Timeout', 'type' => 'internal', 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['status' => '200', 'type' => 'internal', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'type' => 'internal', 'redirect' => ['chain' => ['https://example.com/redirect'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '404', 'type' => 'internal', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '500', 'type' => 'internal', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['status_5xx'], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => 'timeout', 'type' => 'internal', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['timeout'], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
@@ -184,7 +184,7 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(1, $stats['ok']);        // 200 without redirects
         $this->assertEquals(1, $stats['redirects']); // 200 with redirects
         $this->assertEquals(2, $stats['broken']);    // 404 + 500
-        $this->assertEquals(1, $stats['timeouts']);  // Timeout
+        $this->assertEquals(1, $stats['timeouts']);  // timeout
         $this->assertEquals(0, $stats['redirectChainCount']); // single redirect is not a chain
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
@@ -207,8 +207,8 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_counts_multiple_redirects(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://a.com', 'https://b.com'], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://c.com'], 'hasHttpsDowngrade' => false],
+            ['status' => '200', 'redirect' => ['chain' => ['https://a.com', 'https://b.com'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'redirect' => ['chain' => ['https://c.com'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
@@ -223,9 +223,9 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_counts_https_downgrades(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['http://example.com'], 'hasHttpsDowngrade' => true],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['https://example.com'], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => ['http://other.com'], 'hasHttpsDowngrade' => true],
+            ['status' => '200', 'redirect' => ['chain' => ['http://example.com'], 'isLoop' => false, 'hasHttpsDowngrade' => true], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'redirect' => ['chain' => ['https://example.com'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'redirect' => ['chain' => ['http://other.com'], 'isLoop' => false, 'hasHttpsDowngrade' => true], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
@@ -239,8 +239,8 @@ class ScanStatisticsTest extends TestCase
     public function test_calculate_stats_excludes_external_redirect_chains(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'type' => 'internal', 'redirectChain' => ['https://example.com/a', 'https://example.com/b'], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'type' => 'external', 'redirectChain' => ['https://external.com/redirect'], 'hasHttpsDowngrade' => false],
+            ['status' => '200', 'type' => 'internal', 'redirect' => ['chain' => ['https://example.com/a', 'https://example.com/b'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'type' => 'external', 'redirect' => ['chain' => ['https://external.com/redirect'], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
@@ -444,31 +444,31 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals('https://example.com/page1', array_values($filtered)[0]['url']);
     }
 
-    public function test_calculate_stats_includes_needs_verification_count(): void
+    public function test_calculate_stats_includes_low_confidence_count(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['js_bundle_extracted']],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['indirect_reference']],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => false],
-            ['isOk' => false, 'status' => 403, 'redirectChain' => [], 'hasHttpsDowngrade' => false, 'needsVerification' => true, 'verificationReasons' => ['bot_protection']],
+            ['status' => '200', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['detected_in_js_bundle'], 'confidence' => 'low', 'verification' => 'recommended']],
+            ['status' => '200', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['indirect_reference'], 'confidence' => 'low', 'verification' => 'recommended']],
+            ['status' => '200', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '403', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['bot_protection'], 'confidence' => 'low', 'verification' => 'recommended']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
 
         $this->assertEquals(4, $stats['total']);
-        $this->assertEquals(3, $stats['needsVerificationCount']);
+        $this->assertEquals(3, $stats['lowConfidenceCount']);
     }
 
-    public function test_calculate_stats_verification_count_zero_when_none_flagged(): void
+    public function test_calculate_stats_low_confidence_count_zero_when_all_high(): void
     {
         $results = [
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
-            ['isOk' => true, 'status' => 200, 'redirectChain' => [], 'hasHttpsDowngrade' => false],
+            ['status' => '200', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['status' => '200', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
         ];
 
         $stats = $this->scanStatistics->calculateStats($results);
 
-        $this->assertEquals(0, $stats['needsVerificationCount']);
+        $this->assertEquals(0, $stats['lowConfidenceCount']);
     }
 }
 

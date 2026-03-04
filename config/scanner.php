@@ -268,5 +268,60 @@ return [
         // Additional prefix-match URLs to hide (for edge cases not caught above).
         'prefix' => [],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | External Platforms
+    |--------------------------------------------------------------------------
+    |
+    | Domains of external platforms known to have aggressive bot protection.
+    | When a link to one of these platforms returns a 403/405, it's flagged
+    | as EXTERNAL_PLATFORM + BOT_PROTECTION with low confidence, indicating
+    | a likely false positive rather than a truly broken link.
+    |
+    | Subdomains are automatically matched (e.g., www.linkedin.com matches
+    | linkedin.com).
+    |
+    */
+
+    'external_platforms' => [
+        // Professional networks
+        'linkedin.com',
+
+        // Code hosting
+        'github.com',
+        'gitlab.com',
+        'bitbucket.org',
+
+        // Social media
+        'twitter.com',
+        'x.com',
+        'facebook.com',
+        'instagram.com',
+        'tiktok.com',
+        'youtube.com',
+        'pinterest.com',
+        'tumblr.com',
+        'snapchat.com',
+        'reddit.com',
+        'medium.com',
+
+        // Messaging
+        'discord.com',
+        'slack.com',
+        'whatsapp.com',
+        'telegram.org',
+
+        // Creative & streaming
+        'twitch.tv',
+        'vimeo.com',
+        'dribbble.com',
+        'behance.net',
+        'codepen.io',
+
+        // Other
+        'stackoverflow.com',
+        'producthunt.com',
+    ],
 ];
 

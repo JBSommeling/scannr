@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
-use App\Enums\VerificationReason;
 
 /**
  * Service for formatting and displaying scan results.
@@ -83,16 +82,26 @@ class ResultFormatterService
             $output->warn("  ⚠ HTTPS downgrades: {$stats['httpsDowngrades']}");
 
             if ($output->isVerbose()) {
-                $downgradedUrls = array_filter($results, fn($r) => $r['hasHttpsDowngrade'] ?? false);
+                $downgradedUrls = array_filter($results, fn($r) => $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false);
                 foreach ($downgradedUrls as $result) {
                     $output->line("    - {$result['url']}");
                 }
             }
         }
 
-        // Verification warning
-        if ($stats['needsVerificationCount'] > 0) {
-            $output->warn("  ⚠ Needs verification: {$stats['needsVerificationCount']}");
+        // Critical issues alert
+        if ($stats['criticalCount'] > 0) {
+            $output->error("  ⚠ Critical issues: {$stats['criticalCount']}");
+        }
+
+        // Warning issues alert
+        if ($stats['warningCount'] > 0) {
+            $output->warn("  ⚠ Warnings: {$stats['warningCount']}");
+        }
+
+        // Low confidence issues
+        if ($stats['lowConfidenceCount'] > 0) {
+            $output->warn("  ⚠ Low confidence (verify manually): {$stats['lowConfidenceCount']}");
         }
 
         // Broken links alert
@@ -100,7 +109,7 @@ class ResultFormatterService
             $output->error("  ⚠ Broken links: {$stats['broken']}");
         }
 
-        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0 || $stats['needsVerificationCount'] > 0 || $stats['broken'] > 0) {
+        if ($stats['redirectChainCount'] > 0 || $stats['httpsDowngrades'] > 0 || $stats['criticalCount'] > 0 || $stats['warningCount'] > 0 || $stats['broken'] > 0) {
             $output->newLine();
         }
 
@@ -112,6 +121,8 @@ class ResultFormatterService
         // Build table data
         $tableData = [];
         foreach ($results as $result) {
+            $redirectChain = $result['redirect']['chain'] ?? $result['redirectChain'] ?? [];
+
             $row = [
                 'URL' => $this->truncate($result['url'], 50),
                 'Source' => $this->truncate($result['sourcePage'], 30),
@@ -120,8 +131,8 @@ class ResultFormatterService
                 'Type' => $result['type'],
             ];
 
-            if ($output->isVerbose() && !empty($result['redirectChain'])) {
-                $row['Redirects'] = implode(' → ', array_map(fn($u) => $this->truncate($u, 30), $result['redirectChain']));
+            if ($output->isVerbose() && !empty($redirectChain)) {
+                $row['Redirects'] = implode(' → ', array_map(fn($u) => $this->truncate($u, 30), $redirectChain));
             }
 
             $tableData[] = $row;
@@ -134,8 +145,8 @@ class ResultFormatterService
 
         $output->table($headers, $tableData);
 
-        // Display broken links separately
-        $brokenLinks = array_filter($results, fn($r) => !$r['isOk']);
+        // Display broken links separately (non-2xx status, excluding healthy form endpoints)
+        $brokenLinks = array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r));
         if (!empty($brokenLinks)) {
             $output->newLine();
             $output->error('Broken Links:');
@@ -154,25 +165,25 @@ class ResultFormatterService
             $output->table(['URL', 'Source', 'Element', 'Status', 'Error'], $brokenTableData);
         }
 
-        // Display needs-verification links separately
-        $verificationLinks = array_filter($results, fn($r) => $r['needsVerification'] ?? false);
-        if (!empty($verificationLinks)) {
+        // Display low confidence links (need manual verification)
+        $lowConfidenceLinks = array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low');
+        if (!empty($lowConfidenceLinks)) {
             $output->newLine();
-            $output->warn('Needs Verification:');
+            $output->warn('Low Confidence (Manual Verification Recommended):');
 
             $verificationTableData = [];
-            foreach ($verificationLinks as $result) {
-                $reasons = $result['verificationReasons'] ?? [];
+            foreach ($lowConfidenceLinks as $result) {
+                $flags = $result['analysis']['flags'] ?? [];
                 $verificationTableData[] = [
                     'URL' => $this->truncate($result['url'], 60),
                     'Source' => $this->truncate($result['sourcePage'], 40),
                     'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
                     'Status' => $this->formatStatus($result),
-                    'Reason' => implode('|', $reasons),
+                    'Flags' => implode('|', $flags),
                 ];
             }
 
-            $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $verificationTableData);
+            $output->table(['URL', 'Source', 'Element', 'Status', 'Flags'], $verificationTableData);
         }
     }
 
@@ -201,7 +212,7 @@ class ResultFormatterService
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 
-        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$r['isOk']));
+        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
 
         $summary = ['totalScanned' => $totalScanned];
 
@@ -230,7 +241,7 @@ class ResultFormatterService
      */
     protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
-        $brokenLinks = array_values(array_filter($results, fn($r) => !$r['isOk']));
+        $brokenLinks = array_values(array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
 
         // Build summary
         $summary = ['totalScanned' => $totalScanned];
@@ -266,28 +277,27 @@ class ResultFormatterService
             $output->line("# Error: {$error}");
         }
 
-        $output->line('URL,Source,Element,Status,Type,Redirects,IsOk,HttpsDowngrade,NeedsVerification,VerificationReasons');
+        $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 
         foreach ($results as $result) {
-            $redirects = implode(' -> ', $result['redirectChain']);
-            $isOk = $result['isOk'] ? 'true' : 'false';
-            $httpsDowngrade = ($result['hasHttpsDowngrade'] ?? false) ? 'true' : 'false';
+            $redirectChain = $result['redirect']['chain'] ?? $result['redirectChain'] ?? [];
+            $redirects = implode(' -> ', $redirectChain);
             $element = $result['sourceElement'] ?? 'a';
-            $needsVerification = ($result['needsVerification'] ?? false) ? 'true' : 'false';
-            $verificationReasons = implode('|', $result['verificationReasons'] ?? []);
+            $flags = implode('|', $result['analysis']['flags'] ?? []);
+            $confidence = $result['analysis']['confidence'] ?? '';
+            $verification = $result['analysis']['verification'] ?? '';
 
             $output->line(sprintf(
-                '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"',
+                '"%s","%s","%s","%s","%s","%s","%s","%s","%s"',
                 str_replace('"', '""', $result['url']),
                 str_replace('"', '""', $result['sourcePage']),
                 $element,
                 $result['status'],
                 $result['type'],
                 str_replace('"', '""', $redirects),
-                $isOk,
-                $httpsDowngrade,
-                $needsVerification,
-                $verificationReasons
+                $flags,
+                $confidence,
+                $verification
             ));
         }
     }
@@ -305,48 +315,63 @@ class ResultFormatterService
     }
 
     /**
+     * Check if a status indicates success (2xx).
+     */
+    protected function isOkStatus(string|int $status): bool
+    {
+        if (is_numeric($status)) {
+            $statusInt = (int) $status;
+            return $statusInt >= 200 && $statusInt < 300;
+        }
+        return false;
+    }
+
+    /**
+     * Check if a result is a healthy form endpoint (has form_endpoint flag).
+     */
+    protected function isHealthyFormEndpoint(array $result): bool
+    {
+        $flags = $result['analysis']['flags'] ?? [];
+        return in_array('form_endpoint', $flags, true);
+    }
+
+    /**
      * Format a status code for display.
      *
      * For form endpoints that return non-2xx but are considered healthy
      * (e.g., 422 Unprocessable Entity from posting empty data), appends
      * "(ok)" to make it clear the endpoint exists and is functional.
      *
-     * For URLs needing verification, appends "(verify)" in table output.
+     * For URLs with low confidence, appends "(verify)" in table output.
      *
      * @param array $result The scan result item.
      * @param bool $isTableOutput Whether formatting for table (vs JSON/CSV).
-     * @return string|int The formatted status for display.
+     * @return string The formatted status for display.
      */
-    protected function formatStatus(array $result, bool $isTableOutput = true): string|int
+    protected function formatStatus(array $result, bool $isTableOutput = true): string
     {
-        $status = $result['status'];
-        $isOk = $result['isOk'] ?? false;
+        $status = $result['status'] ?? '';
         $element = $result['sourceElement'] ?? 'a';
-        $needsVerification = $result['needsVerification'] ?? false;
-        $verificationReasons = $result['verificationReasons'] ?? [];
+        $confidence = $result['analysis']['confidence'] ?? 'high';
+        $flags = $result['analysis']['flags'] ?? [];
 
-        // Annotate healthy non-2xx form endpoints so the user knows it's alive
-        if ($element === 'form' && $isOk && is_int($status) && ($status < 200 || $status >= 300)) {
+        // Form endpoints with healthy non-2xx statuses
+        $healthyFormStatuses = ['400', '401', '403', '405', '422', '429'];
+        if ($element === 'form' && in_array((string) $status, $healthyFormStatuses, true)) {
             return "{$status} (ok)";
         }
 
-        // Annotate URLs needing verification
-        if ($needsVerification && $isTableOutput) {
-            // For bot protection (403/405/Error/Timeout) and suspicious URLs (any status),
-            // always show annotation
-            if (in_array(VerificationReason::BotProtection->value, $verificationReasons, true) ||
-                in_array(VerificationReason::IndirectReference->value, $verificationReasons, true) ||
-                in_array(VerificationReason::DeveloperLeftover->value, $verificationReasons, true)) {
-                return "{$status} (verify)";
-            }
-
-            // For JS bundle extracted, only show annotation for 200 status
-            if ($status === 200 && in_array(VerificationReason::JsBundleExtracted->value, $verificationReasons, true)) {
-                return "{$status} (verify)";
-            }
+        // Annotate URLs needing verification (low confidence)
+        if ($confidence === 'low' && $isTableOutput) {
+            return "{$status} (verify)";
         }
 
-        return $status;
+        // Annotate bot protection
+        if (in_array('bot_protection', $flags, true) && $isTableOutput) {
+            return "{$status} (bot?)";
+        }
+
+        return (string) $status;
     }
 }
 

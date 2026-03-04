@@ -4,12 +4,13 @@ namespace App\Providers;
 
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
+use App\Services\LinkFlagService;
 use App\Services\RobotsService;
 use App\Services\ScannerService;
 use App\Services\ScanStatistics;
+use App\Services\SeverityEvaluator;
 use App\Services\SitemapService;
 use App\Services\UrlNormalizer;
-use App\Services\VerificationService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,16 +26,25 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->alias('url-normalizer', UrlNormalizer::class);
 
-        $this->app->singleton('verification-service', function ($app) {
-            return new VerificationService($app->make('url-normalizer'));
+        $this->app->singleton('severity-evaluator', function ($app) {
+            return new SeverityEvaluator();
         });
 
-        $this->app->alias('verification-service', VerificationService::class);
+        $this->app->alias('severity-evaluator', SeverityEvaluator::class);
+
+        $this->app->singleton('link-flag-service', function ($app) {
+            return new LinkFlagService(
+                $app->make('url-normalizer'),
+                $app->make('severity-evaluator'),
+            );
+        });
+
+        $this->app->alias('link-flag-service', LinkFlagService::class);
 
         $this->app->singleton('http-checker', function ($app) {
             return new HttpChecker(
                 $app->make('url-normalizer'),
-                $app->make('verification-service'),
+                $app->make('link-flag-service'),
             );
         });
 
@@ -44,7 +54,7 @@ class AppServiceProvider extends ServiceProvider
             return new LinkExtractor(
                 $app->make('url-normalizer'),
                 $app->make('http-checker'),
-                $app->make('verification-service'),
+                $app->make('link-flag-service'),
             );
         });
 
@@ -62,7 +72,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make('link-extractor'),
                 $app->make('url-normalizer'),
                 $app->make('scan-stats'),
-                $app->make('verification-service'),
+                $app->make('link-flag-service'),
             );
         });
 

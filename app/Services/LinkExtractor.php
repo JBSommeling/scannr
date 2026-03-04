@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\DTO\VerificationStatus;
+use App\Enums\LinkFlag;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -19,12 +19,12 @@ class LinkExtractor
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving URLs.
      * @param  HttpChecker    $httpChecker    The HTTP checker for fetching external script content.
-     * @param  VerificationService  $verificationService  The verification service for detecting verification needs.
+     * @param  LinkFlagService  $linkFlagService  The link flag service for detecting flags.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
         protected HttpChecker $httpChecker,
-        protected VerificationService $verificationService,
+        protected LinkFlagService $linkFlagService,
     ) {}
 
     /**
@@ -545,15 +545,17 @@ class LinkExtractor
     protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
     {
         // Extract full URLs from JavaScript (https://... or http://...)
-        // Capture up to 3 chars after URL to detect suspicious patterns (e.g., ",n or `,r)
-        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,]{0,3})/i', $content, $matches, PREG_SET_ORDER)) {
+        // Capture up to 6 chars after URL to detect suspicious patterns (e.g., ",userId or `,r)
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,a-zA-Z$_]{0,6})/i', $content, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $rawUrl = $match[1];
                 $postContext = $match[2] ?? '';
 
-                // Check for suspicious syntax in URL itself OR in the post-context
+                // Check for suspicious syntax in URL itself OR suspicious post-context patterns
+                // Post-context is suspicious if it has: quote+comma+letter (string concatenation)
+                // NOT suspicious: just quote+comma+quote (normal array/object syntax like ["url1", "url2"])
                 $hasSuspiciousSyntax = $this->hasSuspiciousDynamicUrlSyntax($rawUrl) ||
-                                      preg_match('/["\'`]\s*,/', $postContext);
+                                      preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
 
                 // Clean up any trailing punctuation or quotes
                 $url = rtrim($rawUrl, '.,;:"\')}>]');
@@ -583,18 +585,29 @@ class LinkExtractor
                     // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
                     $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
 
-                    // Use verification service to determine verification status
-                    $verification = $this->verificationService->detectFromJsBundle(
-                        $normalizedUrl,
-                        $hasSuspiciousSyntax,
-                        $isInternal
-                    );
+                    // Start with base flag for JS bundle discovery
+                    $flags = [LinkFlag::DETECTED_IN_JS_BUNDLE];
+
+                    // Add URL-based flags (external platform detection, malformed URL detection)
+                    $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, !$isInternal);
+                    $flags = array_merge($flags, $urlFlags);
+
+                    // Only add malformed/indirect flags if the URL itself has suspicious syntax
+                    // (not based on post-context which can have false positives)
+                    if ($hasSuspiciousSyntax && $this->hasSuspiciousDynamicUrlSyntax($url)) {
+                        if (!in_array(LinkFlag::MALFORMED_URL, $flags, true)) {
+                            $flags[] = LinkFlag::MALFORMED_URL;
+                        }
+                        if (!in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true)) {
+                            $flags[] = LinkFlag::INDIRECT_REFERENCE;
+                        }
+                    }
 
                     $links[] = [
                         'url' => $normalizedUrl,
                         'source' => $sourceUrl,
                         'element' => 'a', // Treat as anchor link
-                        ...$verification->toArray(),
+                        'flags' => array_map(fn(LinkFlag $f) => $f->value, $flags),
                     ];
                 }
             }
@@ -607,7 +620,7 @@ class LinkExtractor
      * Detects patterns like:
      * - ${variable} - JavaScript template literal syntax
      * - #{variable} - Ruby/CoffeeScript interpolation
-     * - {variable} or {{variable}} - Vue, Angular, Handlebars interpolation
+     * - {variable} - Vue, Angular, Handlebars interpolation (with letter after brace)
      * - Backticks (`) - Incomplete template literal delimiters
      * - Unencoded commas or newlines - Malformed URLs
      * - Quotes followed by comma (array/concatenation fragments)
@@ -617,8 +630,9 @@ class LinkExtractor
      */
     protected function hasSuspiciousDynamicUrlSyntax(string $url): bool
     {
-        // Check for template literal syntax, curly braces, backticks, newlines, trailing commas, or quote+comma patterns
-        if (preg_match('/\$\{|\#\{|\{|\}|`|,\w+$|"\s*,|\n/', $url)) {
+        // Check for template literal syntax, curly braces with variable names, backticks, newlines, trailing commas, or quote+comma patterns
+        // Note: \{[a-zA-Z] requires a letter after the brace to avoid matching URL-encoded braces like %7B
+        if (preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url)) {
             return true;
         }
 

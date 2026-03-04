@@ -92,7 +92,7 @@ class ScanSiteCommandTest extends TestCase
             '--max' => 2,
             '--format' => 'csv',
         ])
-            ->expectsOutputToContain('URL,Source,Element,Status,Type,Redirects,IsOk')
+            ->expectsOutputToContain('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification')
             ->assertExitCode(0);
     }
 

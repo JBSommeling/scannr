@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\DTO\ScanConfig;
-use App\DTO\VerificationStatus;
+use App\Enums\LinkFlag;
 use App\Services\BrowsershotFetcher;
 use Closure;
 use GuzzleHttp\Client;
@@ -116,8 +116,8 @@ class CrawlerService
             $source = $current['source'];
             $element = $current['element'] ?? 'a';
 
-            // Hydrate verification status from queue item
-            $verification = VerificationStatus::fromArray($current);
+            // Hydrate discovery flags from queue item
+            $discoveryFlags = $this->hydrateFlagsFromArray($current['flags'] ?? []);
 
             // Skip if already visited (using canonical URL key for deduplication)
             $urlKey = $this->urlNormalizer->canonicalUrlKey($url);
@@ -153,7 +153,7 @@ class CrawlerService
                 $respectRetryAfter,
                 $max429BeforeAbort,
                 $onSitemapDiscovery,
-                $verification,
+                $discoveryFlags,
             );
 
             // Check if we should abort after processing
@@ -207,6 +207,24 @@ class CrawlerService
     }
 
     /**
+     * Hydrate LinkFlag enums from string array.
+     *
+     * @param array<string> $flagValues
+     * @return array<LinkFlag>
+     */
+    protected function hydrateFlagsFromArray(array $flagValues): array
+    {
+        $flags = [];
+        foreach ($flagValues as $value) {
+            $flag = LinkFlag::tryFrom($value);
+            if ($flag !== null) {
+                $flags[] = $flag;
+            }
+        }
+        return $flags;
+    }
+
+    /**
      * Get rate limit configuration from config.
      *
      * @return array{backoff_delays: array<int>, respect_retry_after: bool, max_429_before_abort: int}
@@ -244,7 +262,7 @@ class CrawlerService
      * @param bool $respectRetryAfter Whether to respect Retry-After header.
      * @param int $max429BeforeAbort Maximum 429 responses before aborting.
      * @param Closure|null $onMessage Message callback for status updates.
-     * @param VerificationStatus $verification The verification status from extraction.
+     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped/aborted.
      * @throws GuzzleException
      */
@@ -259,7 +277,7 @@ class CrawlerService
         bool $respectRetryAfter,
         int $max429BeforeAbort,
         ?Closure $onMessage,
-        ?VerificationStatus $verification = null,
+        array $discoveryFlags = [],
     ): ?array {
         $maxRetries = count($backoffDelays);
         $retryCount = 0;
@@ -267,13 +285,13 @@ class CrawlerService
         while (true) {
             // Process the URL
             if ($isInternal) {
-                $result = $this->processInternalUrlAndGetResult($url, $depth, $source, $element, $scanElements, $verification);
+                $result = $this->processInternalUrlAndGetResult($url, $depth, $source, $element, $scanElements, $discoveryFlags);
             } else {
-                $result = $this->processExternalUrlAndGetResult($url, $source, $element, $scanElements, $verification);
+                $result = $this->processExternalUrlAndGetResult($url, $source, $element, $scanElements, $discoveryFlags);
             }
 
             // Check if we got a 429 response
-            if ($result !== null && $result['status'] === 429) {
+            if ($result !== null && (string) $result['status'] === '429') {
                 $this->total429Count++;
 
                 // Check if we should abort (always check before deciding to retry or return)
@@ -291,9 +309,10 @@ class CrawlerService
                 // Calculate backoff delay
                 $delayMs = $backoffDelays[$retryCount] ?? $backoffDelays[$maxRetries - 1];
 
-                // Check for Retry-After header
-                if ($respectRetryAfter && isset($result['retryAfter']) && $result['retryAfter'] > 0) {
-                    $delayMs = $result['retryAfter'] * 1000;
+                // Check for Retry-After header (check both old and new structure)
+                $retryAfter = $result['network']['retryAfter'] ?? $result['retryAfter'] ?? null;
+                if ($respectRetryAfter && $retryAfter !== null && $retryAfter > 0) {
+                    $delayMs = $retryAfter * 1000;
                 }
 
                 if ($onMessage !== null) {
@@ -322,11 +341,11 @@ class CrawlerService
      * Process an internal URL and return the result (for retry handling).
      *
      * @param array<string> $scanElements Elements to scan
-     * @param VerificationStatus $verification The verification status from extraction.
+     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped.
      * @throws GuzzleException
      */
-    protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements, ?VerificationStatus $verification = null): ?array
+    protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
     {
         $shouldStoreResult = in_array($element, $scanElements);
 
@@ -335,7 +354,7 @@ class CrawlerService
             return null;
         }
 
-        $result = $this->scannerService->processInternalUrl($url, $source, $element, $verification);
+        $result = $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
 
         // Extract links and remove from result
         $extractedLinks = $result['extractedLinks'] ?? [];
@@ -347,7 +366,8 @@ class CrawlerService
         }
 
         // Add extracted links to the queue (only if not rate limited)
-        if ($result['status'] !== 429) {
+        $statusInt = is_numeric($result['status']) ? (int) $result['status'] : 0;
+        if ($statusInt !== 429) {
             foreach ($extractedLinks as $link) {
                 $linkElement = $link['element'] ?? 'a';
                 // Rewrite URL to canonical host if needed (e.g., www -> non-www)
@@ -360,8 +380,7 @@ class CrawlerService
                         'depth' => $depth + 1,
                         'source' => $url,
                         'element' => $linkElement,
-                        'needsVerification' => $link['needsVerification'] ?? false,
-                        'verificationReasons' => $link['verificationReasons'] ?? [],
+                        'flags' => $link['flags'] ?? [],
                     ];
 
                     // Prioritize scanElements (except 'a') by adding to priority queue
@@ -386,18 +405,18 @@ class CrawlerService
      * @param string $source
      * @param string $element
      * @param array<string> $scanElements Elements to scan
-     * @param VerificationStatus|null $verification The verification status from extraction.
+     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped.
      * @throws GuzzleException
      */
-    protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements, ?VerificationStatus $verification = null): ?array
+    protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
     {
         // Skip if element type is not in scanElements
         if (!in_array($element, $scanElements)) {
             return null;
         }
 
-        $result = $this->scannerService->processExternalUrl($url, $source, $element, $verification);
+        $result = $this->scannerService->processExternalUrl($url, $source, $element, $discoveryFlags);
         $this->results[] = $result;
 
         return $result;
