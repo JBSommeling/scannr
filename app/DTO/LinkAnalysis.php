@@ -169,12 +169,13 @@ readonly class LinkAnalysis
     /**
      * Convert to array for serialization (matches target JSON structure).
      *
-     * @return array{flags: array<string>, confidence: string, verification: string}
+     * @return array{flags: array<string>, severity: string, confidence: string, verification: string}
      */
     public function toArray(): array
     {
         return [
             'flags' => $this->getFlagValues(),
+            'severity' => $this->severity->value,
             'confidence' => $this->confidence->value,
             'verification' => $this->verification,
         ];
