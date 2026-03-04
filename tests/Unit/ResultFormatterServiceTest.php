@@ -1679,11 +1679,10 @@ class ResultFormatterServiceTest extends TestCase
                 'status' => 200,
                 'type' => 'external',
                 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
-                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'analysis' => ['flags' => ['detected_in_js_bundle'], 'confidence' => 'low', 'verification' => 'recommended'],
                 'isLoop' => false,
                 'hasHttpsDowngrade' => false,
                 'sourceElement' => 'a',
-                'analysis' => ['flags' => ['detected_in_js_bundle'], 'confidence' => 'low', 'verification' => 'recommended'],
                 'verificationReasons' => ['indirect_reference'],
             ],
         ];
