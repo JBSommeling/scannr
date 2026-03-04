@@ -61,10 +61,11 @@ class ScanStatistics
             $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
         ));
 
-        // Severity counts from analysis
-        $criticalCount = count(array_filter($results, fn($r) => $this->hasSeverity($r, 'critical')));
-        $warningCount = count(array_filter($results, fn($r) => $this->hasSeverity($r, 'warning')));
-        $lowConfidenceCount = count(array_filter($results, fn($r) => $this->hasLowConfidence($r)));
+        // Severity and confidence counts — read the pre-computed scalar serialized by
+        // SeverityEvaluator (via LinkFlagService::buildAnalysis) at scan-time.
+        $criticalCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'critical'));
+        $warningCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
+        $lowConfidenceCount = count(array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
 
         return [
             'total' => $total,
@@ -96,43 +97,6 @@ class ScanStatistics
         return false;
     }
 
-    /**
-     * Check if a result has a specific severity level.
-     */
-    protected function hasSeverity(array $result, string $severity): bool
-    {
-        // Check new analysis structure
-        if (isset($result['analysis'])) {
-            // Check if severity is derived from flags
-            $flags = $result['analysis']['flags'] ?? [];
-
-            // For now, check common flag patterns for severity
-            if ($severity === 'critical') {
-                return in_array('status_4xx', $flags, true) && !in_array('external_platform', $flags, true) && !in_array('bot_protection', $flags, true)
-                    || in_array('status_5xx', $flags, true)
-                    || (in_array('connection_error', $flags, true) && !in_array('external_platform', $flags, true));
-            }
-
-            if ($severity === 'warning') {
-                return in_array('malformed_url', $flags, true)
-                    || in_array('bot_protection', $flags, true)
-                    || in_array('timeout', $flags, true)
-                    || in_array('http_on_https', $flags, true)
-                    || in_array('excessive_redirects', $flags, true)
-                    || (in_array('status_4xx', $flags, true) && in_array('external_platform', $flags, true));
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if a result has low confidence.
-     */
-    protected function hasLowConfidence(array $result): bool
-    {
-        return ($result['analysis']['confidence'] ?? '') === 'low';
-    }
 
     /**
      * Filter scan results by status.
