@@ -39,7 +39,10 @@ class CrawlerService
     protected ?string $abortError = null;
 
     /**
-     * Whether smart-JS has been activated during this crawl.
+     * Whether a smart-JS / SPA decision has been made during this crawl.
+     *
+     * Note: This indicates that smart-JS has been considered/checked, not necessarily
+     * that it was ultimately enabled for the crawl.
      */
     protected bool $smartJsActivated = false;
 
