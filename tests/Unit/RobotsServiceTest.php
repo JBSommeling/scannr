@@ -128,6 +128,49 @@ class RobotsServiceTest extends TestCase
         $this->assertEquals('https://example.com/robots.txt', $requestedUrl);
     }
 
+    public function test_fetch_and_parse_returns_early_for_malformed_url(): void
+    {
+        // parse_url() returns false for completely malformed URLs
+        // No HTTP request should be made, and the service should remain in a clean state
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->never())->method('request');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->fetchAndParse('http:///no-host-here');
+
+        $this->assertInstanceOf(RobotsService::class, $result);
+        $this->assertTrue($this->service->isParsed());
+        $this->assertEmpty($this->service->getRules());
+        $this->assertNull($this->service->getCrawlDelay());
+        $this->assertTrue($this->service->isAllowed('https://example.com/anything'));
+    }
+
+    public function test_fetch_and_parse_returns_early_for_url_without_host(): void
+    {
+        // A relative path has no host component
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->never())->method('request');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->fetchAndParse('/just/a/path');
+
+        $this->assertInstanceOf(RobotsService::class, $result);
+        $this->assertEmpty($this->service->getRules());
+        $this->assertTrue($this->service->isAllowed('/just/a/path'));
+    }
+
+    public function test_fetch_and_parse_returns_early_for_empty_string(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->expects($this->never())->method('request');
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->fetchAndParse('');
+
+        $this->assertInstanceOf(RobotsService::class, $result);
+        $this->assertEmpty($this->service->getRules());
+    }
+
     public function test_fetch_and_parse_preserves_custom_port_in_robots_url(): void
     {
         $requestedUrl = null;
