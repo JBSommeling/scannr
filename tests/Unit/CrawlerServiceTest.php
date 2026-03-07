@@ -1137,6 +1137,101 @@ class CrawlerServiceTest extends TestCase
         $this->assertNull($result, 'Should return null when activeConfig is not set');
     }
 
+    // =========================================================
+    // smart-JS array_pop regression tests
+    // =========================================================
+
+    /**
+     * When smart-JS activates and Browsershot IS available, tryActivateSmartJs must
+     * NOT touch $this->results.  The caller (processInternalUrlAndGetResult) appends
+     * the result AFTER this method returns, so any pop here would remove an unrelated
+     * prior result.
+     *
+     * We use an anonymous subclass to report Browsershot as available and stub the
+     * JS re-fetch so the test has no real browser dependency.
+     */
+    public function test_smart_js_activation_does_not_corrupt_prior_results(): void
+    {
+        $services = $this->createServices();
+
+        // Stub processInternalUrl so the JS re-fetch returns a predictable result
+        // without needing a real Browsershot / Chrome installation.
+        $jsResult = ['url' => 'https://example.com', 'status' => '200', 'element' => 'a', 'rawBody' => '', 'extractedLinks' => []];
+        $scannerMock = $this->createMock(ScannerService::class);
+        $scannerMock->method('processInternalUrl')->willReturn($jsResult);
+
+        // Anonymous subclass that reports Browsershot as available.
+        $crawler = new class($scannerMock, $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+            protected function checkBrowsershotDeps(): array
+            {
+                return ['available' => true, 'message' => ''];
+            }
+        };
+
+        // Pre-seed $this->results with a prior result to simulate an earlier URL
+        // having already been stored (e.g. an external asset processed before this page).
+        $priorResult = ['url' => 'https://cdn.example.com/asset.js', 'status' => '200', 'element' => 'script'];
+        $resultsRef = new \ReflectionProperty($crawler, 'results');
+        $resultsRef->setAccessible(true);
+        $resultsRef->setValue($crawler, [$priorResult]);
+
+        // Wire up activeConfig with useSmartJs enabled.
+        $configRef = new \ReflectionProperty($crawler, 'activeConfig');
+        $configRef->setAccessible(true);
+        $configRef->setValue($crawler, $this->createConfig(['useSmartJs' => true]));
+
+        // SPA shell: no navigable links + single JS bundle — triggers SPA detection.
+        $spaResult = [
+            'rawBody'        => '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            'extractedLinks' => [],
+            'url'            => 'https://example.com',
+            'status'         => '200',
+        ];
+
+        $tryMethod = new \ReflectionMethod($crawler, 'tryActivateSmartJs');
+        $tryMethod->setAccessible(true);
+        $tryMethod->invoke($crawler, $spaResult, 'https://example.com', 'start', 'a', ['a'], [], 0);
+
+        $results = $resultsRef->getValue($crawler);
+
+        $this->assertCount(1, $results, 'tryActivateSmartJs must not remove items from $this->results');
+        $this->assertSame($priorResult, $results[0], 'The pre-existing result must be unchanged');
+    }
+
+    /**
+     * End-to-end: crawling a single SPA page with smart-JS enabled must produce
+     * exactly one result regardless of whether Browsershot is installed.
+     * Before the fix, if the result had already been appended when array_pop ran
+     * it could silently discard the only stored result.
+     */
+    public function test_smart_js_activation_stores_exactly_one_result_for_one_page(): void
+    {
+        $spaShell = '<html><body><div id="root"></div><script src="/static/js/main.js"></script></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+            // Second response consumed by the JS re-fetch when Browsershot is available.
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+        ]);
+
+        $services = $this->createServices();
+
+        // Anonymous subclass that reports Browsershot as available so the re-fetch
+        // code path (where the old array_pop lived) is actually exercised.
+        $crawler = new class($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+            protected function checkBrowsershotDeps(): array
+            {
+                return ['available' => true, 'message' => ''];
+            }
+        };
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['useSmartJs' => true, 'maxUrls' => 1]);
+        $output = $crawler->crawl($config);
+
+        $this->assertCount(1, $output['results'], 'Exactly one result must be stored for one crawled page');
+    }
+
     public function test_smart_js_config_serialization_round_trip(): void
     {
         $config = new ScanConfig(
