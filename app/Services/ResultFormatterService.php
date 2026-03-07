@@ -145,46 +145,106 @@ class ResultFormatterService
 
         $output->table($headers, $tableData);
 
-        // Display broken links separately (non-2xx status, excluding healthy form endpoints)
+        // Display critical issues, broken links, and low confidence links in separate tables
+        $this->displayCriticalIssuesTable($results, $output);
+        $this->displayBrokenLinksTable($results, $output);
+        $this->displayLowConfidenceTable($results, $output);
+    }
+
+    /**
+     * Display critical issues in a separate table.
+     *
+     * @param array $results The scan results.
+     * @param OutputInterface $output The output interface.
+     */
+    protected function displayCriticalIssuesTable(array $results, OutputInterface $output): void
+    {
+        $criticalIssues = array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'critical');
+
+        if (empty($criticalIssues)) {
+            return;
+        }
+
+        $output->newLine();
+        $output->error('Critical Issues:');
+
+        $criticalTableData = [];
+        foreach ($criticalIssues as $result) {
+            $flags = $result['analysis']['flags'] ?? [];
+            $reason = $this->getCriticalReason($flags, $result);
+            $criticalTableData[] = [
+                'URL' => $this->truncate($result['url'], 60),
+                'Source' => $this->truncate($result['sourcePage'], 30),
+                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Status' => $result['status'],
+                'Reason' => $reason,
+            ];
+        }
+
+        $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $criticalTableData);
+    }
+
+    /**
+     * Display broken links in a separate table.
+     *
+     * @param array $results The scan results.
+     * @param OutputInterface $output The output interface.
+     */
+    protected function displayBrokenLinksTable(array $results, OutputInterface $output): void
+    {
         $brokenLinks = array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r));
-        if (!empty($brokenLinks)) {
-            $output->newLine();
-            $output->error('Broken Links:');
 
-            $brokenTableData = [];
-            foreach ($brokenLinks as $result) {
-                $brokenTableData[] = [
-                    'URL' => $this->truncate($result['url'], 60),
-                    'Source' => $this->truncate($result['sourcePage'], 40),
-                    'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
-                    'Status' => $result['status'],
-                    'Error' => $result['type'],
-                ];
-            }
-
-            $output->table(['URL', 'Source', 'Element', 'Status', 'Error'], $brokenTableData);
+        if (empty($brokenLinks)) {
+            return;
         }
 
-        // Display low confidence links (need manual verification)
+        $output->newLine();
+        $output->error('Broken Links:');
+
+        $brokenTableData = [];
+        foreach ($brokenLinks as $result) {
+            $brokenTableData[] = [
+                'URL' => $this->truncate($result['url'], 60),
+                'Source' => $this->truncate($result['sourcePage'], 40),
+                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Status' => $result['status'],
+                'Error' => $result['type'],
+            ];
+        }
+
+        $output->table(['URL', 'Source', 'Element', 'Status', 'Error'], $brokenTableData);
+    }
+
+    /**
+     * Display low confidence links in a separate table.
+     *
+     * @param array $results The scan results.
+     * @param OutputInterface $output The output interface.
+     */
+    protected function displayLowConfidenceTable(array $results, OutputInterface $output): void
+    {
         $lowConfidenceLinks = array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low');
-        if (!empty($lowConfidenceLinks)) {
-            $output->newLine();
-            $output->warn('Low Confidence (Manual Verification Recommended):');
 
-            $verificationTableData = [];
-            foreach ($lowConfidenceLinks as $result) {
-                $flags = $result['analysis']['flags'] ?? [];
-                $verificationTableData[] = [
-                    'URL' => $this->truncate($result['url'], 60),
-                    'Source' => $this->truncate($result['sourcePage'], 40),
-                    'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
-                    'Status' => $this->formatStatus($result),
-                    'Flags' => implode('|', $flags),
-                ];
-            }
-
-            $output->table(['URL', 'Source', 'Element', 'Status', 'Flags'], $verificationTableData);
+        if (empty($lowConfidenceLinks)) {
+            return;
         }
+
+        $output->newLine();
+        $output->warn('Low Confidence (Manual Verification Recommended):');
+
+        $verificationTableData = [];
+        foreach ($lowConfidenceLinks as $result) {
+            $flags = $result['analysis']['flags'] ?? [];
+            $verificationTableData[] = [
+                'URL' => $this->truncate($result['url'], 60),
+                'Source' => $this->truncate($result['sourcePage'], 40),
+                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Status' => $this->formatStatus($result),
+                'Flags' => implode('|', $flags),
+            ];
+        }
+
+        $output->table(['URL', 'Source', 'Element', 'Status', 'Flags'], $verificationTableData);
     }
 
     /**
@@ -300,6 +360,43 @@ class ResultFormatterService
                 $verification
             ));
         }
+    }
+
+    /**
+     * Get a user-friendly reason for why a link is flagged as critical.
+     *
+     * @param array<string> $flags The flag values
+     * @param array $result The result data
+     * @return string User-friendly explanation
+     */
+    protected function getCriticalReason(array $flags, array $result): string
+    {
+        $status = $result['status'] ?? '';
+        $type = $result['type'] ?? 'internal';
+
+        // Check for specific flags in priority order (matching SeverityEvaluator logic)
+
+        // Internal 4xx (most common critical issue)
+        if (in_array('status_4xx', $flags, true) && $type === 'internal' && !in_array('bot_protection', $flags, true)) {
+            return 'Broken internal link (4xx)';
+        }
+
+        // 5xx server errors
+        if (in_array('status_5xx', $flags, true)) {
+            return 'Server error (5xx)';
+        }
+
+        // Connection errors
+        if (in_array('connection_error', $flags, true)) {
+            return 'Connection failed';
+        }
+
+        // Fallback: show first flag or generic message
+        if (!empty($flags)) {
+            return ucfirst(str_replace('_', ' ', $flags[0]));
+        }
+
+        return "Status: {$status}";
     }
 
     /**
