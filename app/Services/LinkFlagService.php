@@ -30,7 +30,7 @@ class LinkFlagService
     public function buildAnalysis(array $flags, int|string $status, bool $isExternal): LinkAnalysis
     {
         $uniqueFlags = array_values(array_unique($flags, SORT_REGULAR));
-        $severity = $this->severityEvaluator->evaluate($uniqueFlags);
+        $severity = $this->severityEvaluator->evaluate($uniqueFlags, $status);
         $confidence = $this->severityEvaluator->evaluateConfidence($uniqueFlags, $status, $isExternal);
         $verification = $this->severityEvaluator->evaluateVerification($severity, $confidence);
 

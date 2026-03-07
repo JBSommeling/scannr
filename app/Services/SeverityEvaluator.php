@@ -19,20 +19,22 @@ class SeverityEvaluator
      * Evaluate severity based on flags.
      *
      * Priority:
-     * 1. STATUS_4XX on internal (non-platform) URL → CRITICAL
-     * 2. STATUS_5XX → CRITICAL
-     * 3. CONNECTION_ERROR → CRITICAL
-     * 4. MALFORMED_URL → WARNING
-     * 5. BOT_PROTECTION → WARNING
-     * 6. STATUS_4XX on external platform → WARNING
-     * 7. TIMEOUT → WARNING
-     * 8. HTTP_ON_HTTPS → WARNING
-     * 9. EXCESSIVE_REDIRECTS → WARNING
-     * 10. Everything else → INFO
+     * 1. FORM_ENDPOINT with healthy 4xx (400,401,403,405,422,429) → INFO (expected POST rejections)
+     * 2. STATUS_4XX on internal (non-platform) URL → CRITICAL (including form 404)
+     * 3. STATUS_5XX → CRITICAL
+     * 4. CONNECTION_ERROR → CRITICAL
+     * 5. MALFORMED_URL → WARNING
+     * 6. BOT_PROTECTION → WARNING
+     * 7. STATUS_4XX on external platform → WARNING
+     * 8. TIMEOUT → WARNING
+     * 9. HTTP_ON_HTTPS → WARNING
+     * 10. EXCESSIVE_REDIRECTS → WARNING
+     * 11. Everything else → INFO
      *
      * @param array<LinkFlag> $flags
+     * @param int|string $status HTTP status code or error string
      */
-    public function evaluate(array $flags): Severity
+    public function evaluate(array $flags, int|string $status = 0): Severity
     {
         $hasExternalPlatform = in_array(LinkFlag::EXTERNAL_PLATFORM, $flags, true);
         $hasStatus4xx = in_array(LinkFlag::STATUS_4XX, $flags, true);
@@ -43,6 +45,18 @@ class SeverityEvaluator
         $hasTimeout = in_array(LinkFlag::TIMEOUT, $flags, true);
         $hasHttpOnHttps = in_array(LinkFlag::HTTP_ON_HTTPS, $flags, true);
         $hasExcessiveRedirects = in_array(LinkFlag::EXCESSIVE_REDIRECTS, $flags, true);
+        $hasFormEndpoint = in_array(LinkFlag::FORM_ENDPOINT, $flags, true);
+
+        // Form endpoints returning certain 4xx are expected behavior:
+        // 400 (bad request / missing data), 401 (auth required), 403 (forbidden),
+        // 405 (method not allowed), 422 (validation error), 429 (rate limited).
+        // 404 is NOT healthy — it means the endpoint doesn't exist.
+        $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
+        $statusInt = is_int($status) ? $status : 0;
+
+        if ($hasFormEndpoint && $hasStatus4xx && in_array($statusInt, $healthyFormStatuses, true)) {
+            return Severity::INFO;
+        }
 
         // Critical: Internal 4xx, 5xx, or connection errors
         if ($hasStatus4xx && !$hasExternalPlatform && !$hasBotProtection) {
