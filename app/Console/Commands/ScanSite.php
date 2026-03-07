@@ -30,6 +30,7 @@ class ScanSite extends Command
         {--sitemap : Use sitemap.xml to discover URLs}
         {--strip-params= : Additional tracking parameters to strip (comma-separated, e.g., ref,tracker_*)}
         {--js : Enable JavaScript rendering for SPA/React sites (requires Node.js + Puppeteer)}
+        {--smart-js : Automatically enable JS rendering when SPA signals are detected (empty DOM, no links, client-side routing)}
         {--no-robots : Ignore robots.txt rules (Disallow/Crawl-delay)}
         {--advanced : Show XML namespaces, CDN root domains, and JS framework links}
         {--queue : Dispatch scan as a background job}';

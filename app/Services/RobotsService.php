@@ -81,9 +81,17 @@ class RobotsService
         $this->sitemapUrls = [];
         $this->parsed = true;
 
-        $baseUrl = rtrim($baseUrl, '/');
-        $baseUrl = preg_replace('#://www\.#i', '://', $baseUrl);
-        $robotsUrl = $baseUrl . '/robots.txt';
+        // Always fetch robots.txt from the root origin, regardless of any path in the given URL.
+        $parsed = parse_url(rtrim($baseUrl, '/'));
+
+        if ($parsed === false || empty($parsed['host'])) {
+            return $this;
+        }
+
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host   = preg_replace('/^www\./i', '', $parsed['host']);
+        $port   = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $robotsUrl = $scheme . '://' . $host . $port . '/robots.txt';
 
         try {
             $response = $this->client->request('GET', $robotsUrl, [

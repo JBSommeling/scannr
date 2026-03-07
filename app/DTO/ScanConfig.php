@@ -25,6 +25,7 @@ readonly class ScanConfig
         public bool $useSitemap,
         public array $customTrackingParams,
         public bool $useJsRendering = false,
+        public bool $useSmartJs = false,
         public bool $respectRobots = true,
         public bool $showAdvanced = false,
     ) {}
@@ -69,6 +70,10 @@ readonly class ScanConfig
         $delayMin = config('scanner.request_delay_min', 300);
         $delayMax = config('scanner.request_delay_max', 500);
 
+        $useJsRendering = (bool) ($data['useJsRendering'] ?? false);
+        // --js takes precedence: when full JS rendering is on, smart-js is unnecessary
+        $useSmartJs = $useJsRendering ? false : (bool) ($data['useSmartJs'] ?? false);
+
         $config = new self(
             baseUrl: $baseUrl,
             maxDepth: $maxDepth,
@@ -82,7 +87,8 @@ readonly class ScanConfig
             delayMax: $delayMax,
             useSitemap: (bool) ($data['useSitemap'] ?? false),
             customTrackingParams: $data['customTrackingParams'] ?? [],
-            useJsRendering: (bool) ($data['useJsRendering'] ?? false),
+            useJsRendering: $useJsRendering,
+            useSmartJs: $useSmartJs,
             respectRobots: (bool) ($data['respectRobots'] ?? true),
             showAdvanced: (bool) ($data['showAdvanced'] ?? false),
         );
@@ -123,6 +129,7 @@ readonly class ScanConfig
             'useSitemap' => (bool) $command->option('sitemap'),
             'customTrackingParams' => $customTrackingParams,
             'useJsRendering' => (bool) $command->option('js'),
+            'useSmartJs' => (bool) $command->option('smart-js'),
             'respectRobots' => !$command->option('no-robots'),
             'showAdvanced' => (bool) $command->option('advanced'),
         ]);
@@ -149,6 +156,7 @@ readonly class ScanConfig
             'useSitemap' => $this->useSitemap,
             'customTrackingParams' => $this->customTrackingParams,
             'useJsRendering' => $this->useJsRendering,
+            'useSmartJs' => $this->useSmartJs,
             'respectRobots' => $this->respectRobots,
             'showAdvanced' => $this->showAdvanced,
         ];

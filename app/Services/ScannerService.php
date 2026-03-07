@@ -87,11 +87,13 @@ class ScannerService
         $result = $this->httpChecker->followRedirects($url, 'GET');
 
         $extractedLinks = [];
+        $rawBody = null;
         if ($result['finalStatus'] === 200) {
             // When JS rendering is enabled, use Browsershot to get the fully
             // rendered DOM (for SPAs like React/Vue) and extract links from that.
             // Fall back to the Guzzle response body if Browsershot fails.
             $htmlForExtraction = $result['body'];
+            $rawBody = $result['body'];
 
             if ($this->browsershotFetcher !== null) {
                 $renderedResult = $this->browsershotFetcher->fetch($result['finalUrl'] ?? $url);
@@ -152,6 +154,7 @@ class ScannerService
             'type' => 'internal',
             'sourceElement' => $element,
             'extractedLinks' => $extractedLinks,
+            'rawBody' => $rawBody,
             'analysis' => $analysis->toArray(),
             'redirect' => [
                 'chain' => $result['chain'],

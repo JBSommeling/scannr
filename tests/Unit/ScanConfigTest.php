@@ -429,6 +429,98 @@ class ScanConfigTest extends TestCase
     }
 
     // ==================
+    // useSmartJs tests
+    // ==================
+
+    public function test_scan_config_defaults_use_smart_js_to_false(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertFalse($config->useSmartJs);
+    }
+
+    public function test_scan_config_use_smart_js_can_be_enabled(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            useSmartJs: true,
+        );
+
+        $this->assertTrue($config->useSmartJs);
+    }
+
+    public function test_scan_config_js_takes_precedence_over_smart_js(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'useJsRendering' => true,
+            'useSmartJs' => true,
+        ]);
+
+        $config = $result['config'];
+        $this->assertTrue($config->useJsRendering);
+        $this->assertFalse($config->useSmartJs);
+    }
+
+    public function test_scan_config_smart_js_from_array(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'useSmartJs' => true,
+        ]);
+
+        $config = $result['config'];
+        $this->assertFalse($config->useJsRendering);
+        $this->assertTrue($config->useSmartJs);
+    }
+
+    public function test_scan_config_smart_js_to_array(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            useSmartJs: true,
+        );
+
+        $array = $config->toArray();
+        $this->assertTrue($array['useSmartJs']);
+    }
+
+    // ==================
     // showAdvanced tests
     // ==================
 
@@ -578,6 +670,73 @@ class ScanConfigTest extends TestCase
         $this->assertTrue($result['config']->useJsRendering);
     }
 
+    public function test_from_command_options_smart_js_flag_disabled_by_default(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+            'smart-js' => false,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertFalse($result['config']->useSmartJs);
+    }
+
+    public function test_from_command_options_smart_js_flag_enabled(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+            'smart-js' => true,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertTrue($result['config']->useSmartJs);
+    }
+
+    public function test_from_command_options_js_takes_precedence_over_smart_js(): void
+    {
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => true,
+            'smart-js' => true,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertTrue($result['config']->useJsRendering);
+        $this->assertFalse($result['config']->useSmartJs, '--js should take precedence over --smart-js');
+    }
+
     // ==================
     // fromArray tests
     // ==================
@@ -602,6 +761,7 @@ class ScanConfigTest extends TestCase
         $this->assertFalse($config->useSitemap);
         $this->assertEmpty($config->customTrackingParams);
         $this->assertFalse($config->useJsRendering);
+        $this->assertFalse($config->useSmartJs);
         $this->assertTrue($config->respectRobots);
         $this->assertFalse($config->showAdvanced);
         $this->assertEmpty($result['warnings']);

@@ -38,12 +38,31 @@ class CrawlerService
      */
     protected ?string $abortError = null;
 
+    /**
+     * Whether a smart-JS / SPA decision has been made during this crawl.
+     *
+     * Note: This indicates that smart-JS has been considered/checked, not necessarily
+     * that it was ultimately enabled for the crawl.
+     */
+    protected bool $smartJsActivated = false;
+
+    /**
+     * Current scan configuration (stored during crawl for smart-JS access).
+     */
+    protected ?ScanConfig $activeConfig = null;
+
+    /**
+     * Message callback (stored during crawl for smart-JS access).
+     */
+    protected ?Closure $activeOnMessage = null;
+
     public function __construct(
         protected ScannerService $scannerService,
         protected UrlNormalizer $urlNormalizer,
         protected HttpChecker $httpChecker,
         protected SitemapService $sitemapService,
         protected RobotsService $robotsService = new RobotsService(),
+        protected SpaDetector $spaDetector = new SpaDetector(),
     ) {}
 
     /**
@@ -67,6 +86,10 @@ class CrawlerService
     public function crawl(ScanConfig $config, ?Closure $onProgress = null, ?Closure $onSitemapDiscovery = null): array
     {
         $this->resetState($config->baseUrl);
+
+        // Store config and message callback for smart-JS access during crawl
+        $this->activeConfig = $config;
+        $this->activeOnMessage = $onSitemapDiscovery;
 
         // Configure HTTP client (use injected client or create new one)
         $client = $this->client ?? $this->createHttpClient($config->timeout);
@@ -204,6 +227,9 @@ class CrawlerService
         $this->canonicalBaseResolved = false;
         $this->total429Count = 0;
         $this->abortError = null;
+        $this->smartJsActivated = false;
+        $this->activeConfig = null;
+        $this->activeOnMessage = null;
     }
 
     /**
@@ -356,9 +382,26 @@ class CrawlerService
 
         $result = $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
 
+        // Smart-JS: on the first internal page, check for SPA signals
+        // and re-process with JS rendering if detected
+        if (!$this->smartJsActivated
+            && $this->activeConfig !== null
+            && $this->activeConfig->useSmartJs
+        ) {
+            $reprocessed = $this->tryActivateSmartJs(
+                $result, $url, $source, $element, $scanElements, $discoveryFlags, $depth
+            );
+            if ($reprocessed !== null) {
+                $result = $reprocessed;
+            }
+        }
+
         // Extract links and remove from result
         $extractedLinks = $result['extractedLinks'] ?? [];
         unset($result['extractedLinks']);
+
+        // Remove rawBody from stored result (internal use only)
+        unset($result['rawBody']);
 
         // Only store result if element type is in scanElements
         if ($shouldStoreResult) {
@@ -482,6 +525,96 @@ class CrawlerService
                 $onMessage("  Warning: {$depCheck['message']} Falling back to static HTML.");
             }
         }
+    }
+
+
+    /**
+     * Attempt to activate smart-JS rendering if SPA signals are detected.
+     *
+     * Called after the first internal page is processed. If SPA signals are found,
+     * enables Browsershot and re-processes the page with JS rendering.
+     *
+     * @param array $result The result from processInternalUrl (includes rawBody and extractedLinks).
+     * @param string $url The URL that was processed.
+     * @param string $source The source URL.
+     * @param string $element The element type.
+     * @param array<string> $scanElements Elements to scan.
+     * @param array<LinkFlag> $discoveryFlags Discovery flags.
+     * @param int $depth Current crawl depth.
+     * @return array|null The re-processed result if smart-JS was activated, or null if not.
+     * @throws GuzzleException
+     */
+    protected function tryActivateSmartJs(
+        array $result,
+        string $url,
+        string $source,
+        string $element,
+        array $scanElements,
+        array $discoveryFlags,
+        int $depth,
+    ): ?array {
+        if ($this->activeConfig === null || !$this->activeConfig->useSmartJs) {
+            return null;
+        }
+
+        // Only attempt once
+        if ($this->smartJsActivated) {
+            return null;
+        }
+
+        $rawBody = $result['rawBody'] ?? null;
+        $extractedLinks = $result['extractedLinks'] ?? [];
+
+        $detection = $this->spaDetector->detect($rawBody, $extractedLinks);
+
+        if (!$detection['detected']) {
+            // No SPA signals — smart-JS stays off for the entire crawl
+            $this->smartJsActivated = true;
+            return null;
+        }
+
+        // SPA signals detected — try to activate JS rendering
+        $depCheck = $this->checkBrowsershotDeps();
+        if (!$depCheck['available']) {
+            if ($this->activeOnMessage !== null) {
+                ($this->activeOnMessage)("  ⚠ Smart JS: {$detection['reason']}, but {$depCheck['message']} Falling back to static HTML.");
+            }
+            $this->smartJsActivated = true;
+            return null;
+        }
+
+        // Activate Browsershot
+        $fetcher = new BrowsershotFetcher();
+        $fetcher->setTimeout($this->activeConfig->timeout);
+
+        $jsConfig = config('scanner.js_rendering', []);
+        if (!empty($jsConfig)) {
+            $fetcher->configure($jsConfig);
+        }
+
+        $this->scannerService->setBrowsershotFetcher($fetcher);
+        $this->smartJsActivated = true;
+
+        if ($this->activeOnMessage !== null) {
+            ($this->activeOnMessage)("  🔄 Smart JS activated: {$detection['reason']} — re-scanning with headless browser");
+        }
+
+        // Re-process the current URL with JS rendering enabled.
+        // The caller (processInternalUrlAndGetResult) has not yet appended anything to
+        // $this->results at this point, so no pop is needed — the local $result variable
+        // in the caller is simply replaced with what we return here.
+        return $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
+    }
+
+    /**
+     * Check whether Browsershot dependencies are available.
+     * Extracted into a protected method so tests can override it.
+     *
+     * @return array{available: bool, message: string}
+     */
+    protected function checkBrowsershotDeps(): array
+    {
+        return BrowsershotFetcher::checkDependencies();
     }
 
     /**

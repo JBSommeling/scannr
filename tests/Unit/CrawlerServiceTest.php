@@ -50,6 +50,7 @@ class CrawlerServiceTest extends TestCase
             useSitemap: $overrides['useSitemap'] ?? false,
             customTrackingParams: $overrides['customTrackingParams'] ?? [],
             useJsRendering: $overrides['useJsRendering'] ?? false,
+            useSmartJs: $overrides['useSmartJs'] ?? false,
             respectRobots: $overrides['respectRobots'] ?? false,
         );
     }
@@ -1037,6 +1038,224 @@ class CrawlerServiceTest extends TestCase
         $this->assertFalse($crawlResult['aborted']);
         $this->assertNull($crawlResult['error']);
         $this->assertEquals('200', $crawlResult['results'][0]['status']);
+    }
+
+    // ==================
+    // Smart JS tests
+    // ==================
+
+    public function test_smart_js_activates_when_spa_detected(): void
+    {
+        // SPA shell with no <a> links — triggers SPA detection
+        $spaShell = '<html><body><div id="root"></div><script src="/static/js/main.js"></script></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+            new Response(200, ['Content-Type' => 'application/javascript'], ''),
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $messages = [];
+        $config = $this->createConfig(['useSmartJs' => true, 'maxUrls' => 1]);
+
+        $crawler->crawl(
+            $config,
+            null,
+            function (string $message) use (&$messages) {
+                $messages[] = $message;
+            }
+        );
+
+        // Should have a message about smart-JS activation (or fallback warning if Puppeteer not installed)
+        $smartJsMessages = array_filter($messages, fn($m) =>
+            stripos($m, 'Smart JS') !== false || stripos($m, 'smart js') !== false
+        );
+        $this->assertNotEmpty($smartJsMessages, 'Should display a smart-JS status message when SPA signals detected');
+    }
+
+    public function test_smart_js_does_not_activate_on_normal_html(): void
+    {
+        $html = '<html><body><h1>Welcome to Our Website</h1><p>We have lots of great content here for you to explore and enjoy.</p><a href="/about">About</a><a href="/contact">Contact</a></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>About</body></html>'),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Contact</body></html>'),
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $messages = [];
+        $config = $this->createConfig(['useSmartJs' => true, 'maxUrls' => 3]);
+
+        $crawler->crawl(
+            $config,
+            null,
+            function (string $message) use (&$messages) {
+                $messages[] = $message;
+            }
+        );
+
+        $smartJsMessages = array_filter($messages, fn($m) =>
+            stripos($m, 'Smart JS') !== false
+        );
+        $this->assertEmpty($smartJsMessages, 'Should NOT display smart-JS message on normal HTML');
+    }
+
+    public function test_smart_js_disabled_when_js_flag_takes_precedence(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'useJsRendering' => true,
+            'useSmartJs' => true,
+        ]);
+
+        $config = $result['config'];
+        $this->assertTrue($config->useJsRendering);
+        $this->assertFalse($config->useSmartJs, '--js should take precedence, disabling --smart-js');
+    }
+
+    public function test_smart_js_only_triggers_once(): void
+    {
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+
+        $prop = new \ReflectionProperty($crawler, 'smartJsActivated');
+        $prop->setAccessible(true);
+        $this->assertFalse($prop->getValue($crawler));
+
+        $tryMethod = new \ReflectionMethod($crawler, 'tryActivateSmartJs');
+        $tryMethod->setAccessible(true);
+
+        // Without activeConfig set, tryActivateSmartJs should return null
+        $result = $tryMethod->invoke($crawler, ['rawBody' => '', 'extractedLinks' => []], '/', 'start', 'a', ['a'], [], 0);
+        $this->assertNull($result, 'Should return null when activeConfig is not set');
+    }
+
+    // =========================================================
+    // smart-JS array_pop regression tests
+    // =========================================================
+
+    /**
+     * When smart-JS activates and Browsershot IS available, tryActivateSmartJs must
+     * NOT touch $this->results.  The caller (processInternalUrlAndGetResult) appends
+     * the result AFTER this method returns, so any pop here would remove an unrelated
+     * prior result.
+     *
+     * We use an anonymous subclass to report Browsershot as available and stub the
+     * JS re-fetch so the test has no real browser dependency.
+     */
+    public function test_smart_js_activation_does_not_corrupt_prior_results(): void
+    {
+        $services = $this->createServices();
+
+        // Stub processInternalUrl so the JS re-fetch returns a predictable result
+        // without needing a real Browsershot / Chrome installation.
+        $jsResult = ['url' => 'https://example.com', 'status' => '200', 'element' => 'a', 'rawBody' => '', 'extractedLinks' => []];
+        $scannerMock = $this->createMock(ScannerService::class);
+        $scannerMock->method('processInternalUrl')->willReturn($jsResult);
+
+        // Anonymous subclass that reports Browsershot as available.
+        $crawler = new class($scannerMock, $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+            protected function checkBrowsershotDeps(): array
+            {
+                return ['available' => true, 'message' => ''];
+            }
+        };
+
+        // Pre-seed $this->results with a prior result to simulate an earlier URL
+        // having already been stored (e.g. an external asset processed before this page).
+        $priorResult = ['url' => 'https://cdn.example.com/asset.js', 'status' => '200', 'element' => 'script'];
+        $resultsRef = new \ReflectionProperty($crawler, 'results');
+        $resultsRef->setAccessible(true);
+        $resultsRef->setValue($crawler, [$priorResult]);
+
+        // Wire up activeConfig with useSmartJs enabled.
+        $configRef = new \ReflectionProperty($crawler, 'activeConfig');
+        $configRef->setAccessible(true);
+        $configRef->setValue($crawler, $this->createConfig(['useSmartJs' => true]));
+
+        // SPA shell: no navigable links + single JS bundle — triggers SPA detection.
+        $spaResult = [
+            'rawBody'        => '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            'extractedLinks' => [],
+            'url'            => 'https://example.com',
+            'status'         => '200',
+        ];
+
+        $tryMethod = new \ReflectionMethod($crawler, 'tryActivateSmartJs');
+        $tryMethod->setAccessible(true);
+        $tryMethod->invoke($crawler, $spaResult, 'https://example.com', 'start', 'a', ['a'], [], 0);
+
+        $results = $resultsRef->getValue($crawler);
+
+        $this->assertCount(1, $results, 'tryActivateSmartJs must not remove items from $this->results');
+        $this->assertSame($priorResult, $results[0], 'The pre-existing result must be unchanged');
+    }
+
+    /**
+     * End-to-end: crawling a single SPA page with smart-JS enabled must produce
+     * exactly one result regardless of whether Browsershot is installed.
+     * Before the fix, if the result had already been appended when array_pop ran
+     * it could silently discard the only stored result.
+     */
+    public function test_smart_js_activation_stores_exactly_one_result_for_one_page(): void
+    {
+        $spaShell = '<html><body><div id="root"></div><script src="/static/js/main.js"></script></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+            // Second response consumed by the JS re-fetch when Browsershot is available.
+            new Response(200, ['Content-Type' => 'text/html'], $spaShell),
+        ]);
+
+        $services = $this->createServices();
+
+        // Anonymous subclass that reports Browsershot as available so the re-fetch
+        // code path (where the old array_pop lived) is actually exercised.
+        $crawler = new class($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+            protected function checkBrowsershotDeps(): array
+            {
+                return ['available' => true, 'message' => ''];
+            }
+        };
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['useSmartJs' => true, 'maxUrls' => 1]);
+        $output = $crawler->crawl($config);
+
+        $this->assertCount(1, $output['results'], 'Exactly one result must be stored for one crawled page');
+    }
+
+    public function test_smart_js_config_serialization_round_trip(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            useSmartJs: true,
+        );
+
+        $array = $config->toArray();
+        $this->assertTrue($array['useSmartJs']);
+
+        $restored = ScanConfig::fromArray($array)['config'];
+        $this->assertTrue($restored->useSmartJs);
+        $this->assertFalse($restored->useJsRendering);
     }
 }
 

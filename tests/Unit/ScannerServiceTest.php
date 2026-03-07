@@ -529,6 +529,105 @@ class ScannerServiceTest extends TestCase
         $this->assertArrayHasKey('verification', $result['analysis']);
     }
 
+    // ======================
+    // Form endpoint severity tests
+    // ======================
+
+    public function test_form_endpoint_429_severity_is_info_not_critical(): void
+    {
+        $mockClient = $this->createMockClient(429);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('429', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertContains('rate_limited', $result['analysis']['flags']);
+        $this->assertContains('status_4xx', $result['analysis']['flags']);
+        $this->assertEquals('info', $result['analysis']['severity']);
+    }
+
+    public function test_form_endpoint_422_severity_is_info_not_critical(): void
+    {
+        $mockClient = $this->createMockClient(422);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('422', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertEquals('info', $result['analysis']['severity']);
+    }
+
+    public function test_form_endpoint_400_severity_is_info_not_critical(): void
+    {
+        $mockClient = $this->createMockClient(400);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('400', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertEquals('info', $result['analysis']['severity']);
+    }
+
+    public function test_form_endpoint_401_severity_is_info_not_critical(): void
+    {
+        $mockClient = $this->createMockClient(401);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('401', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertEquals('info', $result['analysis']['severity']);
+    }
+
+    public function test_form_endpoint_404_severity_is_critical(): void
+    {
+        $mockClient = $this->createMockClient(404);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('404', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertContains('status_4xx', $result['analysis']['flags']);
+        $this->assertEquals('critical', $result['analysis']['severity']);
+    }
+
+    public function test_form_endpoint_500_severity_is_critical(): void
+    {
+        $mockClient = $this->createMockClient(500);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl('https://app.example.com/api/contacts', 'https://example.com', 'form');
+
+        $this->assertEquals('500', $result['status']);
+        $this->assertContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertContains('status_5xx', $result['analysis']['flags']);
+        $this->assertEquals('critical', $result['analysis']['severity']);
+    }
+
+    public function test_non_form_429_is_still_critical(): void
+    {
+        $mockClient = $this->createMockClient(429);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/page', 'https://example.com', 'a');
+
+        $this->assertEquals('429', $result['status']);
+        $this->assertNotContains('form_endpoint', $result['analysis']['flags']);
+        $this->assertEquals('critical', $result['analysis']['severity']);
+    }
+
     public function test_non_form_external_url_still_uses_head(): void
     {
         $mockClient = $this->createMock(Client::class);
