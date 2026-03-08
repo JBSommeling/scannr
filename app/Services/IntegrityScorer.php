@@ -302,7 +302,7 @@ class IntegrityScorer
             ],
             'categories' => [
                 'link_integrity' => [
-                    'weight' => 0.55,
+                    'weight' => 0.45,
                     'types' => [
                         'status_4xx_internal', 'status_5xx',
                         'connection_error', 'form_endpoint_404', 'timeout',
@@ -311,7 +311,7 @@ class IntegrityScorer
                 'security_hygiene' => [
                     'weight' => 0.20,
                     'types' => [
-                        'http_on_https', 'bot_protection', 'rate_limited',
+                        'http_on_https',
                     ],
                 ],
                 'technical_hygiene' => [
@@ -324,6 +324,12 @@ class IntegrityScorer
                     'weight' => 0.10,
                     'types' => [
                         'redirect_chain', 'excessive_redirects',
+                    ],
+                ],
+                'link_verifiability' => [
+                    'weight' => 0.10,
+                    'types' => [
+                        'bot_protection', 'rate_limited',
                     ],
                 ],
             ],

@@ -324,7 +324,7 @@ return [
         // is not currently applied by the IntegrityScorer when computing overallScore.
         'categories' => [
             'link_integrity' => [
-                'weight' => 0.55,
+                'weight' => 0.45,
                 'types' => [
                     'status_4xx_internal',
                     'status_5xx',
@@ -337,8 +337,6 @@ return [
                 'weight' => 0.20,
                 'types' => [
                     'http_on_https',
-                    'bot_protection',
-                    'rate_limited',
                 ],
             ],
             'technical_hygiene' => [
@@ -353,6 +351,13 @@ return [
                 'types' => [
                     'redirect_chain',
                     'excessive_redirects',
+                ],
+            ],
+            'link_verifiability' => [
+                'weight' => 0.10,
+                'types' => [
+                    'bot_protection',
+                    'rate_limited',
                 ],
             ],
         ],

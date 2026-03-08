@@ -141,6 +141,7 @@ class IntegrityScorerTest extends TestCase
         $this->assertEquals(100, $result->categoryScores['security_hygiene']);
         $this->assertEquals(100, $result->categoryScores['technical_hygiene']);
         $this->assertEquals(100, $result->categoryScores['redirect_health']);
+        $this->assertEquals(100, $result->categoryScores['link_verifiability']);
     }
 
     public function test_category_scores_clamped_at_zero(): void
@@ -207,6 +208,7 @@ class IntegrityScorerTest extends TestCase
         $this->assertArrayHasKey('security_hygiene', $result->categoryScores);
         $this->assertArrayHasKey('technical_hygiene', $result->categoryScores);
         $this->assertArrayHasKey('redirect_health', $result->categoryScores);
+        $this->assertArrayHasKey('link_verifiability', $result->categoryScores);
 
         // Link integrity should have the broken internal penalty
         $this->assertLessThan(100, $result->categoryScores['link_integrity']);
@@ -456,6 +458,7 @@ class IntegrityScorerTest extends TestCase
         $this->assertEquals(100, $result->categoryScores['link_integrity']);
         $this->assertEquals(100, $result->categoryScores['technical_hygiene']);
         $this->assertEquals(100, $result->categoryScores['redirect_health']);
+        $this->assertEquals(100, $result->categoryScores['link_verifiability']);
     }
 
     public function test_exact_realistic_scan_scenario(): void
@@ -493,11 +496,12 @@ class IntegrityScorerTest extends TestCase
         $this->assertEquals('🟠', $result->gradeEmoji);
 
         // Category scores (penalty × 2.5 multiplier)
-        // link_integrity:    100 - (10 × 2.5)           = 75.0
-        // security_hygiene:  100 - ((0.6 + 0.3) × 2.5)  = 97.75 → 97.8 (rounded)
-        // technical_hygiene: 100 - ((12 + 8) × 2.5)     = 50.0
-        // redirect_health:   100 - (1.8 × 2.5)          = 95.5
+        // link_integrity:      100 - (10 × 2.5)           = 75.0
+        // link_verifiability:  100 - ((0.6 + 0.3) × 2.5)  = 97.75 → 97.8 (rounded)
+        // technical_hygiene:   100 - ((12 + 8) × 2.5)     = 50.0
+        // redirect_health:     100 - (1.8 × 2.5)          = 95.5
         $this->assertEquals(75, $result->categoryScores['link_integrity']);
+        $this->assertEquals(97.8, $result->categoryScores['link_verifiability']);
         $this->assertEquals(50, $result->categoryScores['technical_hygiene']);
         $this->assertEquals(95.5, $result->categoryScores['redirect_health']);
 
@@ -558,6 +562,83 @@ class IntegrityScorerTest extends TestCase
         $this->assertEquals(80, $result->overallScore);
         // link_integrity = 100 - (20 × 2.5) = 50
         $this->assertEquals(50, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_bot_protection_penalizes_link_verifiability_not_security(): void
+    {
+        // A single bot_protection hit should only affect link_verifiability,
+        // leaving security_hygiene untouched.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['bot_protection'], 'warning', 'high', 'external', 403, 'https://github.com/user'),
+        ]);
+
+        // bot_protection: -2 × 1.0 × 1.0 = -2 → overall 98
+        $this->assertEquals(98, $result->overallScore);
+        // link_verifiability = 100 - (2 × 2.5) = 95
+        $this->assertEquals(95, $result->categoryScores['link_verifiability']);
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_rate_limited_penalizes_link_verifiability_not_security(): void
+    {
+        // rate_limited should land in link_verifiability, not security_hygiene.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['rate_limited'], 'warning', 'high', 'external', 429, 'https://api.example.com'),
+        ]);
+
+        // rate_limited: -1 × 1.0 × 1.0 = -1 → overall 99
+        $this->assertEquals(99, $result->overallScore);
+        // link_verifiability = 100 - (1 × 2.5) = 97.5
+        $this->assertEquals(97.5, $result->categoryScores['link_verifiability']);
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+    }
+
+    public function test_http_on_https_stays_in_security_hygiene(): void
+    {
+        // http_on_https should still affect security_hygiene, not link_verifiability.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['http_on_https'], 'warning', 'high', 'internal', 200),
+        ]);
+
+        $this->assertLessThan(100, $result->categoryScores['security_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['link_verifiability']);
+    }
+
+    public function test_link_verifiability_dampening_with_multiple_bot_protection(): void
+    {
+        // Multiple bot_protection hits should dampen within link_verifiability.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 403, 'https://github.com/a'),
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 405, 'https://linkedin.com/b'),
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 403, 'https://twitter.com/c'),
+        ]);
+
+        // bot_protection #1: -2 × 0.3 × 1.0  = -0.6  (tier 1)
+        // bot_protection #2: -2 × 0.3 × 0.5  = -0.3  (tier 2)
+        // bot_protection #3: -2 × 0.3 × 0.5  = -0.3  (tier 2)
+        // Total: -1.2
+        $this->assertEquals(98.8, $result->overallScore);
+
+        // link_verifiability = 100 - (1.2 × 2.5) = 97.0
+        $this->assertEquals(97, $result->categoryScores['link_verifiability']);
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_link_verifiability_perfect_when_no_bot_or_rate_issues(): void
+    {
+        // A scan with only link_integrity and technical_hygiene issues
+        // should leave link_verifiability at 100.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404),
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost'),
+        ]);
+
+        $this->assertEquals(100, $result->categoryScores['link_verifiability']);
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+        $this->assertLessThan(100, $result->categoryScores['link_integrity']);
+        $this->assertLessThan(100, $result->categoryScores['technical_hygiene']);
     }
 
     public function test_exact_critical_grade_threshold(): void

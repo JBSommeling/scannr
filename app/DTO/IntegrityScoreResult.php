@@ -69,6 +69,7 @@ readonly class IntegrityScoreResult
             'security_hygiene' => 100,
             'technical_hygiene' => 100,
             'redirect_health' => 100,
+            'link_verifiability' => 100,
         ], [], [
             'criticalIssues' => 0,
             'warnings' => 0,
