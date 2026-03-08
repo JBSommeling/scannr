@@ -86,7 +86,7 @@ class IntegrityScorer
             $statusInt = is_numeric($status) ? (int) $status : 0;
             $isOk = $statusInt >= 200 && $statusInt < 300;
             $isTimeout = $status === 'timeout';
-            $isHealthyForm = in_array('form_endpoint', $flags, true)
+            $isHealthyForm = in_array(LinkFlag::FORM_ENDPOINT->value, $flags, true)
                 && in_array($statusInt, [400, 401, 403, 405, 422, 429], true);
             if (! $isOk && ! $isTimeout && ! $isHealthyForm && $status !== '') {
                 $brokenLinks++;
@@ -167,10 +167,10 @@ class IntegrityScorer
      */
     protected function resolveIssueType(array $flags, string $type, string|int $status): ?string
     {
-        $hasFormEndpoint = in_array('form_endpoint', $flags, true);
-        $hasStatus4xx = in_array('status_4xx', $flags, true);
-        $hasBotProtection = in_array('bot_protection', $flags, true);
-        $hasExternalPlatform = in_array('external_platform', $flags, true);
+        $hasFormEndpoint = in_array(LinkFlag::FORM_ENDPOINT->value, $flags, true);
+        $hasStatus4xx = in_array(LinkFlag::STATUS_4XX->value, $flags, true);
+        $hasBotProtection = in_array(LinkFlag::BOT_PROTECTION->value, $flags, true);
+        $hasExternalPlatform = in_array(LinkFlag::EXTERNAL_PLATFORM->value, $flags, true);
 
         // Skip healthy form endpoints (non-404 4xx)
         if ($hasFormEndpoint && $hasStatus4xx) {
@@ -184,15 +184,15 @@ class IntegrityScorer
         }
 
         // Priority order: most severe first
-        if (in_array('developer_leftover', $flags, true)) {
+        if (in_array(LinkFlag::DEVELOPER_LEFTOVER->value, $flags, true)) {
             return 'developer_leftover';
         }
 
-        if (in_array('connection_error', $flags, true) && ! $hasExternalPlatform) {
+        if (in_array(LinkFlag::CONNECTION_ERROR->value, $flags, true) && ! $hasExternalPlatform) {
             return 'connection_error';
         }
 
-        if (in_array('status_5xx', $flags, true)) {
+        if (in_array(LinkFlag::STATUS_5XX->value, $flags, true)) {
             return 'status_5xx';
         }
 
@@ -201,23 +201,23 @@ class IntegrityScorer
             return 'status_4xx_internal';
         }
 
-        if (in_array('malformed_url', $flags, true)) {
+        if (in_array(LinkFlag::MALFORMED_URL->value, $flags, true)) {
             return 'malformed_url';
         }
 
-        if (in_array('excessive_redirects', $flags, true)) {
+        if (in_array(LinkFlag::EXCESSIVE_REDIRECTS->value, $flags, true)) {
             return 'excessive_redirects';
         }
 
-        if (in_array('http_on_https', $flags, true)) {
+        if (in_array(LinkFlag::HTTP_ON_HTTPS->value, $flags, true)) {
             return 'http_on_https';
         }
 
-        if (in_array('timeout', $flags, true)) {
+        if (in_array(LinkFlag::TIMEOUT->value, $flags, true)) {
             return 'timeout';
         }
 
-        if (in_array('redirect_chain', $flags, true)) {
+        if (in_array(LinkFlag::REDIRECT_CHAIN->value, $flags, true)) {
             return 'redirect_chain';
         }
 
@@ -225,7 +225,7 @@ class IntegrityScorer
             return 'bot_protection';
         }
 
-        if (in_array('rate_limited', $flags, true)) {
+        if (in_array(LinkFlag::RATE_LIMITED->value, $flags, true)) {
             return 'rate_limited';
         }
 
