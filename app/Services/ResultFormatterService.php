@@ -14,6 +14,7 @@ class ResultFormatterService
 {
     public function __construct(
         protected ScanStatistics $scanStatistics,
+        protected IntegrityScorer $integrityScorer,
     ) {}
 
     /**
@@ -58,6 +59,10 @@ class ResultFormatterService
             $output->error("⚠ Error: {$error}");
             $output->newLine();
         }
+
+        // Calculate and display integrity score
+        $scoreResult = $this->integrityScorer->calculate($results);
+        $this->displayIntegrityScore($scoreResult, $output);
 
         $output->info('Summary:');
         $output->line("  Total scanned:  {$totalScanned}");
@@ -249,6 +254,29 @@ class ResultFormatterService
     }
 
     /**
+     * Display the integrity score section.
+     */
+    protected function displayIntegrityScore(\App\DTO\IntegrityScoreResult $score, OutputInterface $output): void
+    {
+        $scoreDisplay = number_format($score->overallScore, 1);
+        $output->newLine();
+        $output->line("  {$score->gradeEmoji} Site Integrity Score: {$scoreDisplay} / 100  —  {$score->grade}");
+        $output->newLine();
+
+        foreach ($score->categoryScores as $category => $catScore) {
+            $label = str_pad(ucwords(str_replace('_', ' ', $category)) . ':', 22);
+            $catDisplay = number_format($catScore, 1);
+            $output->line("    {$label} {$catDisplay} / 100");
+        }
+
+        $output->newLine();
+        $output->line("  Critical Issues:       {$score->summary['criticalIssues']}");
+        $output->line("  Warnings:              {$score->summary['warnings']}");
+        $output->line("  Manual Verification:   {$score->summary['manualVerification']}");
+        $output->newLine();
+    }
+
+    /**
      * Build the JSON output array from results and config.
      *
      * Returns the structured array with summary, results, and broken links.
@@ -286,6 +314,7 @@ class ResultFormatterService
 
         $output = [
             'summary' => $summary,
+            'integrityScore' => $this->integrityScorer->calculate($filtered)->toArray(),
             'results' => array_values($filtered),
             'brokenLinks' => $brokenLinks,
         ];
@@ -316,6 +345,7 @@ class ResultFormatterService
 
         $jsonOutput = [
             'summary' => $summary,
+            'integrityScore' => $this->integrityScorer->calculate($results)->toArray(),
             'results' => array_values($results),
             'brokenLinks' => $brokenLinks,
         ];
@@ -337,6 +367,10 @@ class ResultFormatterService
         if ($error !== null) {
             $output->line("# Error: {$error}");
         }
+
+        // Display integrity score as comment header
+        $scoreResult = $this->integrityScorer->calculate($results);
+        $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
 
         $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 

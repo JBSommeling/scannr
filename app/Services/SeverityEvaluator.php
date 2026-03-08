@@ -58,6 +58,12 @@ class SeverityEvaluator
             return Severity::INFO;
         }
 
+        // Critical: Developer leftover (localhost/dev URLs should never be in production)
+        $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
+        if ($hasDeveloperLeftover) {
+            return Severity::CRITICAL;
+        }
+
         // Critical: Internal 4xx, 5xx, or connection errors
         if ($hasStatus4xx && ! $hasExternalPlatform && ! $hasBotProtection) {
             return Severity::CRITICAL;

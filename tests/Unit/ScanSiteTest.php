@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\IntegrityScorer;
 use App\Services\ResultFormatterService;
 use App\Services\ScanStatistics;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +18,7 @@ class ScanSiteTest extends TestCase
     {
         parent::setUp();
         $scanStatistics = new ScanStatistics;
-        $this->formatter = new ResultFormatterService($scanStatistics);
+        $this->formatter = new ResultFormatterService($scanStatistics, new IntegrityScorer);
         $this->reflection = new ReflectionClass($this->formatter);
     }
 
