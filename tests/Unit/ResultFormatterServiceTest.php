@@ -670,6 +670,128 @@ class ResultFormatterServiceTest extends TestCase
     }
 
     // ==================
+    // CSV formula injection sanitization tests
+    // ==================
+
+    public function test_format_csv_sanitizes_url_starting_with_equals(): void
+    {
+        $results = $this->makeCsvResult('=CMD|"/C calc"!A0');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=CMD", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_plus(): void
+    {
+        $results = $this->makeCsvResult('+1-2');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t+1-2", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_minus(): void
+    {
+        $results = $this->makeCsvResult('-2+3');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t-2+3", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_at(): void
+    {
+        $results = $this->makeCsvResult('@SUM(1+1)');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t@SUM", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitizes_source_page_formula(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page',
+                'sourcePage' => '=HYPERLINK("http://evil.com")',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=HYPERLINK", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitizes_formula_url_in_redirect_chain(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/old',
+                'sourcePage' => 'https://example.com',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => ['https://example.com/old', '=evil()'], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['redirect_chain'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=evil", $output->lines[2]);
+    }
+
+    public function test_format_csv_does_not_modify_normal_url(): void
+    {
+        $results = $this->makeCsvResult('https://example.com/page');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString('"https://example.com/page"', $output->lines[2]);
+        $this->assertStringNotContainsString("\thttps", $output->lines[2]);
+    }
+
+    public function test_format_csv_sanitization_preserves_quote_escaping(): void
+    {
+        // A formula URL that also contains quotes should be both sanitized and quote-escaped
+        $results = $this->makeCsvResult('=CMD|"calc"');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=CMD|\"\"calc\"\"", $output->lines[2]);
+    }
+
+    /** Helper to build a single CSV result with the given URL. */
+    private function makeCsvResult(string $url): array
+    {
+        return [
+            [
+                'url' => $url,
+                'sourcePage' => 'https://example.com',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+    }
+
+    // ==================
     // Filter tests
     // ==================
 

@@ -411,16 +411,16 @@ class ResultFormatterService
 
         foreach ($results as $result) {
             $redirectChain = $result['redirect']['chain'] ?? $result['redirectChain'] ?? [];
-            $redirects = implode(' -> ', $redirectChain);
-            $element = $result['sourceElement'] ?? 'a';
+            $redirects = implode(' -> ', array_map([$this, 'sanitizeCsvField'], $redirectChain));
+            $element = $this->sanitizeCsvField($result['sourceElement'] ?? 'a');
             $flags = implode('|', $result['analysis']['flags'] ?? []);
             $confidence = $result['analysis']['confidence'] ?? '';
             $verification = $result['analysis']['verification'] ?? '';
 
             $output->line(sprintf(
                 '"%s","%s","%s","%s","%s","%s","%s","%s","%s"',
-                str_replace('"', '""', $result['url']),
-                str_replace('"', '""', $result['sourcePage']),
+                str_replace('"', '""', $this->sanitizeCsvField($result['url'])),
+                str_replace('"', '""', $this->sanitizeCsvField($result['sourcePage'])),
                 $element,
                 $result['status'],
                 $result['type'],
@@ -588,5 +588,21 @@ class ResultFormatterService
         }
 
         return (string) $status;
+    }
+
+    /**
+     * Sanitize a CSV field value to prevent formula injection.
+     *
+     * Spreadsheet applications (Excel, LibreOffice) treat cells beginning with
+     * =, +, -, or @ as formulas. Prefixing with a tab character neutralizes this
+     * while keeping the value human-readable.
+     */
+    private function sanitizeCsvField(string $value): string
+    {
+        if ($value !== '' && in_array($value[0], ['=', '+', '-', '@'], true)) {
+            return "\t" . $value;
+        }
+
+        return $value;
     }
 }
