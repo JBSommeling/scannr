@@ -1,0 +1,161 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Ward",
+          "informationUri": "https://github.com/Eljakani/ward",
+          "version": "v0.4.0",
+          "semanticVersion": "v0.4.0",
+          "rules": [
+            {
+              "id": "ENV-002",
+              "name": "APP_DEBUG is enabled",
+              "shortDescription": {
+                "text": "APP_DEBUG is enabled"
+              },
+              "fullDescription": {
+                "text": "APP_DEBUG is set to true. In production, this exposes detailed error messages including stack traces, database queries, and environment variables to end users."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Set APP_DEBUG=false in your production .env file. Use Laravel's logging system for error tracking instead."
+              },
+              "properties": {
+                "tags": [
+                  "Configuration"
+                ],
+                "security-severity": "high"
+              }
+            },
+            {
+              "id": "ENV-005",
+              "name": "APP_ENV is set to 'local'",
+              "shortDescription": {
+                "text": "APP_ENV is set to 'local'"
+              },
+              "fullDescription": {
+                "text": "The application environment suggests a non-production configuration. If this is a production server, this may cause debug features to be enabled and performance optimizations to be skipped."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Set APP_ENV=production on production servers."
+              },
+              "properties": {
+                "tags": [
+                  "Configuration"
+                ],
+                "security-severity": "medium"
+              }
+            },
+            {
+              "id": "CVE-2026-30838",
+              "name": "[CVE-2026-30838] league/commonmark@2.8.0 — CommonMark has DisallowedRawHtml extension bypass via whitespace in HTML tag names",
+              "shortDescription": {
+                "text": "[CVE-2026-30838] league/commonmark@2.8.0 — CommonMark has DisallowedRawHtml extension bypass via whitespace in HTML tag names"
+              },
+              "fullDescription": {
+                "text": "CommonMark has DisallowedRawHtml extension bypass via whitespace in HTML tag names"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Upgrade league/commonmark to 2.8.1 or later:\n  composer require league/commonmark:2.8.1"
+              },
+              "properties": {
+                "tags": [
+                  "Dependencies"
+                ],
+                "security-severity": "medium"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "ENV-002",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "APP_DEBUG is enabled"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".env"
+                },
+                "region": {
+                  "startLine": 4,
+                  "snippet": {
+                    "text": "APP_DEBUG=true"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash/v1": "a632d7b0a74be5030d2231e8"
+          }
+        },
+        {
+          "ruleId": "ENV-005",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "APP_ENV is set to 'local'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".env"
+                },
+                "region": {
+                  "startLine": 2,
+                  "snippet": {
+                    "text": "APP_ENV=local"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash/v1": "9937ae27cae3313ca35ddb47"
+          }
+        },
+        {
+          "ruleId": "CVE-2026-30838",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "[CVE-2026-30838] league/commonmark@2.8.0 — CommonMark has DisallowedRawHtml extension bypass via whitespace in HTML tag names"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composer.lock"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash/v1": "79f37e00ccdd2f595e203167"
+          }
+        }
+      ]
+    }
+  ]
+}
