@@ -151,8 +151,9 @@ class ResultFormatterService
 
         $output->table($headers, $tableData);
 
-        // Display critical issues, broken links, and low confidence links in separate tables
+        // Display critical issues, warnings, broken links, and low confidence links in separate tables
         $this->displayCriticalIssuesTable($results, $output);
+        $this->displayWarningsTable($results, $output);
         $this->displayBrokenLinksTable($results, $output);
         $this->displayLowConfidenceTable($results, $output);
     }
@@ -188,6 +189,39 @@ class ResultFormatterService
         }
 
         $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $criticalTableData);
+    }
+
+    /**
+     * Display warning issues in a separate table.
+     *
+     * @param  array  $results  The scan results.
+     * @param  OutputInterface  $output  The output interface.
+     */
+    protected function displayWarningsTable(array $results, OutputInterface $output): void
+    {
+        $warnings = array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning');
+
+        if (empty($warnings)) {
+            return;
+        }
+
+        $output->newLine();
+        $output->warn('Warnings:');
+
+        $warningTableData = [];
+        foreach ($warnings as $result) {
+            $flags = $result['analysis']['flags'] ?? [];
+            $reason = $this->getWarningReason($flags, $result);
+            $warningTableData[] = [
+                'URL' => $this->truncate($result['url'], 60),
+                'Source' => $this->truncate($result['sourcePage'], 30),
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
+                'Status' => $result['status'],
+                'Reason' => $reason,
+            ];
+        }
+
+        $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $warningTableData);
     }
 
     /**
@@ -271,6 +305,7 @@ class ResultFormatterService
 
         $output->newLine();
         $output->line("  Critical Issues:       {$score->summary['criticalIssues']}");
+        $output->line("  Broken Links:          {$score->summary['brokenLinks']}");
         $output->line("  Warnings:              {$score->summary['warnings']}");
         $output->line("  Manual Verification:   {$score->summary['manualVerification']}");
         $output->newLine();
@@ -432,6 +467,42 @@ class ResultFormatterService
         }
 
         return "Status: {$status}";
+    }
+
+    /**
+     * Get a user-friendly reason for a warning issue.
+     */
+    protected function getWarningReason(array $flags, array $result): string
+    {
+        if (in_array('redirect_chain', $flags, true)) {
+            return 'Redirect chain detected';
+        }
+
+        if (in_array('excessive_redirects', $flags, true)) {
+            return 'Excessive redirects';
+        }
+
+        if (in_array('https_downgrade', $flags, true)) {
+            return 'HTTP on HTTPS site';
+        }
+
+        if (in_array('bot_protection', $flags, true)) {
+            return 'Bot protection detected';
+        }
+
+        if (in_array('malformed_url', $flags, true)) {
+            return 'Malformed URL';
+        }
+
+        if (in_array('status_4xx', $flags, true)) {
+            return 'Client error ('.($result['status'] ?? '4xx').')';
+        }
+
+        if (! empty($flags)) {
+            return ucfirst(str_replace('_', ' ', $flags[0]));
+        }
+
+        return "Status: ".($result['status'] ?? 'unknown');
     }
 
     /**

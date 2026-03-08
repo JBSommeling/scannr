@@ -316,6 +316,7 @@ class IntegrityScorerTest extends TestCase
 
         $this->assertEquals(1, $result->summary['criticalIssues']);
         $this->assertEquals(2, $result->summary['warnings']);
+        $this->assertEquals(2, $result->summary['brokenLinks']); // 404 internal + 405 external
         $this->assertEquals(1, $result->summary['manualVerification']);
     }
 
@@ -503,6 +504,7 @@ class IntegrityScorerTest extends TestCase
         // Summary counts
         $this->assertEquals(2, $result->summary['criticalIssues']);
         $this->assertEquals(4, $result->summary['warnings']);
+        $this->assertEquals(4, $result->summary['brokenLinks']); // 404 + status 0 (malformed) + 405 + 403
         $this->assertEquals(2, $result->summary['manualVerification']);
 
         // Penalty count

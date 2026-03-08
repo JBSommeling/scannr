@@ -60,6 +60,7 @@ class IntegrityScorer
         $criticalIssues = 0;
         $warnings = 0;
         $manualVerification = 0;
+        $brokenLinks = 0;
 
         foreach ($results as $result) {
             $analysis = $result['analysis'] ?? [];
@@ -79,6 +80,16 @@ class IntegrityScorer
             }
             if ($verification === 'recommended') {
                 $manualVerification++;
+            }
+
+            // Count broken links (non-2xx, non-timeout, non-healthy-form)
+            $statusInt = is_numeric($status) ? (int) $status : 0;
+            $isOk = $statusInt >= 200 && $statusInt < 300;
+            $isTimeout = $status === 'timeout';
+            $isHealthyForm = in_array('form_endpoint', $flags, true)
+                && in_array($statusInt, [400, 401, 403, 405, 422, 429], true);
+            if (! $isOk && ! $isTimeout && ! $isHealthyForm && $status !== '') {
+                $brokenLinks++;
             }
 
             // Determine the penalizing issue type for this result
@@ -138,6 +149,7 @@ class IntegrityScorer
             summary: [
                 'criticalIssues' => $criticalIssues,
                 'warnings' => $warnings,
+                'brokenLinks' => $brokenLinks,
                 'manualVerification' => $manualVerification,
             ],
             gradeThresholds: $gradeThresholds,

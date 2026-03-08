@@ -145,6 +145,11 @@ class SeverityEvaluator
             return Confidence::HIGH;
         }
 
+        // Check for definitive HTTP status — a clear 2xx or 4xx response means
+        // we verified the link, regardless of how it was discovered
+        $hasStatus4xx = in_array(LinkFlag::STATUS_4XX, $flags, true);
+        $hasVerifiedStatus = $hasStatus4xx || (is_numeric($status) && (int) $status >= 200 && (int) $status < 500);
+
         // Low confidence: likely false positives
         if ($hasExternalPlatform && $hasBotProtection) {
             return Confidence::LOW;
@@ -154,7 +159,7 @@ class SeverityEvaluator
             return Confidence::LOW;
         }
 
-        if ($hasJsBundleExtracted && $isExternal) {
+        if ($hasJsBundleExtracted && $isExternal && ! $hasVerifiedStatus) {
             return Confidence::LOW;
         }
 
@@ -171,7 +176,7 @@ class SeverityEvaluator
             return Confidence::MEDIUM;
         }
 
-        if ($hasJsBundleExtracted) {
+        if ($hasJsBundleExtracted && ! $hasVerifiedStatus) {
             return Confidence::MEDIUM;
         }
 

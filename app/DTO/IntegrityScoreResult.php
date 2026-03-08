@@ -17,7 +17,7 @@ readonly class IntegrityScoreResult
      * @param  string  $gradeEmoji  Emoji indicator: 🟢, 🟡, 🟠, 🔴.
      * @param  array<string, float>  $categoryScores  Sub-scores keyed by category.
      * @param  array<array{flag: string, basePenalty: float, confidence: string, multiplier: float, dampening: float, effectivePenalty: float, url: string}>  $penalties  Individual penalty details.
-     * @param  array{criticalIssues: int, warnings: int, manualVerification: int}  $summary  Issue count summary.
+     * @param  array{criticalIssues: int, warnings: int, brokenLinks: int, manualVerification: int}  $summary  Issue count summary.
      */
     public function __construct(
         public float $overallScore,
@@ -35,7 +35,7 @@ readonly class IntegrityScoreResult
      * @param  float  $overallScore
      * @param  array<string, float>  $categoryScores
      * @param  array  $penalties
-     * @param  array{criticalIssues: int, warnings: int, manualVerification: int}  $summary
+     * @param  array{criticalIssues: int, warnings: int, brokenLinks: int, manualVerification: int}  $summary
      * @param  array  $gradeThresholds  Grade threshold config.
      */
     public static function create(
@@ -72,6 +72,7 @@ readonly class IntegrityScoreResult
         ], [], [
             'criticalIssues' => 0,
             'warnings' => 0,
+            'brokenLinks' => 0,
             'manualVerification' => 0,
         ]);
     }
@@ -112,7 +113,7 @@ readonly class IntegrityScoreResult
      *     gradeEmoji: string,
      *     categoryScores: array<string, float>,
      *     penalties: array,
-     *     summary: array{criticalIssues: int, warnings: int, manualVerification: int}
+     *     summary: array{criticalIssues: int, warnings: int, brokenLinks: int, manualVerification: int}
      * }
      */
     public function toArray(): array
