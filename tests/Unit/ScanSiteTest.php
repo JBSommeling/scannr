@@ -18,7 +18,7 @@ class ScanSiteTest extends TestCase
     {
         parent::setUp();
         $scanStatistics = new ScanStatistics;
-        $this->formatter = new ResultFormatterService($scanStatistics, new IntegrityScorer);
+        $this->formatter = new ResultFormatterService($scanStatistics, new IntegrityScorer($scanStatistics));
         $this->reflection = new ReflectionClass($this->formatter);
     }
 
