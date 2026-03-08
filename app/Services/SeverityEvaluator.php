@@ -141,7 +141,17 @@ class SeverityEvaluator
         $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
 
         // High confidence: deterministic issues override any noise signals
-        if ($hasDeveloperLeftover || $hasMalformedUrl) {
+        // Exception: if the malformed URL came from a JS bundle, it may be a
+        // template literal in compiled code — not something the site owner wrote.
+        if ($hasDeveloperLeftover) {
+            return Confidence::HIGH;
+        }
+
+        if ($hasMalformedUrl && $hasJsBundleExtracted) {
+            return Confidence::LOW;
+        }
+
+        if ($hasMalformedUrl) {
             return Confidence::HIGH;
         }
 

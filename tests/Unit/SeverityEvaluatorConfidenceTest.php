@@ -51,15 +51,16 @@ class SeverityEvaluatorConfidenceTest extends TestCase
         $this->assertEquals(Confidence::HIGH, $confidence);
     }
 
-    public function test_malformed_url_in_js_bundle_with_indirect_ref_still_high(): void
+    public function test_malformed_url_in_js_bundle_gets_low_confidence(): void
     {
+        // Template literals in compiled scripts are not URLs the site owner wrote
         $confidence = $this->evaluator->evaluateConfidence(
             [LinkFlag::DETECTED_IN_JS_BUNDLE, LinkFlag::MALFORMED_URL, LinkFlag::INDIRECT_REFERENCE],
             0,
             true
         );
 
-        $this->assertEquals(Confidence::HIGH, $confidence);
+        $this->assertEquals(Confidence::LOW, $confidence);
     }
 
     public function test_indirect_reference_without_malformed_gets_low(): void
