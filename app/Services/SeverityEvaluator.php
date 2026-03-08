@@ -141,12 +141,17 @@ class SeverityEvaluator
         $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
 
         // High confidence: deterministic issues override any noise signals
-        // Exception: if the malformed URL came from a JS bundle, it may be a
-        // template literal in compiled code — not something the site owner wrote.
         if ($hasDeveloperLeftover) {
             return Confidence::HIGH;
         }
 
+        // Low confidence: indirect references are templates/patterns, inherently uncertain
+        if ($hasIndirectReference) {
+            return Confidence::LOW;
+        }
+
+        // Malformed URL from JS bundle — likely library template literal,
+        // not something the site owner wrote
         if ($hasMalformedUrl && $hasJsBundleExtracted) {
             return Confidence::LOW;
         }
@@ -162,10 +167,6 @@ class SeverityEvaluator
 
         // Low confidence: likely false positives
         if ($hasExternalPlatform && $hasBotProtection) {
-            return Confidence::LOW;
-        }
-
-        if ($hasIndirectReference) {
             return Confidence::LOW;
         }
 

@@ -113,7 +113,6 @@ class LinkFlagService
 
         if ($hasSuspiciousSyntax) {
             $flags[] = LinkFlag::MALFORMED_URL;
-            $flags[] = LinkFlag::INDIRECT_REFERENCE;
         }
 
         return $flags;
@@ -140,9 +139,13 @@ class LinkFlagService
             $flags[] = LinkFlag::DEVELOPER_LEFTOVER;
         }
 
-        // Check for malformed URL syntax
-        if ($this->hasMalformedSyntax($url)) {
+        // Check for malformed URL syntax (template literals, control chars)
+        if ($this->hasMalformedUrlSyntax($url)) {
             $flags[] = LinkFlag::MALFORMED_URL;
+        }
+
+        // Check for indirect reference patterns (path parameters, extraction artifacts)
+        if ($this->hasIndirectReferenceSyntax($url)) {
             $flags[] = LinkFlag::INDIRECT_REFERENCE;
         }
 
@@ -212,13 +215,26 @@ class LinkFlagService
     }
 
     /**
-     * Check if a URL has malformed syntax (template literals, placeholders, etc.).
+     * Check if a URL has malformed syntax that makes it impossible to visit.
+     *
+     * Detects template literal / interpolation syntax and control characters:
+     * ${var}, #{var}, backticks, newlines.
      */
-    protected function hasMalformedSyntax(string $url): bool
+    public function hasMalformedUrlSyntax(string $url): bool
     {
-        // Check for template literal syntax with variable names, backticks, etc.
-        // Note: \{[a-zA-Z] requires a letter after the brace to avoid false positives
-        return (bool) preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url);
+        return (bool) preg_match('/\$\{|\#\{|`|\n/', $url);
+    }
+
+    /**
+     * Check if a URL contains template patterns or extraction artifacts
+     * suggesting it's not a concrete, visitable URL.
+     *
+     * Detects path parameters ({var}), closing-brace+code, trailing
+     * comma+word, and quote+comma patterns.
+     */
+    public function hasIndirectReferenceSyntax(string $url): bool
+    {
+        return (bool) preg_match('/\{[a-zA-Z]|\}[a-zA-Z]|,\w+$|"\s*,/', $url);
     }
 
     /**

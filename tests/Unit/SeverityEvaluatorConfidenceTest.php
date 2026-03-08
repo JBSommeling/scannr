@@ -53,7 +53,19 @@ class SeverityEvaluatorConfidenceTest extends TestCase
 
     public function test_malformed_url_in_js_bundle_gets_low_confidence(): void
     {
-        // Template literals in compiled scripts are not URLs the site owner wrote
+        // Malformed URL from JS bundle without indirect_reference (e.g. backtick/newline only)
+        $confidence = $this->evaluator->evaluateConfidence(
+            [LinkFlag::DETECTED_IN_JS_BUNDLE, LinkFlag::MALFORMED_URL],
+            0,
+            true
+        );
+
+        $this->assertEquals(Confidence::LOW, $confidence);
+    }
+
+    public function test_malformed_and_indirect_from_js_bundle_gets_low(): void
+    {
+        // Template literal like ${var} — fires both flags from JS bundle
         $confidence = $this->evaluator->evaluateConfidence(
             [LinkFlag::DETECTED_IN_JS_BUNDLE, LinkFlag::MALFORMED_URL, LinkFlag::INDIRECT_REFERENCE],
             0,

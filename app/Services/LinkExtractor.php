@@ -545,11 +545,11 @@ class LinkExtractor
                 $rawUrl = $match[1];
                 $postContext = $match[2] ?? '';
 
-                // Check for suspicious syntax in URL itself OR suspicious post-context patterns
-                // Post-context is suspicious if it has: quote+comma+letter (string concatenation)
-                // NOT suspicious: just quote+comma+quote (normal array/object syntax like ["url1", "url2"])
-                $hasSuspiciousSyntax = $this->hasSuspiciousDynamicUrlSyntax($rawUrl) ||
-                                      preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
+                // Check for malformed syntax and indirect reference patterns separately
+                $hasMalformedRaw = $this->linkFlagService->hasMalformedUrlSyntax($rawUrl);
+                // Post-context with quote+comma+letter suggests string concatenation (indirect only)
+                $hasIndirectRaw = $this->linkFlagService->hasIndirectReferenceSyntax($rawUrl) ||
+                                 preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
 
                 // Clean up any trailing punctuation or quotes
                 $url = rtrim($rawUrl, '.,;:"\')}>]');
@@ -586,12 +586,13 @@ class LinkExtractor
                     $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, ! $isInternal);
                     $flags = array_merge($flags, $urlFlags);
 
-                    // Only add malformed/indirect flags if the URL itself has suspicious syntax
-                    // (not based on post-context which can have false positives)
-                    if ($hasSuspiciousSyntax && $this->hasSuspiciousDynamicUrlSyntax($url)) {
+                    // Add malformed/indirect flags independently based on which signal fires
+                    if ($hasMalformedRaw && $this->linkFlagService->hasMalformedUrlSyntax($url)) {
                         if (! in_array(LinkFlag::MALFORMED_URL, $flags, true)) {
                             $flags[] = LinkFlag::MALFORMED_URL;
                         }
+                    }
+                    if ($hasIndirectRaw && $this->linkFlagService->hasIndirectReferenceSyntax($url)) {
                         if (! in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true)) {
                             $flags[] = LinkFlag::INDIRECT_REFERENCE;
                         }
@@ -606,30 +607,5 @@ class LinkExtractor
                 }
             }
         }
-    }
-
-    /**
-     * Check if a URL contains suspicious dynamic syntax indicating an incomplete template literal.
-     *
-     * Detects patterns like:
-     * - ${variable} - JavaScript template literal syntax
-     * - #{variable} - Ruby/CoffeeScript interpolation
-     * - {variable} - Vue, Angular, Handlebars interpolation (with letter after brace)
-     * - Backticks (`) - Incomplete template literal delimiters
-     * - Unencoded commas or newlines - Malformed URLs
-     * - Quotes followed by comma (array/concatenation fragments)
-     *
-     * @param  string  $url  The URL to check.
-     * @return bool True if the URL contains suspicious dynamic syntax.
-     */
-    protected function hasSuspiciousDynamicUrlSyntax(string $url): bool
-    {
-        // Check for template literal syntax, curly braces with variable names, backticks, newlines, trailing commas, or quote+comma patterns
-        // Note: \{[a-zA-Z] requires a letter after the brace to avoid matching URL-encoded braces like %7B
-        if (preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url)) {
-            return true;
-        }
-
-        return false;
     }
 }
