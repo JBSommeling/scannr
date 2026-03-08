@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\DTO\IntegrityScoreResult;
+use App\Enums\IssueType;
 use App\Enums\LinkFlag;
 
 /**
@@ -90,7 +91,7 @@ class IntegrityScorer
                 continue;
             }
 
-            $basePenalty = $penaltyWeights[$issueType] ?? 0;
+            $basePenalty = $penaltyWeights[$issueType->value] ?? 0;
             if ($basePenalty <= 0) {
                 continue;
             }
@@ -99,8 +100,8 @@ class IntegrityScorer
             $multiplier = $confidenceMultipliers[$confidence] ?? 1.0;
 
             // Duplicate dampening
-            $occurrenceCounts[$issueType] = ($occurrenceCounts[$issueType] ?? 0) + 1;
-            $count = $occurrenceCounts[$issueType];
+            $occurrenceCounts[$issueType->value] = ($occurrenceCounts[$issueType->value] ?? 0) + 1;
+            $count = $occurrenceCounts[$issueType->value];
             $dampeningFactor = $this->calculateDampening($count, $dampening);
 
             $effectivePenalty = $basePenalty * $multiplier * $dampeningFactor;
@@ -108,13 +109,13 @@ class IntegrityScorer
             $totalPenalty += $effectivePenalty;
 
             // Assign to category
-            $category = $this->resolveCategory($issueType, $categoryTypes);
+            $category = $this->resolveCategory($issueType->value, $categoryTypes);
             if ($category !== null) {
                 $categoryPenalties[$category] += $effectivePenalty;
             }
 
             $appliedPenalties[] = [
-                'flag' => $issueType,
+                'issueType' => $issueType->value,
                 'basePenalty' => $basePenalty,
                 'confidence' => $confidence,
                 'multiplier' => $multiplier,
@@ -156,7 +157,7 @@ class IntegrityScorer
      * @param  string  $type  'internal' or 'external'
      * @param  string|int  $status  HTTP status code
      */
-    protected function resolveIssueType(array $flags, string $type, string|int $status): ?string
+    protected function resolveIssueType(array $flags, string $type, string|int $status): ?IssueType
     {
         $hasFormEndpoint = in_array(LinkFlag::FORM_ENDPOINT->value, $flags, true);
         $hasStatus4xx = in_array(LinkFlag::STATUS_4XX->value, $flags, true);
@@ -170,59 +171,58 @@ class IntegrityScorer
             if (in_array($statusInt, $healthyFormStatuses, true)) {
                 return null;
             }
-            // Form endpoint with 404 = broken
-            return 'form_endpoint_404';
+            return IssueType::FORM_ENDPOINT_404;
         }
 
         // Priority order: most severe first
         if (in_array(LinkFlag::DEVELOPER_LEFTOVER->value, $flags, true)) {
-            return 'developer_leftover';
+            return IssueType::DEVELOPER_LEFTOVER;
         }
 
         if (in_array(LinkFlag::CONNECTION_ERROR->value, $flags, true) && ! $hasExternalPlatform) {
-            return 'connection_error';
+            return IssueType::CONNECTION_ERROR;
         }
 
         if (in_array(LinkFlag::STATUS_5XX->value, $flags, true)) {
-            return 'status_5xx';
+            return IssueType::STATUS_5XX;
         }
 
         // Internal 4xx without bot protection
         if ($hasStatus4xx && $type === 'internal' && ! $hasBotProtection) {
-            return 'status_4xx_internal';
+            return IssueType::STATUS_4XX_INTERNAL;
         }
 
         if (in_array(LinkFlag::MALFORMED_URL->value, $flags, true)) {
-            return 'malformed_url';
+            return IssueType::MALFORMED_URL;
         }
 
         if (in_array(LinkFlag::EXCESSIVE_REDIRECTS->value, $flags, true)) {
-            return 'excessive_redirects';
+            return IssueType::EXCESSIVE_REDIRECTS;
         }
 
         if (in_array(LinkFlag::HTTP_ON_HTTPS->value, $flags, true)) {
-            return 'http_on_https';
+            return IssueType::HTTP_ON_HTTPS;
         }
 
         if (in_array(LinkFlag::TIMEOUT->value, $flags, true)) {
-            return 'timeout';
+            return IssueType::TIMEOUT;
         }
 
         if (in_array(LinkFlag::REDIRECT_CHAIN->value, $flags, true)) {
-            return 'redirect_chain';
+            return IssueType::REDIRECT_CHAIN;
         }
 
         if ($hasBotProtection) {
-            return 'bot_protection';
+            return IssueType::BOT_PROTECTION;
         }
 
         if (in_array(LinkFlag::RATE_LIMITED->value, $flags, true)) {
-            return 'rate_limited';
+            return IssueType::RATE_LIMITED;
         }
 
         // External 4xx with platform flag but no bot protection — likely a genuinely broken external link
         if ($hasStatus4xx && $hasExternalPlatform) {
-            return 'status_4xx_external_platform';
+            return IssueType::STATUS_4XX_EXTERNAL_PLATFORM;
         }
 
         return null;

@@ -189,6 +189,9 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(0, $stats['redirectChainCount']); // single redirect is not a chain
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
+        $this->assertEquals(0, $stats['pagesScanned']); // no sourcePage in test data
+        $this->assertEquals(0, $stats['assetsScanned']); // no sourceElement in test data
+        $this->assertEquals(0, $stats['externalLinks']); // all internal
     }
 
     public function test_calculate_stats_handles_empty_results(): void
@@ -715,5 +718,60 @@ class ScanStatisticsTest extends TestCase
 
         $this->assertCount(1, $filtered);
         $this->assertEquals('404', array_values($filtered)[0]['status']);
+    }
+
+    public function test_calculate_stats_counts_pages_scanned(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/a', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/b', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/c', 'sourcePage' => 'https://example.com/about', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(2, $stats['pagesScanned']);
+    }
+
+    public function test_calculate_stats_counts_assets_scanned(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/style.css', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'link', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/app.js', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'script', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/logo.png', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'img', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/about', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://cdn.example.com/font.woff', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'external', 'sourceElement' => 'link', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        // 3 internal non-anchor elements (link, script, img); anchor and external link excluded
+        $this->assertEquals(3, $stats['assetsScanned']);
+    }
+
+    public function test_calculate_stats_counts_external_links(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/a', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://twitter.com/test', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'external', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://linkedin.com/in/test', 'sourcePage' => 'https://example.com/', 'status' => '405', 'type' => 'external', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['bot_protection'], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(2, $stats['externalLinks']);
+    }
+
+    public function test_calculate_stats_granular_counts_in_existing_stats(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/page', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertArrayHasKey('pagesScanned', $stats);
+        $this->assertArrayHasKey('assetsScanned', $stats);
+        $this->assertArrayHasKey('externalLinks', $stats);
     }
 }

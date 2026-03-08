@@ -614,7 +614,7 @@ class ResultFormatterServiceTest extends TestCase
 
         $firstLine = $output->lines[0];
         $this->assertStringContainsString('Site Integrity Score', $firstLine);
-        $headerLine = $output->lines[1];
+        $headerLine = $output->lines[2];
         $this->assertStringContainsString('URL', $headerLine);
         $this->assertStringContainsString('Source', $headerLine);
         $this->assertStringContainsString('Status', $headerLine);
@@ -628,8 +628,8 @@ class ResultFormatterServiceTest extends TestCase
 
         $this->formatter->format($results, $config, $output);
 
-        // Score comment + Header + 3 data rows
-        $this->assertCount(5, $output->lines);
+        // Score comment + Totals comment + Header + 3 data rows
+        $this->assertCount(6, $output->lines);
     }
 
     public function test_format_csv_escapes_quotes(): void
@@ -654,7 +654,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // Quotes should be doubled for CSV escaping
-        $this->assertStringContainsString('""test""', $output->lines[2]);
+        $this->assertStringContainsString('""test""', $output->lines[3]);
     }
 
     public function test_format_csv_includes_element_column(): void
@@ -665,7 +665,7 @@ class ResultFormatterServiceTest extends TestCase
 
         $this->formatter->format($results, $config, $output);
 
-        $firstLine = $output->lines[1];
+        $firstLine = $output->lines[2];
         $this->assertStringContainsString('Element', $firstLine);
     }
 
@@ -680,7 +680,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t=CMD", $output->lines[2]);
+        $this->assertStringContainsString("\t=CMD", $output->lines[3]);
     }
 
     public function test_format_csv_sanitizes_url_starting_with_plus(): void
@@ -690,7 +690,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t+1-2", $output->lines[2]);
+        $this->assertStringContainsString("\t+1-2", $output->lines[3]);
     }
 
     public function test_format_csv_sanitizes_url_starting_with_minus(): void
@@ -700,7 +700,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t-2+3", $output->lines[2]);
+        $this->assertStringContainsString("\t-2+3", $output->lines[3]);
     }
 
     public function test_format_csv_sanitizes_url_starting_with_at(): void
@@ -710,7 +710,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t@SUM", $output->lines[2]);
+        $this->assertStringContainsString("\t@SUM", $output->lines[3]);
     }
 
     public function test_format_csv_sanitizes_source_page_formula(): void
@@ -730,7 +730,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t=HYPERLINK", $output->lines[2]);
+        $this->assertStringContainsString("\t=HYPERLINK", $output->lines[3]);
     }
 
     public function test_format_csv_sanitizes_formula_url_in_redirect_chain(): void
@@ -750,7 +750,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t=evil", $output->lines[2]);
+        $this->assertStringContainsString("\t=evil", $output->lines[3]);
     }
 
     public function test_format_csv_does_not_modify_normal_url(): void
@@ -760,8 +760,8 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString('"https://example.com/page"', $output->lines[2]);
-        $this->assertStringNotContainsString("\thttps", $output->lines[2]);
+        $this->assertStringContainsString('"https://example.com/page"', $output->lines[3]);
+        $this->assertStringNotContainsString("\thttps", $output->lines[3]);
     }
 
     public function test_format_csv_sanitization_preserves_quote_escaping(): void
@@ -772,7 +772,7 @@ class ResultFormatterServiceTest extends TestCase
         $output = $this->createMockOutput();
         $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
 
-        $this->assertStringContainsString("\t=CMD|\"\"calc\"\"", $output->lines[2]);
+        $this->assertStringContainsString("\t=CMD|\"\"calc\"\"", $output->lines[3]);
     }
 
     /** Helper to build a single CSV result with the given URL. */
@@ -1067,7 +1067,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // CSV should include redirects column with chain
-        $dataLine = $output->lines[2];
+        $dataLine = $output->lines[3];
         $this->assertStringContainsString('step1', $dataLine);
         $this->assertStringContainsString('step2', $dataLine);
     }
@@ -1326,7 +1326,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // Data line should have empty redirects
-        $dataLine = $output->lines[2];
+        $dataLine = $output->lines[3];
         // Redirects column should be empty (consecutive commas or empty quoted string)
         $this->assertStringContainsString('""', $dataLine);
     }
@@ -1742,10 +1742,10 @@ class ResultFormatterServiceTest extends TestCase
 
         // Total scanned should reflect filtered count
         $lines = implode("\n", $output->lines);
-        $this->assertStringContainsString('Total scanned:  1', $lines);
+        $this->assertStringContainsString('Total scanned:     1', $lines);
 
         // Broken count should be 0 (the 404 fonts.googleapis.com is noise)
-        $this->assertStringContainsString('Broken:         0', $lines);
+        $this->assertStringContainsString('Broken:            0', $lines);
     }
 
     public function test_format_table_shows_noise_urls_with_advanced_flag(): void
@@ -1808,7 +1808,7 @@ class ResultFormatterServiceTest extends TestCase
 
         // Total scanned should be 4
         $lines = implode("\n", $output->lines);
-        $this->assertStringContainsString('Total scanned:  4', $lines);
+        $this->assertStringContainsString('Total scanned:     4', $lines);
     }
 
     public function test_to_json_array_hides_noise_urls_by_default(): void
@@ -2062,8 +2062,8 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         $csvLines = $output->lines;
-        $this->assertStringContainsString('Flags,Confidence,Verification', $csvLines[1]);
-        $this->assertStringContainsString('detected_in_js_bundle', $csvLines[2]);
+        $this->assertStringContainsString('Flags,Confidence,Verification', $csvLines[2]);
+        $this->assertStringContainsString('detected_in_js_bundle', $csvLines[3]);
     }
 
     public function test_format_table_shows_verification_annotation_for_suspicious_url_with_404(): void

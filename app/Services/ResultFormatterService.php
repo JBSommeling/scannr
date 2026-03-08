@@ -44,7 +44,7 @@ class ResultFormatterService
         // Display based on format
         match ($config->outputFormat) {
             'json' => $this->displayJson($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
-            'csv' => $this->displayCsv($filtered, $output, $error),
+            'csv' => $this->displayCsv($filtered, $stats, $totalScanned, $output, $error),
             default => $this->displayTable($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
         };
     }
@@ -65,16 +65,19 @@ class ResultFormatterService
         $this->displayIntegrityScore($scoreResult, $output);
 
         $output->info('Summary:');
-        $output->line("  Total scanned:  {$totalScanned}");
+        $output->line("  Total scanned:     {$totalScanned}");
 
         if ($isFiltered) {
-            $output->line("  Filtered:       {$stats['total']}");
+            $output->line("  Filtered:          {$stats['total']}");
         }
 
-        $output->line("  Working (2xx):  {$stats['ok']}");
-        $output->line("  Redirects:      {$stats['redirects']}");
-        $output->line("  Broken:         {$stats['broken']}");
-        $output->line("  Timeouts:       {$stats['timeouts']}");
+        $output->line("  Pages scanned:     {$stats['pagesScanned']}");
+        $output->line("  Assets scanned:    {$stats['assetsScanned']}");
+        $output->line("  External links:    {$stats['externalLinks']}");
+        $output->line("  Working (2xx):     {$stats['ok']}");
+        $output->line("  Redirects:         {$stats['redirects']}");
+        $output->line("  Broken:            {$stats['broken']}");
+        $output->line("  Timeouts:          {$stats['timeouts']}");
         $output->newLine();
 
         // Redirect chain summary
@@ -394,7 +397,7 @@ class ResultFormatterService
     /**
      * Display results as CSV.
      */
-    protected function displayCsv(array $results, OutputInterface $output, ?string $error = null): void
+    protected function displayCsv(array $results, array $stats, int $totalScanned, OutputInterface $output, ?string $error = null): void
     {
         // Display error as comment line at the top if present
         if ($error !== null) {
@@ -404,6 +407,7 @@ class ResultFormatterService
         // Display integrity score as comment header
         $scoreResult = $this->integrityScorer->calculate($results);
         $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
+        $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
 
         $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 
