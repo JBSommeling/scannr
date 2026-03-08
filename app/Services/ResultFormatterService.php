@@ -74,6 +74,7 @@ class ResultFormatterService
         }
 
         $output->line("  Pages scanned:     {$stats['pagesScanned']}");
+        $output->line("  Internal links:    {$stats['internalLinks']}");
         $output->line("  Assets scanned:    {$stats['assetsScanned']}");
         $output->line("  External links:    {$stats['externalLinks']}");
         $output->line("  Working (2xx):     {$stats['ok']}");
@@ -411,7 +412,7 @@ class ResultFormatterService
 
         // Display integrity score as comment header (computed from unfiltered results)
         $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
-        $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+        $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
 
         $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 

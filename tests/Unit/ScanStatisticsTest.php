@@ -190,7 +190,8 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
         $this->assertEquals(0, $stats['pagesScanned']); // no sourcePage in test data
-        $this->assertEquals(0, $stats['assetsScanned']); // no sourceElement in test data
+        $this->assertEquals(5, $stats['internalLinks']); // all internal, default element 'a'
+        $this->assertEquals(0, $stats['assetsScanned']); // no non-anchor elements
         $this->assertEquals(0, $stats['externalLinks']); // all internal
     }
 
@@ -747,6 +748,12 @@ class ScanStatisticsTest extends TestCase
 
         // 3 internal non-anchor elements (link, script, img); anchor and external link excluded
         $this->assertEquals(3, $stats['assetsScanned']);
+        // 1 internal <a> element
+        $this->assertEquals(1, $stats['internalLinks']);
+        // 1 external element
+        $this->assertEquals(1, $stats['externalLinks']);
+        // All three sum to total
+        $this->assertEquals($stats['total'], $stats['internalLinks'] + $stats['assetsScanned'] + $stats['externalLinks']);
     }
 
     public function test_calculate_stats_counts_external_links(): void
@@ -771,6 +778,7 @@ class ScanStatisticsTest extends TestCase
         $stats = $this->scanStatistics->calculateStats($results);
 
         $this->assertArrayHasKey('pagesScanned', $stats);
+        $this->assertArrayHasKey('internalLinks', $stats);
         $this->assertArrayHasKey('assetsScanned', $stats);
         $this->assertArrayHasKey('externalLinks', $stats);
     }

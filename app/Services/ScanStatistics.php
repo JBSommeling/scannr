@@ -31,6 +31,7 @@ class ScanStatistics
      *     warningCount: int,
      *     lowConfidenceCount: int,
      *     pagesScanned: int,
+     *     internalLinks: int,
      *     assetsScanned: int,
      *     externalLinks: int
      * }
@@ -67,10 +68,11 @@ class ScanStatistics
         $warningCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
         $lowConfidenceCount = count(array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
 
-        // Granular scan counts
+        // Granular scan counts (internalLinks + assetsScanned + externalLinks = total)
         $pagesScanned = count(array_unique(array_column($results, 'sourcePage')));
         $nonAnchorElements = ['link', 'script', 'img', 'video', 'audio', 'source', 'form'];
         $assetsScanned = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && in_array($r['sourceElement'] ?? '', $nonAnchorElements, true)));
+        $internalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && ! in_array($r['sourceElement'] ?? 'a', $nonAnchorElements, true)));
         $externalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'external'));
 
         return [
@@ -86,6 +88,7 @@ class ScanStatistics
             'warningCount' => $warningCount,
             'lowConfidenceCount' => $lowConfidenceCount,
             'pagesScanned' => $pagesScanned,
+            'internalLinks' => $internalLinks,
             'assetsScanned' => $assetsScanned,
             'externalLinks' => $externalLinks,
         ];
