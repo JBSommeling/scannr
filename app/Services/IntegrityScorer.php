@@ -268,85 +268,31 @@ class IntegrityScorer
     }
 
     /**
-     * Get scoring configuration with defaults.
+     * Get scoring configuration.
+     *
+     * config/scanner.php (key: integrity_scoring) is the single source of truth.
+     * All defaults live there; this method is just a thin accessor.
+     *
+     * @throws \RuntimeException if the configuration is unavailable or empty.
      */
     protected function getConfig(): array
     {
-        $defaults = [
-            'penalties' => [
-                'developer_leftover' => 12,
-                'status_4xx_internal' => 10,
-                'status_5xx' => 10,
-                'connection_error' => 10,
-                'form_endpoint_404' => 10,
-                'status_4xx_external_platform' => 5,
-                'malformed_url' => 8,
-                'excessive_redirects' => 5,
-                'http_on_https' => 4,
-                'redirect_chain' => 3,
-                'timeout' => 3,
-                'bot_protection' => 2,
-                'rate_limited' => 1,
-            ],
-            'confidence_multipliers' => [
-                'high' => 1.0,
-                'medium' => 0.6,
-                'low' => 0.3,
-            ],
-            'category_penalty_multiplier' => 2.5,
-            'dampening' => [
-                'tier_1_max' => 1,
-                'tier_2_max' => 5,
-                'tier_2_factor' => 0.5,
-                'tier_3_factor' => 0.25,
-            ],
-            'categories' => [
-                'link_integrity' => [
-                    'weight' => 0.45,
-                    'types' => [
-                        'status_4xx_internal', 'status_5xx',
-                        'connection_error', 'form_endpoint_404', 'timeout',
-                        'status_4xx_external_platform',
-                    ],
-                ],
-                'security_hygiene' => [
-                    'weight' => 0.20,
-                    'types' => [
-                        'http_on_https',
-                    ],
-                ],
-                'technical_hygiene' => [
-                    'weight' => 0.15,
-                    'types' => [
-                        'developer_leftover', 'malformed_url',
-                    ],
-                ],
-                'redirect_health' => [
-                    'weight' => 0.10,
-                    'types' => [
-                        'redirect_chain', 'excessive_redirects',
-                    ],
-                ],
-                'link_verifiability' => [
-                    'weight' => 0.10,
-                    'types' => [
-                        'bot_protection', 'rate_limited',
-                    ],
-                ],
-            ],
-            'grades' => [
-                'excellent' => 90,
-                'good' => 75,
-                'needs_attention' => 50,
-            ],
-        ];
-
         try {
-            $configured = config('scanner.integrity_scoring', []);
-
-            return array_replace_recursive($defaults, $configured ?? []);
-        } catch (\Throwable) {
-            return $defaults;
+            $config = config('scanner.integrity_scoring');
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                'Failed to load integrity scoring configuration: '.$e->getMessage(),
+                0,
+                $e
+            );
         }
+
+        if (! is_array($config) || empty($config)) {
+            throw new \RuntimeException(
+                'Integrity scoring configuration (scanner.integrity_scoring) is missing or empty.'
+            );
+        }
+
+        return $config;
     }
 }
