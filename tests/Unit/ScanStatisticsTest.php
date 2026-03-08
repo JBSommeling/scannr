@@ -470,4 +470,106 @@ class ScanStatisticsTest extends TestCase
 
         $this->assertEquals(0, $stats['lowConfidenceCount']);
     }
+
+    // =============================================
+    // Form endpoint broken/healthy classification
+    // =============================================
+
+    private function makeFormEndpointResult(string $status): array
+    {
+        return [
+            'url' => 'https://app.example.com/api/contacts',
+            'sourcePage' => 'https://example.com',
+            'status' => $status,
+            'type' => 'internal',
+            'sourceElement' => 'form',
+            'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+            'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+            'network' => ['retryAfter' => null],
+        ];
+    }
+
+    public function test_form_endpoint_404_is_counted_as_broken(): void
+    {
+        $results = [$this->makeFormEndpointResult('404')];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    public function test_form_endpoint_500_is_counted_as_broken(): void
+    {
+        $result = $this->makeFormEndpointResult('500');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    public function test_form_endpoint_503_is_counted_as_broken(): void
+    {
+        $result = $this->makeFormEndpointResult('503');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    /**
+     * @dataProvider healthyFormEndpointStatusProvider
+     */
+    public function test_form_endpoint_healthy_statuses_not_counted_as_broken(string $status): void
+    {
+        $results = [$this->makeFormEndpointResult($status)];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(0, $stats['broken']);
+    }
+
+    public static function healthyFormEndpointStatusProvider(): array
+    {
+        return [
+            '400 Bad Request' => ['400'],
+            '401 Unauthorized' => ['401'],
+            '403 Forbidden' => ['403'],
+            '405 Method Not Allowed' => ['405'],
+            '422 Unprocessable Entity' => ['422'],
+            '429 Too Many Requests' => ['429'],
+        ];
+    }
+
+    public function test_filter_broken_excludes_healthy_form_endpoints(): void
+    {
+        $results = [$this->makeFormEndpointResult('422')];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertEmpty($filtered);
+    }
+
+    public function test_filter_broken_includes_404_form_endpoint(): void
+    {
+        $results = [$this->makeFormEndpointResult('404')];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+    }
+
+    public function test_filter_broken_includes_500_form_endpoint(): void
+    {
+        $result = $this->makeFormEndpointResult('500');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+    }
 }

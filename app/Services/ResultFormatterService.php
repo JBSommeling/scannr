@@ -467,7 +467,17 @@ class ResultFormatterService
     {
         $flags = $result['analysis']['flags'] ?? [];
 
-        return in_array('form_endpoint', $flags, true);
+        if (! in_array('form_endpoint', $flags, true)) {
+            return false;
+        }
+
+        $status = (int) ($result['status'] ?? 0);
+
+        // Only specific non-2xx statuses are "healthy" for form endpoints.
+        // 404 and 5xx mean the endpoint is genuinely broken.
+        $healthyStatuses = [400, 401, 403, 405, 422, 429];
+
+        return in_array($status, $healthyStatuses, true) && $status < 500;
     }
 
     /**

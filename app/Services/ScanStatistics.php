@@ -41,7 +41,7 @@ class ScanStatistics
 
         $ok = count(array_filter($results, fn ($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
         $redirects = count(array_filter($results, fn ($r) => ! empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
-        $broken = count(array_filter($results, fn ($r) => ! $isOk($r) && ($r['status'] ?? '') !== 'timeout'));
+        $broken = count(array_filter($results, fn ($r) => ! $isOk($r) && ($r['status'] ?? '') !== 'timeout' && ! $this->isHealthyFormEndpoint($r)));
         $timeouts = count(array_filter($results, fn ($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
@@ -96,6 +96,27 @@ class ScanStatistics
     }
 
     /**
+     * Check if a result is a form endpoint responding normally (non-2xx but functional).
+     * A 404 form endpoint is genuinely broken and should NOT be excluded.
+     */
+    protected function isHealthyFormEndpoint(array $result): bool
+    {
+        $flags = $result['analysis']['flags'] ?? [];
+
+        if (! in_array('form_endpoint', $flags, true)) {
+            return false;
+        }
+
+        $status = (int) ($result['status'] ?? 0);
+
+        // Only specific non-2xx statuses are "healthy" for form endpoints.
+        // 404 and 5xx mean the endpoint is genuinely broken.
+        $healthyStatuses = [400, 401, 403, 405, 422, 429];
+
+        return in_array($status, $healthyStatuses, true) && $status < 500;
+    }
+
+    /**
      * Filter scan results by status.
      *
      * @param  array  $results  Array of scan result items.
@@ -106,7 +127,7 @@ class ScanStatistics
     {
         return match ($filter) {
             'ok' => array_filter($results, fn ($r) => $this->isOkResult($r)),
-            'broken' => array_filter($results, fn ($r) => ! $this->isOkResult($r)),
+            'broken' => array_filter($results, fn ($r) => ! $this->isOkResult($r) && ! $this->isHealthyFormEndpoint($r)),
             default => $results,
         };
     }

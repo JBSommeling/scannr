@@ -401,6 +401,124 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertNotContains('Broken Links:', $output->errors);
     }
 
+    public function test_format_table_form_endpoint_404_appears_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '404',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertContains('Broken Links:', $output->errors);
+    }
+
+    public function test_format_table_form_endpoint_500_appears_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '500',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertContains('Broken Links:', $output->errors);
+    }
+
+    public function test_format_json_form_endpoint_429_not_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '429',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'rate_limited', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertEmpty($decoded['brokenLinks']);
+    }
+
+    public function test_format_json_form_endpoint_404_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '404',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertCount(1, $decoded['brokenLinks']);
+    }
+
+    public function test_format_json_form_endpoint_500_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '500',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertCount(1, $decoded['brokenLinks']);
+    }
+
     // ==================
     // JSON format tests
     // ==================
