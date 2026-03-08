@@ -271,21 +271,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | External Platforms
-    |--------------------------------------------------------------------------
-    |
-    | Domains of external platforms known to have aggressive bot protection.
-    | When a link to one of these platforms returns a 403/405, it's flagged
-    | as EXTERNAL_PLATFORM + BOT_PROTECTION with low confidence, indicating
-    | a likely false positive rather than a truly broken link.
-    |
-    | Subdomains are automatically matched (e.g., www.linkedin.com matches
-    | linkedin.com).
-    |
-    */
-
-    /*
-    |--------------------------------------------------------------------------
     | Integrity Scoring
     |--------------------------------------------------------------------------
     |
@@ -334,8 +319,9 @@ return [
             'tier_3_factor' => 0.25,
         ],
 
-        // Category assignments — which penalty types belong to which category
-        // and the weight each category has in the overall score (must sum to 1.0)
+        // Category assignments — which penalty types belong to which category.
+        // The optional "weight" field expresses intended relative importance but
+        // is not currently applied by the IntegrityScorer when computing overallScore.
         'categories' => [
             'link_integrity' => [
                 'weight' => 0.55,

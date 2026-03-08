@@ -482,7 +482,7 @@ class ResultFormatterService
             return 'Excessive redirects';
         }
 
-        if (in_array('https_downgrade', $flags, true)) {
+        if (in_array('http_on_https', $flags, true)) {
             return 'HTTP on HTTPS site';
         }
 
