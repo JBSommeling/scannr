@@ -289,6 +289,7 @@ return [
             'status_5xx' => 10,
             'connection_error' => 10,
             'form_endpoint_404' => 10,
+            'status_4xx_external_platform' => 5,
             'malformed_url' => 8,
             'excessive_redirects' => 5,
             'http_on_https' => 4,
@@ -331,6 +332,7 @@ return [
                     'connection_error',
                     'form_endpoint_404',
                     'timeout',
+                    'status_4xx_external_platform',
                 ],
             ],
             'security_hygiene' => [

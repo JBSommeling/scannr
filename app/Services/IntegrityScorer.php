@@ -221,9 +221,9 @@ class IntegrityScorer
             return 'rate_limited';
         }
 
-        // External 4xx with platform flag but no bot protection — still a warning-level issue
+        // External 4xx with platform flag but no bot protection — likely a genuinely broken external link
         if ($hasStatus4xx && $hasExternalPlatform) {
-            return 'bot_protection';
+            return 'status_4xx_external_platform';
         }
 
         return null;
@@ -280,6 +280,7 @@ class IntegrityScorer
                 'status_5xx' => 10,
                 'connection_error' => 10,
                 'form_endpoint_404' => 10,
+                'status_4xx_external_platform' => 5,
                 'malformed_url' => 8,
                 'excessive_redirects' => 5,
                 'http_on_https' => 4,
@@ -306,6 +307,7 @@ class IntegrityScorer
                     'types' => [
                         'status_4xx_internal', 'status_5xx',
                         'connection_error', 'form_endpoint_404', 'timeout',
+                        'status_4xx_external_platform',
                     ],
                 ],
                 'security_hygiene' => [

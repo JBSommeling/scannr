@@ -641,6 +641,58 @@ class IntegrityScorerTest extends TestCase
         $this->assertLessThan(100, $result->categoryScores['technical_hygiene']);
     }
 
+    public function test_external_platform_4xx_without_bot_protection_uses_distinct_issue_type(): void
+    {
+        // external_platform + status_4xx without bot_protection flag = genuine broken external link,
+        // should NOT be labelled as bot_protection.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'status_4xx'], 'warning', 'high', 'external', 404, 'https://github.com/missing-page'),
+        ]);
+
+        // status_4xx_external_platform: -5 × 1.0 × 1.0 = -5 → overall 95
+        $this->assertEquals(95, $result->overallScore);
+
+        // Should penalise link_integrity, not link_verifiability
+        $this->assertLessThan(100, $result->categoryScores['link_integrity']);
+        $this->assertEquals(100, $result->categoryScores['link_verifiability']);
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+
+        // link_integrity = 100 - (5 × 2.5) = 87.5
+        $this->assertEquals(87.5, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_external_platform_4xx_with_bot_protection_still_uses_bot_protection_type(): void
+    {
+        // When bot_protection flag IS present, the penalty should stay as bot_protection
+        // (lower penalty — link is likely fine, scanner was blocked).
+        $result = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 403, 'https://linkedin.com/in/user'),
+        ]);
+
+        // bot_protection: -2 × 0.3 × 1.0 = -0.6 → overall 99.4
+        $this->assertEquals(99.4, $result->overallScore);
+
+        // Should penalise link_verifiability, not link_integrity
+        $this->assertEquals(100, $result->categoryScores['link_integrity']);
+        $this->assertLessThan(100, $result->categoryScores['link_verifiability']);
+    }
+
+    public function test_external_platform_4xx_penalised_more_than_bot_protection(): void
+    {
+        // A genuine external broken link should carry a higher penalty than a bot-blocked one.
+        $brokenResult = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'status_4xx'], 'warning', 'high', 'external', 404),
+        ]);
+        $botBlockedResult = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'high', 'external', 403),
+        ]);
+
+        $brokenPenalty = 100 - $brokenResult->overallScore;
+        $botBlockedPenalty = 100 - $botBlockedResult->overallScore;
+
+        $this->assertGreaterThan($botBlockedPenalty, $brokenPenalty);
+    }
+
     public function test_exact_critical_grade_threshold(): void
     {
         // Push score below 50 → Critical grade
