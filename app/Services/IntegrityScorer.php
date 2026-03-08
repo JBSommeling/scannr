@@ -123,8 +123,9 @@ class IntegrityScorer
         }
 
         $categoryScores = [];
+        $categoryMultiplier = $config['category_penalty_multiplier'];
         foreach ($categoryPenalties as $cat => $penalty) {
-            $categoryScores[$cat] = 100 - $penalty;
+            $categoryScores[$cat] = max(0, 100 - ($penalty * $categoryMultiplier));
         }
 
         // Overall score = direct subtraction of all penalties from 100
@@ -288,6 +289,7 @@ class IntegrityScorer
                 'medium' => 0.6,
                 'low' => 0.3,
             ],
+            'category_penalty_multiplier' => 2.5,
             'dampening' => [
                 'tier_1_max' => 1,
                 'tier_2_max' => 5,

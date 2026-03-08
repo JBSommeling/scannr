@@ -111,6 +111,8 @@ class SeverityEvaluator
      * High confidence:
      * - Direct 2xx response
      * - Internal 404 (clear broken link)
+     * - Developer leftover (deterministic, always a problem)
+     * - Malformed URL (deterministic, always a problem)
      *
      * Medium confidence:
      * - Timeout (might be temporary)
@@ -120,7 +122,7 @@ class SeverityEvaluator
      * Low confidence:
      * - External platform with bot protection (likely false positive)
      * - JS bundle extracted URLs (might not be real links)
-     * - Malformed URLs (might be template literals)
+     * - Indirect references (might be template literals)
      *
      * @param  array<LinkFlag>  $flags
      * @param  int|string  $status  HTTP status or error string
@@ -136,13 +138,19 @@ class SeverityEvaluator
         $hasTimeout = in_array(LinkFlag::TIMEOUT, $flags, true);
         $hasStatus5xx = in_array(LinkFlag::STATUS_5XX, $flags, true);
         $hasRedirectChain = in_array(LinkFlag::REDIRECT_CHAIN, $flags, true);
+        $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
+
+        // High confidence: deterministic issues override any noise signals
+        if ($hasDeveloperLeftover || $hasMalformedUrl) {
+            return Confidence::HIGH;
+        }
 
         // Low confidence: likely false positives
         if ($hasExternalPlatform && $hasBotProtection) {
             return Confidence::LOW;
         }
 
-        if ($hasMalformedUrl || $hasIndirectReference) {
+        if ($hasIndirectReference) {
             return Confidence::LOW;
         }
 

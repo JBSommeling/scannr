@@ -79,21 +79,80 @@ class IntegrityScorerTest extends TestCase
             $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/cv.pdf'),
             // 1 developer leftover (localhost) — penalty: -12 × 1.0 × 1.0 = -12
             $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost:3000'),
-            // 1 malformed URL (${r}) — penalty: -8 × 0.3 × 1.0 = -2.4 (LOW confidence from indirect_reference)
-            $this->makeResult(['malformed_url', 'indirect_reference'], 'warning', 'low', 'internal', 0, 'https://example.com/${r}'),
-            // 2 bot protected links — penalty: -2 × 0.3 × 1.0 = -0.6 (first), -2 × 0.3 × 0.5 = -0.3 (second, dampened)
+            // 1 malformed URL (${r}) — penalty: -8 × 1.0 × 1.0 = -8 (HIGH confidence from evaluator)
+            $this->makeResult(['malformed_url', 'indirect_reference'], 'warning', 'high', 'internal', 0, 'https://example.com/${r}'),
+            // 2 bot protected links — penalty: -2 × 0.3 (LOW) × 1.0 = -0.6 (first), -2 × 0.3 × 0.5 = -0.3 (second, dampened)
             $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 405, 'https://linkedin.com/in/user'),
             $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 403, 'https://github.com/user'),
-            // 1 redirect chain — penalty: -3 × 0.6 × 1.0 = -1.8 (MEDIUM confidence)
+            // 1 redirect chain — penalty: -3 × 0.6 (MEDIUM) × 1.0 = -1.8
             $this->makeResult(['static_html', 'redirect_chain'], 'warning', 'medium', 'internal', 200, 'https://example.com/old-page'),
         ];
 
         $result = $this->scorer->calculate($results);
 
-        // Direct subtraction: penalties spread across issues
-        // Overall should be in the 70-80 range (Good)
-        $this->assertGreaterThan(70, $result->overallScore);
-        $this->assertLessThan(80, $result->overallScore);
+        // Total: -10 - 12 - 8 - 0.6 - 0.3 - 1.8 = -32.7 → score ≈ 67.3
+        $this->assertGreaterThan(65, $result->overallScore);
+        $this->assertLessThan(70, $result->overallScore);
+    }
+
+    public function test_high_confidence_applies_full_penalty(): void
+    {
+        // developer_leftover with HIGH confidence = full penalty
+        $result = $this->scorer->calculate([
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost'),
+        ]);
+
+        // -12 × 1.0 = -12 → score 88
+        $this->assertEquals(88, $result->overallScore);
+    }
+
+    public function test_malformed_url_with_high_confidence_full_penalty(): void
+    {
+        // malformed_url gets HIGH confidence from evaluator (not LOW like indirect_reference)
+        $result = $this->scorer->calculate([
+            $this->makeResult(['malformed_url'], 'warning', 'high', 'internal', 0, 'https://example.com/${r}'),
+        ]);
+
+        // -8 × 1.0 = -8 → score 92
+        $this->assertEquals(92, $result->overallScore);
+    }
+
+    public function test_low_confidence_reduces_penalty(): void
+    {
+        // bot_protection with LOW confidence — penalty is reduced
+        $result = $this->scorer->calculate([
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 405, 'https://linkedin.com/in/user'),
+        ]);
+
+        // bot_protection: -2 × 0.3 (LOW) = -0.6 → score 99.4
+        $this->assertEquals(99.4, $result->overallScore);
+    }
+
+    public function test_category_scores_amplified_by_multiplier(): void
+    {
+        // Single broken internal: overall penalty = -10, category penalty = -10 × 2.5 = -25
+        $result = $this->scorer->calculate([
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404),
+        ]);
+
+        $this->assertEquals(90, $result->overallScore);
+        $this->assertEquals(75, $result->categoryScores['link_integrity']);
+        // Unaffected categories stay at 100
+        $this->assertEquals(100, $result->categoryScores['security_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['technical_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['redirect_health']);
+    }
+
+    public function test_category_scores_clamped_at_zero(): void
+    {
+        // developer_leftover (-12) + malformed_url (-8) = -20 × 2.5 = -50 → technical = 50
+        $result = $this->scorer->calculate([
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost'),
+            $this->makeResult(['malformed_url'], 'warning', 'high', 'internal', 0, 'https://example.com/${r}'),
+        ]);
+
+        $this->assertEquals(50, $result->categoryScores['technical_hygiene']);
+        $this->assertGreaterThanOrEqual(0, $result->categoryScores['technical_hygiene']);
     }
 
     public function test_duplicate_dampening_prevents_score_destruction(): void
@@ -304,5 +363,226 @@ class IntegrityScorerTest extends TestCase
         $result = $this->scorer->calculate($results);
 
         $this->assertEquals(100, $result->overallScore);
+    }
+
+    // =============================================
+    // Exact scoring validation tests
+    // =============================================
+
+    public function test_exact_penalty_weights(): void
+    {
+        // Verify each penalty type applies its exact base weight at HIGH confidence
+        $cases = [
+            ['developer_leftover', 12],
+            ['status_4xx_internal', 10],  // resolved from status_4xx + internal
+            ['malformed_url', 8],
+            ['http_on_https', 4],
+            ['redirect_chain', 3],
+        ];
+
+        foreach ($cases as [$issueType, $expectedPenalty]) {
+            $flags = match ($issueType) {
+                'developer_leftover' => ['developer_leftover'],
+                'status_4xx_internal' => ['static_html', 'status_4xx'],
+                'malformed_url' => ['malformed_url'],
+                'http_on_https' => ['http_on_https'],
+                'redirect_chain' => ['redirect_chain'],
+            };
+
+            $type = $issueType === 'status_4xx_internal' ? 'internal' : 'internal';
+            $status = $issueType === 'status_4xx_internal' ? 404 : 200;
+
+            $result = $this->scorer->calculate([
+                $this->makeResult($flags, 'warning', 'high', $type, $status),
+            ]);
+
+            $this->assertEquals(
+                100 - $expectedPenalty,
+                $result->overallScore,
+                "Failed for {$issueType}: expected penalty of {$expectedPenalty}"
+            );
+        }
+    }
+
+    public function test_exact_confidence_multipliers(): void
+    {
+        // Same issue (bot_protection, base -2) at each confidence level
+        $highResult = $this->scorer->calculate([
+            $this->makeResult(['bot_protection'], 'warning', 'high', 'external', 403),
+        ]);
+        $mediumResult = $this->scorer->calculate([
+            $this->makeResult(['bot_protection'], 'warning', 'medium', 'external', 403),
+        ]);
+        $lowResult = $this->scorer->calculate([
+            $this->makeResult(['bot_protection'], 'warning', 'low', 'external', 403),
+        ]);
+
+        // HIGH: -2 × 1.0 = -2 → 98
+        $this->assertEquals(98, $highResult->overallScore);
+        // MEDIUM: -2 × 0.6 = -1.2 → 98.8
+        $this->assertEquals(98.8, $mediumResult->overallScore);
+        // LOW: -2 × 0.3 = -0.6 → 99.4
+        $this->assertEquals(99.4, $lowResult->overallScore);
+    }
+
+    public function test_exact_dampening_tiers(): void
+    {
+        // 7 identical broken internal links to test all dampening tiers
+        $results = [];
+        for ($i = 0; $i < 7; $i++) {
+            $results[] = $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, "https://example.com/page-{$i}");
+        }
+
+        $result = $this->scorer->calculate($results);
+
+        // Tier 1 (1st): 10 × 1.0 = 10
+        // Tier 2 (2nd-5th): 4 × 10 × 0.5 = 20
+        // Tier 3 (6th-7th): 2 × 10 × 0.25 = 5
+        // Total: 35 → score = 65
+        $this->assertEquals(65, $result->overallScore);
+    }
+
+    public function test_exact_category_multiplier_effect(): void
+    {
+        // http_on_https: base -4, HIGH confidence → effective -4
+        // Category multiplier 2.5: security_hygiene = 100 - (4 × 2.5) = 90
+        $result = $this->scorer->calculate([
+            $this->makeResult(['http_on_https'], 'warning', 'high', 'internal', 200),
+        ]);
+
+        $this->assertEquals(96, $result->overallScore);
+        $this->assertEquals(90, $result->categoryScores['security_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['link_integrity']);
+        $this->assertEquals(100, $result->categoryScores['technical_hygiene']);
+        $this->assertEquals(100, $result->categoryScores['redirect_health']);
+    }
+
+    public function test_exact_realistic_scan_scenario(): void
+    {
+        // Simulates a real scan like sommeling.dev:
+        // - 1 broken internal (cv.pdf, 404, HIGH)
+        // - 1 developer leftover (localhost, HIGH)
+        // - 1 malformed URL (${r}, HIGH)
+        // - 2 bot protected (LOW)
+        // - 1 redirect chain (MEDIUM)
+        $results = [
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/cv.pdf'),
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost'),
+            $this->makeResult(['malformed_url'], 'warning', 'high', 'internal', 0, 'https://example.com/${r}'),
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 405, 'https://linkedin.com/in/user'),
+            $this->makeResult(['external_platform', 'bot_protection', 'status_4xx'], 'warning', 'low', 'external', 403, 'https://github.com/user'),
+            $this->makeResult(['static_html', 'redirect_chain'], 'warning', 'medium', 'internal', 200, 'https://example.com/old'),
+        ];
+
+        $result = $this->scorer->calculate($results);
+
+        // Penalty breakdown:
+        // status_4xx_internal: -10 × 1.0 × 1.0 = -10.0
+        // developer_leftover: -12 × 1.0 × 1.0 = -12.0
+        // malformed_url:      -8 × 1.0 × 1.0  = -8.0
+        // bot_protection #1:  -2 × 0.3 × 1.0  = -0.6
+        // bot_protection #2:  -2 × 0.3 × 0.5  = -0.3
+        // redirect_chain:     -3 × 0.6 × 1.0  = -1.8
+        // Total: -32.7
+
+        // Overall score
+        $this->assertEquals(67.3, $result->overallScore);
+        $this->assertEquals('Needs Attention', $result->grade);
+        $this->assertEquals('orange', $result->gradeColor);
+        $this->assertEquals('🟠', $result->gradeEmoji);
+
+        // Category scores (penalty × 2.5 multiplier)
+        // link_integrity:    100 - (10 × 2.5)           = 75.0
+        // security_hygiene:  100 - ((0.6 + 0.3) × 2.5)  = 97.75 → 97.8 (rounded)
+        // technical_hygiene: 100 - ((12 + 8) × 2.5)     = 50.0
+        // redirect_health:   100 - (1.8 × 2.5)          = 95.5
+        $this->assertEquals(75, $result->categoryScores['link_integrity']);
+        $this->assertEquals(50, $result->categoryScores['technical_hygiene']);
+        $this->assertEquals(95.5, $result->categoryScores['redirect_health']);
+
+        // Summary counts
+        $this->assertEquals(2, $result->summary['criticalIssues']);
+        $this->assertEquals(4, $result->summary['warnings']);
+        $this->assertEquals(2, $result->summary['manualVerification']);
+
+        // Penalty count
+        $this->assertCount(6, $result->penalties);
+    }
+
+    public function test_exact_status_5xx_penalty_with_medium_confidence(): void
+    {
+        // 5xx gets MEDIUM confidence from evaluator → -10 × 0.6 = -6
+        $result = $this->scorer->calculate([
+            $this->makeResult(['status_5xx'], 'critical', 'medium', 'internal', 500),
+        ]);
+
+        $this->assertEquals(94, $result->overallScore);
+        // Category: link_integrity = 100 - (6 × 2.5) = 85
+        $this->assertEquals(85, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_exact_connection_error_penalty(): void
+    {
+        // connection_error: -10 × 1.0 = -10
+        $result = $this->scorer->calculate([
+            $this->makeResult(['connection_error'], 'critical', 'high', 'internal', 'error'),
+        ]);
+
+        $this->assertEquals(90, $result->overallScore);
+        $this->assertEquals(75, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_exact_excessive_redirects_penalty(): void
+    {
+        // excessive_redirects: -5 × 0.6 (MEDIUM) = -3
+        $result = $this->scorer->calculate([
+            $this->makeResult(['excessive_redirects', 'redirect_chain'], 'warning', 'medium', 'internal', 200),
+        ]);
+
+        $this->assertEquals(97, $result->overallScore);
+        // Category: redirect_health = 100 - (3 × 2.5) = 92.5
+        $this->assertEquals(92.5, $result->categoryScores['redirect_health']);
+    }
+
+    public function test_exact_multiple_issues_same_category(): void
+    {
+        // Two different issues in link_integrity:
+        // broken internal (-10) + connection error (-10) = -20 total
+        $result = $this->scorer->calculate([
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/a'),
+            $this->makeResult(['connection_error'], 'critical', 'high', 'internal', 'error', 'https://example.com/b'),
+        ]);
+
+        $this->assertEquals(80, $result->overallScore);
+        // link_integrity = 100 - (20 × 2.5) = 50
+        $this->assertEquals(50, $result->categoryScores['link_integrity']);
+    }
+
+    public function test_exact_critical_grade_threshold(): void
+    {
+        // Push score below 50 → Critical grade
+        // 3 broken internal (HIGH): -10 + -5 + -5 = -20 (dampened)
+        // 2 developer leftover (HIGH): -12 + -6 = -18 (dampened)
+        // 1 malformed (HIGH): -8
+        // Total: -46 → score 54... still above 50
+        // Add more:
+        // + connection error: -10
+        // Total: -56 → score 44
+        $results = [
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/a'),
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/b'),
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404, 'https://example.com/c'),
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost:3000'),
+            $this->makeResult(['developer_leftover'], 'critical', 'high', 'internal', 200, 'http://localhost:8080'),
+            $this->makeResult(['malformed_url'], 'warning', 'high', 'internal', 0, 'https://example.com/${x}'),
+            $this->makeResult(['connection_error'], 'critical', 'high', 'internal', 'error', 'https://dead.example.com'),
+        ];
+
+        $result = $this->scorer->calculate($results);
+
+        $this->assertLessThan(50, $result->overallScore);
+        $this->assertEquals('Critical', $result->grade);
+        $this->assertEquals('red', $result->gradeColor);
+        $this->assertEquals('🔴', $result->gradeEmoji);
     }
 }

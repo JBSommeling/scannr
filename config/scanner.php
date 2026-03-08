@@ -320,6 +320,11 @@ return [
             'low' => 0.3,
         ],
 
+        // Category penalty multiplier — amplifies penalties within category
+        // sub-scores so individual issues have meaningful impact.
+        // Does not affect the overall score.
+        'category_penalty_multiplier' => 2.5,
+
         // Duplicate dampening — tiered reduction for repeated issue types
         // First occurrence: 100%, 2nd–5th: 50%, 6th+: 25%
         'dampening' => [
