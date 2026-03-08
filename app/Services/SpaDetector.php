@@ -26,8 +26,8 @@ class SpaDetector
     /**
      * Detect SPA signals in raw HTML and extracted links.
      *
-     * @param string|null $rawBody        The raw HTML body (before any JS rendering).
-     * @param array        $extractedLinks The links extracted from the static HTML.
+     * @param  string|null  $rawBody  The raw HTML body (before any JS rendering).
+     * @param  array  $extractedLinks  The links extracted from the static HTML.
      * @return array{detected: bool, reason: string}
      */
     public function detect(?string $rawBody, array $extractedLinks): array
@@ -69,7 +69,7 @@ class SpaDetector
      */
     public function isBodyEffectivelyEmpty(string $html): bool
     {
-        if (!preg_match('/<body[^>]*>(.*)<\/body>/si', $html, $matches)) {
+        if (! preg_match('/<body[^>]*>(.*)<\/body>/si', $html, $matches)) {
             return false;
         }
 
@@ -139,4 +139,3 @@ class SpaDetector
         return null;
     }
 }
-

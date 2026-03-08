@@ -84,4 +84,3 @@ enum LinkFlag: string
     /** Form submission endpoint (POST-based). */
     case FORM_ENDPOINT = 'form_endpoint';
 }
-

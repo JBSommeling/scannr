@@ -21,13 +21,13 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton('url-normalizer', function ($app) {
-            return new UrlNormalizer();
+            return new UrlNormalizer;
         });
 
         $this->app->alias('url-normalizer', UrlNormalizer::class);
 
         $this->app->singleton('severity-evaluator', function ($app) {
-            return new SeverityEvaluator();
+            return new SeverityEvaluator;
         });
 
         $this->app->alias('severity-evaluator', SeverityEvaluator::class);
@@ -61,7 +61,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->alias('link-extractor', LinkExtractor::class);
 
         $this->app->singleton('scan-stats', function ($app) {
-            return new ScanStatistics();
+            return new ScanStatistics;
         });
 
         $this->app->alias('scan-stats', ScanStatistics::class);
@@ -85,7 +85,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->alias('sitemap', SitemapService::class);
 
         $this->app->singleton('robots', function ($app) {
-            return new RobotsService();
+            return new RobotsService;
         });
 
         $this->app->alias('robots', RobotsService::class);

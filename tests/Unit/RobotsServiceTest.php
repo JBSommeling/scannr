@@ -8,8 +8,6 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\StreamInterface;
 
 class RobotsServiceTest extends TestCase
 {
@@ -18,7 +16,7 @@ class RobotsServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new RobotsService();
+        $this->service = new RobotsService;
     }
 
     /**
@@ -30,6 +28,7 @@ class RobotsServiceTest extends TestCase
             new Response($statusCode, [], $body),
         ]);
         $handlerStack = HandlerStack::create($mock);
+
         return new Client(['handler' => $handlerStack]);
     }
 
@@ -40,6 +39,7 @@ class RobotsServiceTest extends TestCase
     {
         $mockClient = $this->createMock(Client::class);
         $mockClient->method('request')->willThrowException(new \Exception('Connection failed'));
+
         return $mockClient;
     }
 
@@ -95,6 +95,7 @@ class RobotsServiceTest extends TestCase
         $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
             return function ($request, $options) use ($handler, &$requestedUrl) {
                 $requestedUrl = (string) $request->getUri();
+
                 return $handler($request, $options);
             };
         });
@@ -117,6 +118,7 @@ class RobotsServiceTest extends TestCase
         $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
             return function ($request, $options) use ($handler, &$requestedUrl) {
                 $requestedUrl = (string) $request->getUri();
+
                 return $handler($request, $options);
             };
         });
@@ -181,6 +183,7 @@ class RobotsServiceTest extends TestCase
         $handlerStack->push(function (callable $handler) use (&$requestedUrl) {
             return function ($request, $options) use ($handler, &$requestedUrl) {
                 $requestedUrl = (string) $request->getUri();
+
                 return $handler($request, $options);
             };
         });
@@ -369,7 +372,7 @@ class RobotsServiceTest extends TestCase
     public function test_is_allowed_returns_true_when_not_parsed(): void
     {
         // Service has not been parsed yet
-        $service = new RobotsService();
+        $service = new RobotsService;
         $this->assertTrue($service->isAllowed('https://example.com/admin'));
     }
 
@@ -776,4 +779,3 @@ ROBOTS;
         $this->assertTrue($this->service->isAllowed('https://www.japkejanneke.nl/shop/'));
     }
 }
-

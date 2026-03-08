@@ -13,14 +13,14 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_browsershot_fetcher_can_be_instantiated(): void
     {
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
 
         $this->assertInstanceOf(BrowsershotFetcher::class, $fetcher);
     }
 
     public function test_set_timeout_returns_fluent_interface(): void
     {
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
         $result = $fetcher->setTimeout(10);
 
         $this->assertSame($fetcher, $result);
@@ -28,7 +28,7 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_configure_returns_fluent_interface(): void
     {
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
         $result = $fetcher->configure([
             'node_binary' => '/usr/local/bin/node',
             'npm_binary' => '/usr/local/bin/npm',
@@ -41,7 +41,7 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_configure_with_empty_options(): void
     {
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
         $result = $fetcher->configure([]);
 
         $this->assertSame($fetcher, $result);
@@ -49,7 +49,7 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_configure_with_partial_options(): void
     {
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
         $result = $fetcher->configure([
             'node_binary' => '/usr/local/bin/node',
         ]);
@@ -65,7 +65,8 @@ class BrowsershotFetcherTest extends TestCase
     {
         // We use a subclass to simulate a Browsershot failure without needing
         // a real browser. This tests the catch block in fetch().
-        $fetcher = new class extends BrowsershotFetcher {
+        $fetcher = new class extends BrowsershotFetcher
+        {
             public function fetch(string $url): array
             {
                 // Simulate what happens when Browsershot throws
@@ -92,7 +93,8 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_fetch_error_result_has_expected_keys(): void
     {
-        $fetcher = new class extends BrowsershotFetcher {
+        $fetcher = new class extends BrowsershotFetcher
+        {
             public function fetch(string $url): array
             {
                 try {
@@ -118,7 +120,8 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_fetch_success_result_has_expected_keys(): void
     {
-        $fetcher = new class extends BrowsershotFetcher {
+        $fetcher = new class extends BrowsershotFetcher
+        {
             public function fetch(string $url): array
             {
                 return [
@@ -140,7 +143,8 @@ class BrowsershotFetcherTest extends TestCase
 
     public function test_fetch_preserves_url_in_result(): void
     {
-        $fetcher = new class extends BrowsershotFetcher {
+        $fetcher = new class extends BrowsershotFetcher
+        {
             public function fetch(string $url): array
             {
                 return [
@@ -179,7 +183,7 @@ class BrowsershotFetcherTest extends TestCase
 
         // Node.js should be available on the dev machine
         $nodePath = trim(shell_exec('which node 2>/dev/null') ?? '');
-        if (!empty($nodePath) && is_dir(base_path() . '/node_modules/puppeteer')) {
+        if (! empty($nodePath) && is_dir(base_path().'/node_modules/puppeteer')) {
             $this->assertTrue($result['available']);
             $this->assertStringContainsString('available', $result['message']);
         } else {
@@ -189,4 +193,3 @@ class BrowsershotFetcherTest extends TestCase
         }
     }
 }
-

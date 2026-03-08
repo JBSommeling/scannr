@@ -12,7 +12,7 @@ class UrlNormalizerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->urlNormalizer = new UrlNormalizer();
+        $this->urlNormalizer = new UrlNormalizer;
     }
     // ===================
     // normalizeUrl tests
@@ -308,5 +308,4 @@ class UrlNormalizerTest extends TestCase
         $this->assertTrue($this->urlNormalizer->isInternalUrl('https://www.example.com/page'));
         $this->assertTrue($this->urlNormalizer->isInternalUrl('https://example.com/page'));
     }
-
 }

@@ -23,4 +23,3 @@ class ScanStats extends Facade
         return 'scan-stats';
     }
 }
-

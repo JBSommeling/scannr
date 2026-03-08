@@ -18,4 +18,3 @@ enum Confidence: string
     /** Low confidence — likely false positive or needs manual verification. */
     case LOW = 'low';
 }
-

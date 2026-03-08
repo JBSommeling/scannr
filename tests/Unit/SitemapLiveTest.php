@@ -9,7 +9,7 @@ class SitemapLiveTest extends TestCase
 {
     public function test_sommeling_sitemap_can_be_discovered(): void
     {
-        $service = new SitemapService();
+        $service = new SitemapService;
         $service->setBaseUrl('https://www.sommeling.dev');
 
         // Test getSitemapsFromRobots
@@ -34,4 +34,3 @@ class SitemapLiveTest extends TestCase
         $this->assertGreaterThan(0, $result['count'], 'Should discover URLs from sitemap');
     }
 }
-

@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\DTO\ScanConfig;
 use App\Enums\LinkFlag;
-use App\Services\BrowsershotFetcher;
 use Closure;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -19,13 +18,21 @@ use Random\RandomException;
 class CrawlerService
 {
     protected array $visited = [];
+
     protected \SplQueue $queue;
+
     protected \SplQueue $priorityQueue;
+
     protected array $results = [];
+
     protected array $processedFormKeys = [];
+
     protected ?Client $client = null;
+
     protected ?string $originalHost = null;
+
     protected ?string $canonicalHost = null;
+
     protected bool $canonicalBaseResolved = false;
 
     /**
@@ -61,8 +68,8 @@ class CrawlerService
         protected UrlNormalizer $urlNormalizer,
         protected HttpChecker $httpChecker,
         protected SitemapService $sitemapService,
-        protected RobotsService $robotsService = new RobotsService(),
-        protected SpaDetector $spaDetector = new SpaDetector(),
+        protected RobotsService $robotsService = new RobotsService,
+        protected SpaDetector $spaDetector = new SpaDetector,
     ) {}
 
     /**
@@ -71,16 +78,18 @@ class CrawlerService
     public function setClient(Client $client): self
     {
         $this->client = $client;
+
         return $this;
     }
 
     /**
      * Crawl a website based on the provided configuration.
      *
-     * @param ScanConfig $config The scan configuration.
-     * @param Closure|null $onProgress Progress callback: fn(int $scanned, int $total): void
-     * @param Closure|null $onSitemapDiscovery Sitemap discovery callback: fn(string $message): void
+     * @param  ScanConfig  $config  The scan configuration.
+     * @param  Closure|null  $onProgress  Progress callback: fn(int $scanned, int $total): void
+     * @param  Closure|null  $onSitemapDiscovery  Sitemap discovery callback: fn(string $message): void
      * @return array The scan results.
+     *
      * @throws RandomException|GuzzleException
      */
     public function crawl(ScanConfig $config, ?Closure $onProgress = null, ?Closure $onSitemapDiscovery = null): array
@@ -101,7 +110,7 @@ class CrawlerService
 
         $this->configureJsRendering($config, $onSitemapDiscovery);
 
-        if (!empty($config->customTrackingParams)) {
+        if (! empty($config->customTrackingParams)) {
             $this->urlNormalizer->addTrackingParams($config->customTrackingParams);
         }
 
@@ -121,7 +130,7 @@ class CrawlerService
 
         $scannedCount = 0;
 
-        while ((!$this->priorityQueue->isEmpty() || !$this->queue->isEmpty()) && $scannedCount < $config->maxUrls) {
+        while ((! $this->priorityQueue->isEmpty() || ! $this->queue->isEmpty()) && $scannedCount < $config->maxUrls) {
             // Check if we should abort due to rate limiting
             if ($max429BeforeAbort > 0 && $this->total429Count >= $max429BeforeAbort) {
                 $this->abortError = 'Scan aborted due to rate limiting';
@@ -131,7 +140,7 @@ class CrawlerService
                 break;
             }
 
-            $current = !$this->priorityQueue->isEmpty()
+            $current = ! $this->priorityQueue->isEmpty()
                 ? $this->priorityQueue->dequeue()
                 : $this->queue->dequeue();
             $url = $current['url'];
@@ -154,8 +163,9 @@ class CrawlerService
             }
 
             // Skip if disallowed by robots.txt (only for internal URLs)
-            if ($config->respectRobots && $this->urlNormalizer->isInternalUrl($url) && !$this->robotsService->isAllowed($url)) {
+            if ($config->respectRobots && $this->urlNormalizer->isInternalUrl($url) && ! $this->robotsService->isAllowed($url)) {
                 $this->visited[$urlKey] = true;
+
                 continue;
             }
 
@@ -218,8 +228,8 @@ class CrawlerService
     protected function resetState(string $baseUrl): void
     {
         $this->visited = [];
-        $this->queue = new \SplQueue();
-        $this->priorityQueue = new \SplQueue();
+        $this->queue = new \SplQueue;
+        $this->priorityQueue = new \SplQueue;
         $this->results = [];
         $this->processedFormKeys = [];
         $this->originalHost = parse_url($baseUrl, PHP_URL_HOST);
@@ -235,7 +245,7 @@ class CrawlerService
     /**
      * Hydrate LinkFlag enums from string array.
      *
-     * @param array<string> $flagValues
+     * @param  array<string>  $flagValues
      * @return array<LinkFlag>
      */
     protected function hydrateFlagsFromArray(array $flagValues): array
@@ -247,6 +257,7 @@ class CrawlerService
                 $flags[] = $flag;
             }
         }
+
         return $flags;
     }
 
@@ -265,6 +276,7 @@ class CrawlerService
 
         try {
             $config = config('scanner.rate_limit', $defaults);
+
             return [
                 'backoff_delays' => $config['backoff_delays'] ?? $defaults['backoff_delays'],
                 'respect_retry_after' => $config['respect_retry_after'] ?? $defaults['respect_retry_after'],
@@ -278,18 +290,19 @@ class CrawlerService
     /**
      * Process a URL with 429 retry handling.
      *
-     * @param string $url The URL to process.
-     * @param int $depth Current crawl depth.
-     * @param string $source Source page URL.
-     * @param string $element HTML element type.
-     * @param array<string> $scanElements Elements to scan.
-     * @param bool $isInternal Whether the URL is internal.
-     * @param array<int> $backoffDelays Backoff delays in milliseconds.
-     * @param bool $respectRetryAfter Whether to respect Retry-After header.
-     * @param int $max429BeforeAbort Maximum 429 responses before aborting.
-     * @param Closure|null $onMessage Message callback for status updates.
-     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
+     * @param  string  $url  The URL to process.
+     * @param  int  $depth  Current crawl depth.
+     * @param  string  $source  Source page URL.
+     * @param  string  $element  HTML element type.
+     * @param  array<string>  $scanElements  Elements to scan.
+     * @param  bool  $isInternal  Whether the URL is internal.
+     * @param  array<int>  $backoffDelays  Backoff delays in milliseconds.
+     * @param  bool  $respectRetryAfter  Whether to respect Retry-After header.
+     * @param  int  $max429BeforeAbort  Maximum 429 responses before aborting.
+     * @param  Closure|null  $onMessage  Message callback for status updates.
+     * @param  array<LinkFlag>  $discoveryFlags  Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped/aborted.
+     *
      * @throws GuzzleException
      */
     protected function processUrlWithRetry(
@@ -323,6 +336,7 @@ class CrawlerService
                 // Check if we should abort (always check before deciding to retry or return)
                 if ($max429BeforeAbort > 0 && $this->total429Count >= $max429BeforeAbort) {
                     $this->abortError = 'Scan aborted due to rate limiting';
+
                     return $result;
                 }
 
@@ -350,11 +364,12 @@ class CrawlerService
                 usleep($delayMs * 1000);
 
                 // Remove the 429 result from results array (we'll retry)
-                if (!empty($this->results)) {
+                if (! empty($this->results)) {
                     array_pop($this->results);
                 }
 
                 $retryCount++;
+
                 continue;
             }
 
@@ -366,9 +381,10 @@ class CrawlerService
     /**
      * Process an internal URL and return the result (for retry handling).
      *
-     * @param array<string> $scanElements Elements to scan
-     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
+     * @param  array<string>  $scanElements  Elements to scan
+     * @param  array<LinkFlag>  $discoveryFlags  Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped.
+     *
      * @throws GuzzleException
      */
     protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
@@ -376,7 +392,7 @@ class CrawlerService
         $shouldStoreResult = in_array($element, $scanElements);
 
         // For non-<a> internal elements, skip entirely if not in scanElements
-        if ($element !== 'a' && !$shouldStoreResult) {
+        if ($element !== 'a' && ! $shouldStoreResult) {
             return null;
         }
 
@@ -384,7 +400,7 @@ class CrawlerService
 
         // Smart-JS: on the first internal page, check for SPA signals
         // and re-process with JS rendering if detected
-        if (!$this->smartJsActivated
+        if (! $this->smartJsActivated
             && $this->activeConfig !== null
             && $this->activeConfig->useSmartJs
         ) {
@@ -417,7 +433,7 @@ class CrawlerService
                 $linkUrl = $this->rewriteUrlToCanonicalHost($link['url']);
 
                 $linkKey = $this->urlNormalizer->canonicalUrlKey($linkUrl);
-                if (!isset($this->visited[$linkKey])) {
+                if (! isset($this->visited[$linkKey])) {
                     $queueItem = [
                         'url' => $linkUrl,
                         'depth' => $depth + 1,
@@ -444,18 +460,16 @@ class CrawlerService
     /**
      * Process an external URL and return the result (for retry handling).
      *
-     * @param string $url
-     * @param string $source
-     * @param string $element
-     * @param array<string> $scanElements Elements to scan
-     * @param array<LinkFlag> $discoveryFlags Discovery flags from link extraction.
+     * @param  array<string>  $scanElements  Elements to scan
+     * @param  array<LinkFlag>  $discoveryFlags  Discovery flags from link extraction.
      * @return array|null The result array, or null if skipped.
+     *
      * @throws GuzzleException
      */
     protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
     {
         // Skip if element type is not in scanElements
-        if (!in_array($element, $scanElements)) {
+        if (! in_array($element, $scanElements)) {
             return null;
         }
 
@@ -475,17 +489,17 @@ class CrawlerService
      * Deduplication is per url+source pair so the same form action
      * discovered on different pages is still reported per page.
      *
-     * @param string $linkUrl  The form action URL.
-     * @param string $sourceUrl The page where the form was found.
-     * @param array<string> $scanElements Elements the user wants to scan.
+     * @param  string  $linkUrl  The form action URL.
+     * @param  string  $sourceUrl  The page where the form was found.
+     * @param  array<string>  $scanElements  Elements the user wants to scan.
      */
     protected function processVisitedFormEndpoint(string $linkUrl, string $sourceUrl, array $scanElements): void
     {
-        if (!in_array('form', $scanElements)) {
+        if (! in_array('form', $scanElements)) {
             return;
         }
 
-        $key = $linkUrl . '|' . $sourceUrl;
+        $key = $linkUrl.'|'.$sourceUrl;
         if (isset($this->processedFormKeys[$key])) {
             return;
         }
@@ -500,18 +514,18 @@ class CrawlerService
      */
     protected function configureJsRendering(ScanConfig $config, ?Closure $onMessage): void
     {
-        if (!$config->useJsRendering) {
+        if (! $config->useJsRendering) {
             return;
         }
 
         $depCheck = BrowsershotFetcher::checkDependencies();
         if ($depCheck['available']) {
-            $fetcher = new BrowsershotFetcher();
+            $fetcher = new BrowsershotFetcher;
             $fetcher->setTimeout($config->timeout);
 
             // Load custom paths from config if available
             $jsConfig = config('scanner.js_rendering', []);
-            if (!empty($jsConfig)) {
+            if (! empty($jsConfig)) {
                 $fetcher->configure($jsConfig);
             }
 
@@ -527,21 +541,21 @@ class CrawlerService
         }
     }
 
-
     /**
      * Attempt to activate smart-JS rendering if SPA signals are detected.
      *
      * Called after the first internal page is processed. If SPA signals are found,
      * enables Browsershot and re-processes the page with JS rendering.
      *
-     * @param array $result The result from processInternalUrl (includes rawBody and extractedLinks).
-     * @param string $url The URL that was processed.
-     * @param string $source The source URL.
-     * @param string $element The element type.
-     * @param array<string> $scanElements Elements to scan.
-     * @param array<LinkFlag> $discoveryFlags Discovery flags.
-     * @param int $depth Current crawl depth.
+     * @param  array  $result  The result from processInternalUrl (includes rawBody and extractedLinks).
+     * @param  string  $url  The URL that was processed.
+     * @param  string  $source  The source URL.
+     * @param  string  $element  The element type.
+     * @param  array<string>  $scanElements  Elements to scan.
+     * @param  array<LinkFlag>  $discoveryFlags  Discovery flags.
+     * @param  int  $depth  Current crawl depth.
      * @return array|null The re-processed result if smart-JS was activated, or null if not.
+     *
      * @throws GuzzleException
      */
     protected function tryActivateSmartJs(
@@ -553,7 +567,7 @@ class CrawlerService
         array $discoveryFlags,
         int $depth,
     ): ?array {
-        if ($this->activeConfig === null || !$this->activeConfig->useSmartJs) {
+        if ($this->activeConfig === null || ! $this->activeConfig->useSmartJs) {
             return null;
         }
 
@@ -567,28 +581,30 @@ class CrawlerService
 
         $detection = $this->spaDetector->detect($rawBody, $extractedLinks);
 
-        if (!$detection['detected']) {
+        if (! $detection['detected']) {
             // No SPA signals — smart-JS stays off for the entire crawl
             $this->smartJsActivated = true;
+
             return null;
         }
 
         // SPA signals detected — try to activate JS rendering
         $depCheck = $this->checkBrowsershotDeps();
-        if (!$depCheck['available']) {
+        if (! $depCheck['available']) {
             if ($this->activeOnMessage !== null) {
                 ($this->activeOnMessage)("  ⚠ Smart JS: {$detection['reason']}, but {$depCheck['message']} Falling back to static HTML.");
             }
             $this->smartJsActivated = true;
+
             return null;
         }
 
         // Activate Browsershot
-        $fetcher = new BrowsershotFetcher();
+        $fetcher = new BrowsershotFetcher;
         $fetcher->setTimeout($this->activeConfig->timeout);
 
         $jsConfig = config('scanner.js_rendering', []);
-        if (!empty($jsConfig)) {
+        if (! empty($jsConfig)) {
             $fetcher->configure($jsConfig);
         }
 
@@ -627,7 +643,7 @@ class CrawlerService
         $delayMin = $config->delayMin;
         $delayMax = $config->delayMax;
 
-        if (!$config->respectRobots) {
+        if (! $config->respectRobots) {
             return [$delayMin, $delayMax];
         }
 
@@ -694,7 +710,7 @@ class CrawlerService
             $this->urlNormalizer->setBaseUrl($finalUrl);
 
             // Clear the redirect chain for the start URL since it's expected
-            if (!empty($firstResult['redirectChain'])) {
+            if (! empty($firstResult['redirectChain'])) {
                 $this->results[array_key_last($this->results)]['redirectChain'] = [];
             }
 
@@ -748,7 +764,7 @@ class CrawlerService
         if ($result['count'] > 0) {
             foreach ($result['urls'] as $urlData) {
                 $sitemapUrlKey = $this->urlNormalizer->canonicalUrlKey($urlData['url']);
-                if (!isset($this->visited[$sitemapUrlKey])) {
+                if (! isset($this->visited[$sitemapUrlKey])) {
                     $this->queue->enqueue([
                         'url' => $urlData['url'],
                         'depth' => 0,
@@ -767,7 +783,6 @@ class CrawlerService
             }
         }
     }
-
 
     /**
      * Get the current results.
@@ -821,28 +836,27 @@ class CrawlerService
     protected function rewriteQueueToCanonicalHost(): void
     {
         // Drain and rebuild the priority queue
-        $newPriorityQueue = new \SplQueue();
-        while (!$this->priorityQueue->isEmpty()) {
+        $newPriorityQueue = new \SplQueue;
+        while (! $this->priorityQueue->isEmpty()) {
             $item = $this->priorityQueue->dequeue();
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
             $itemKey = $this->urlNormalizer->canonicalUrlKey($item['url']);
-            if (!isset($this->visited[$itemKey])) {
+            if (! isset($this->visited[$itemKey])) {
                 $newPriorityQueue->enqueue($item);
             }
         }
         $this->priorityQueue = $newPriorityQueue;
 
         // Drain and rebuild the normal queue
-        $newQueue = new \SplQueue();
-        while (!$this->queue->isEmpty()) {
+        $newQueue = new \SplQueue;
+        while (! $this->queue->isEmpty()) {
             $item = $this->queue->dequeue();
             $item['url'] = $this->rewriteUrlToCanonicalHost($item['url']);
             $itemKey = $this->urlNormalizer->canonicalUrlKey($item['url']);
-            if (!isset($this->visited[$itemKey])) {
+            if (! isset($this->visited[$itemKey])) {
                 $newQueue->enqueue($item);
             }
         }
         $this->queue = $newQueue;
     }
 }
-

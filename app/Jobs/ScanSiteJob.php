@@ -96,4 +96,3 @@ class ScanSiteJob implements ShouldQueue
         ]);
     }
 }
-

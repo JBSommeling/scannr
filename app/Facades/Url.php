@@ -31,4 +31,3 @@ class Url extends Facade
         return 'url-normalizer';
     }
 }
-

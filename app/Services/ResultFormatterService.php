@@ -19,15 +19,15 @@ class ResultFormatterService
     /**
      * Format and display results based on configuration.
      *
-     * @param array $results The scan results.
-     * @param ScanConfig $config The scan configuration.
-     * @param OutputInterface $output The output interface.
-     * @param string|null $error Optional error message (e.g., rate limit abort).
+     * @param  array  $results  The scan results.
+     * @param  ScanConfig  $config  The scan configuration.
+     * @param  OutputInterface  $output  The output interface.
+     * @param  string|null  $error  Optional error message (e.g., rate limit abort).
      */
     public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): void
     {
         // Remove noise URLs unless --advanced is used
-        if (!$config->showAdvanced) {
+        if (! $config->showAdvanced) {
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
@@ -82,7 +82,7 @@ class ResultFormatterService
             $output->warn("  ⚠ HTTPS downgrades: {$stats['httpsDowngrades']}");
 
             if ($output->isVerbose()) {
-                $downgradedUrls = array_filter($results, fn($r) => $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false);
+                $downgradedUrls = array_filter($results, fn ($r) => $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false);
                 foreach ($downgradedUrls as $result) {
                     $output->line("    - {$result['url']}");
                 }
@@ -115,6 +115,7 @@ class ResultFormatterService
 
         if (empty($results)) {
             $output->info('No links to display for the selected filter.');
+
             return;
         }
 
@@ -126,13 +127,13 @@ class ResultFormatterService
             $row = [
                 'URL' => $this->truncate($result['url'], 50),
                 'Source' => $this->truncate($result['sourcePage'], 30),
-                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
                 'Status' => $this->formatStatus($result),
                 'Type' => $result['type'],
             ];
 
-            if ($output->isVerbose() && !empty($redirectChain)) {
-                $row['Redirects'] = implode(' → ', array_map(fn($u) => $this->truncate($u, 30), $redirectChain));
+            if ($output->isVerbose() && ! empty($redirectChain)) {
+                $row['Redirects'] = implode(' → ', array_map(fn ($u) => $this->truncate($u, 30), $redirectChain));
             }
 
             $tableData[] = $row;
@@ -154,12 +155,12 @@ class ResultFormatterService
     /**
      * Display critical issues in a separate table.
      *
-     * @param array $results The scan results.
-     * @param OutputInterface $output The output interface.
+     * @param  array  $results  The scan results.
+     * @param  OutputInterface  $output  The output interface.
      */
     protected function displayCriticalIssuesTable(array $results, OutputInterface $output): void
     {
-        $criticalIssues = array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'critical');
+        $criticalIssues = array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'critical');
 
         if (empty($criticalIssues)) {
             return;
@@ -175,7 +176,7 @@ class ResultFormatterService
             $criticalTableData[] = [
                 'URL' => $this->truncate($result['url'], 60),
                 'Source' => $this->truncate($result['sourcePage'], 30),
-                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
                 'Status' => $result['status'],
                 'Reason' => $reason,
             ];
@@ -187,12 +188,12 @@ class ResultFormatterService
     /**
      * Display broken links in a separate table.
      *
-     * @param array $results The scan results.
-     * @param OutputInterface $output The output interface.
+     * @param  array  $results  The scan results.
+     * @param  OutputInterface  $output  The output interface.
      */
     protected function displayBrokenLinksTable(array $results, OutputInterface $output): void
     {
-        $brokenLinks = array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r));
+        $brokenLinks = array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r));
 
         if (empty($brokenLinks)) {
             return;
@@ -206,7 +207,7 @@ class ResultFormatterService
             $brokenTableData[] = [
                 'URL' => $this->truncate($result['url'], 60),
                 'Source' => $this->truncate($result['sourcePage'], 40),
-                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
                 'Status' => $result['status'],
                 'Error' => $result['type'],
             ];
@@ -218,12 +219,12 @@ class ResultFormatterService
     /**
      * Display low confidence links in a separate table.
      *
-     * @param array $results The scan results.
-     * @param OutputInterface $output The output interface.
+     * @param  array  $results  The scan results.
+     * @param  OutputInterface  $output  The output interface.
      */
     protected function displayLowConfidenceTable(array $results, OutputInterface $output): void
     {
-        $lowConfidenceLinks = array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low');
+        $lowConfidenceLinks = array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low');
 
         if (empty($lowConfidenceLinks)) {
             return;
@@ -238,7 +239,7 @@ class ResultFormatterService
             $verificationTableData[] = [
                 'URL' => $this->truncate($result['url'], 60),
                 'Source' => $this->truncate($result['sourcePage'], 40),
-                'Element' => '<' . ($result['sourceElement'] ?? 'a') . '>',
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
                 'Status' => $this->formatStatus($result),
                 'Flags' => implode('|', $flags),
             ];
@@ -253,15 +254,15 @@ class ResultFormatterService
      * Returns the structured array with summary, results, and broken links.
      * Useful for storing scan output in the database without an OutputInterface.
      *
-     * @param array $results The scan results.
-     * @param ScanConfig $config The scan configuration.
-     * @param string|null $error Optional error message (e.g., rate limit abort).
+     * @param  array  $results  The scan results.
+     * @param  ScanConfig  $config  The scan configuration.
+     * @param  string|null  $error  Optional error message (e.g., rate limit abort).
      * @return array{summary: array, results: array, brokenLinks: array, error?: string}
      */
     public function toJsonArray(array $results, ScanConfig $config, ?string $error = null): array
     {
         // Remove noise URLs unless --advanced is used
-        if (!$config->showAdvanced) {
+        if (! $config->showAdvanced) {
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
@@ -272,7 +273,7 @@ class ResultFormatterService
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 
-        $brokenLinks = array_values(array_filter($filtered, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
+        $brokenLinks = array_values(array_filter($filtered, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
 
         $summary = ['totalScanned' => $totalScanned];
 
@@ -301,7 +302,7 @@ class ResultFormatterService
      */
     protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
-        $brokenLinks = array_values(array_filter($results, fn($r) => !$this->isOkStatus($r['status'] ?? '') && !$this->isHealthyFormEndpoint($r)));
+        $brokenLinks = array_values(array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
 
         // Build summary
         $summary = ['totalScanned' => $totalScanned];
@@ -365,8 +366,8 @@ class ResultFormatterService
     /**
      * Get a user-friendly reason for why a link is flagged as critical.
      *
-     * @param array<string> $flags The flag values
-     * @param array $result The result data
+     * @param  array<string>  $flags  The flag values
+     * @param  array  $result  The result data
      * @return string User-friendly explanation
      */
     protected function getCriticalReason(array $flags, array $result): string
@@ -377,7 +378,7 @@ class ResultFormatterService
         // Check for specific flags in priority order (matching SeverityEvaluator logic)
 
         // Internal 4xx (most common critical issue)
-        if (in_array('status_4xx', $flags, true) && $type === 'internal' && !in_array('bot_protection', $flags, true)) {
+        if (in_array('status_4xx', $flags, true) && $type === 'internal' && ! in_array('bot_protection', $flags, true)) {
             return 'Broken internal link (4xx)';
         }
 
@@ -392,7 +393,7 @@ class ResultFormatterService
         }
 
         // Fallback: show first flag or generic message
-        if (!empty($flags)) {
+        if (! empty($flags)) {
             return ucfirst(str_replace('_', ' ', $flags[0]));
         }
 
@@ -408,7 +409,7 @@ class ResultFormatterService
             return $string;
         }
 
-        return substr($string, 0, $length - 3) . '...';
+        return substr($string, 0, $length - 3).'...';
     }
 
     /**
@@ -418,8 +419,10 @@ class ResultFormatterService
     {
         if (is_numeric($status)) {
             $statusInt = (int) $status;
+
             return $statusInt >= 200 && $statusInt < 300;
         }
+
         return false;
     }
 
@@ -429,6 +432,7 @@ class ResultFormatterService
     protected function isHealthyFormEndpoint(array $result): bool
     {
         $flags = $result['analysis']['flags'] ?? [];
+
         return in_array('form_endpoint', $flags, true);
     }
 
@@ -441,8 +445,8 @@ class ResultFormatterService
      *
      * For URLs with low confidence, appends "(verify)" in table output.
      *
-     * @param array $result The scan result item.
-     * @param bool $isTableOutput Whether formatting for table (vs JSON/CSV).
+     * @param  array  $result  The scan result item.
+     * @param  bool  $isTableOutput  Whether formatting for table (vs JSON/CSV).
      * @return string The formatted status for display.
      */
     protected function formatStatus(array $result, bool $isTableOutput = true): string
@@ -471,4 +475,3 @@ class ResultFormatterService
         return (string) $status;
     }
 }
-

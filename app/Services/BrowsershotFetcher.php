@@ -14,8 +14,11 @@ use Spatie\Browsershot\Browsershot;
 class BrowsershotFetcher
 {
     protected ?string $nodeBinary = null;
+
     protected ?string $npmBinary = null;
+
     protected ?string $chromePath = null;
+
     protected int $timeout = 30;
 
     /**
@@ -37,13 +40,14 @@ class BrowsershotFetcher
     public function setTimeout(int $timeout): self
     {
         $this->timeout = $timeout;
+
         return $this;
     }
 
     /**
      * Fetch the fully rendered HTML of a URL using a headless browser.
      *
-     * @param string $url The URL to render.
+     * @param  string  $url  The URL to render.
      * @return array{status: int|string, body: string|null, finalUrl: string}
      */
     public function fetch(string $url): array
@@ -111,8 +115,8 @@ class BrowsershotFetcher
 
         // Check for Puppeteer
         $projectRoot = base_path();
-        $puppeteerPath = $projectRoot . '/node_modules/puppeteer';
-        if (!is_dir($puppeteerPath)) {
+        $puppeteerPath = $projectRoot.'/node_modules/puppeteer';
+        if (! is_dir($puppeteerPath)) {
             return [
                 'available' => false,
                 'message' => 'Puppeteer is not installed. Run: npm install puppeteer',
@@ -125,4 +129,3 @@ class BrowsershotFetcher
         ];
     }
 }
-

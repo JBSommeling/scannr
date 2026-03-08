@@ -11,14 +11,15 @@ use Tests\TestCase;
 class LinkFlagServiceTest extends TestCase
 {
     private LinkFlagService $linkFlagService;
+
     private UrlNormalizer $urlNormalizer;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->urlNormalizer = new UrlNormalizer();
+        $this->urlNormalizer = new UrlNormalizer;
         $this->urlNormalizer->setBaseUrl('https://www.sommeling.dev');
-        $severityEvaluator = new SeverityEvaluator();
+        $severityEvaluator = new SeverityEvaluator;
         $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $severityEvaluator);
     }
 

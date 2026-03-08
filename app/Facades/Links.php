@@ -20,4 +20,3 @@ class Links extends Facade
         return 'link-extractor';
     }
 }
-

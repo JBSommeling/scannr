@@ -37,35 +37,32 @@ class ScanStatistics
         $total = count($results);
 
         // Determine if result is OK based on status (2xx)
-        $isOk = fn($r) => $this->isOkResult($r);
+        $isOk = fn ($r) => $this->isOkResult($r);
 
-        $ok = count(array_filter($results, fn($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
-        $redirects = count(array_filter($results, fn($r) => !empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
-        $broken = count(array_filter($results, fn($r) => !$isOk($r) && ($r['status'] ?? '') !== 'timeout'));
-        $timeouts = count(array_filter($results, fn($r) => ($r['status'] ?? '') === 'timeout'));
+        $ok = count(array_filter($results, fn ($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
+        $redirects = count(array_filter($results, fn ($r) => ! empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
+        $broken = count(array_filter($results, fn ($r) => ! $isOk($r) && ($r['status'] ?? '') !== 'timeout'));
+        $timeouts = count(array_filter($results, fn ($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
-        $redirectChainCount = count(array_filter($results, fn($r) =>
-            ($r['type'] ?? 'internal') === 'internal' &&
+        $redirectChainCount = count(array_filter($results, fn ($r) => ($r['type'] ?? 'internal') === 'internal' &&
             count($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) >= 2
         ));
-        $totalRedirectHops = array_sum(array_map(fn($r) =>
-            ($r['type'] ?? 'internal') === 'internal'
+        $totalRedirectHops = array_sum(array_map(fn ($r) => ($r['type'] ?? 'internal') === 'internal'
                 ? count($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])
                 : 0,
             $results
         ));
 
         // HTTPS downgrade count
-        $httpsDowngrades = count(array_filter($results, fn($r) =>
-            $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
+        $httpsDowngrades = count(array_filter($results, fn ($r) => $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
         ));
 
         // Severity and confidence counts — read the pre-computed scalar serialized by
         // SeverityEvaluator (via LinkFlagService::buildAnalysis) at scan-time.
-        $criticalCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'critical'));
-        $warningCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
-        $lowConfidenceCount = count(array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
+        $criticalCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'critical'));
+        $warningCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
+        $lowConfidenceCount = count(array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
 
         return [
             'total' => $total,
@@ -91,25 +88,25 @@ class ScanStatistics
 
         if (is_numeric($status)) {
             $statusInt = (int) $status;
+
             return $statusInt >= 200 && $statusInt < 300;
         }
 
         return false;
     }
 
-
     /**
      * Filter scan results by status.
      *
-     * @param  array   $results  Array of scan result items.
-     * @param  string  $filter   Filter type: 'all', 'ok', or 'broken'.
+     * @param  array  $results  Array of scan result items.
+     * @param  string  $filter  Filter type: 'all', 'ok', or 'broken'.
      * @return array Filtered results.
      */
     public function filterResults(array $results, string $filter): array
     {
         return match ($filter) {
-            'ok' => array_filter($results, fn($r) => $this->isOkResult($r)),
-            'broken' => array_filter($results, fn($r) => !$this->isOkResult($r)),
+            'ok' => array_filter($results, fn ($r) => $this->isOkResult($r)),
+            'broken' => array_filter($results, fn ($r) => ! $this->isOkResult($r)),
             default => $results,
         };
     }
@@ -117,7 +114,7 @@ class ScanStatistics
     /**
      * Filter scan results by source element type.
      *
-     * @param  array   $results  Array of scan result items.
+     * @param  array  $results  Array of scan result items.
      * @param  string  $element  Element filter: 'all', 'a', 'link', 'script', 'img', or 'media'.
      * @return array Filtered results.
      */
@@ -127,7 +124,7 @@ class ScanStatistics
             return $results;
         }
 
-        return array_filter($results, fn($r) => ($r['sourceElement'] ?? 'a') === $element);
+        return array_filter($results, fn ($r) => ($r['sourceElement'] ?? 'a') === $element);
     }
 
     /**
@@ -140,7 +137,7 @@ class ScanStatistics
      * - 'exact': Additional exact URL matches.
      * - 'prefix': Additional URL prefix matches.
      *
-     * @param  array  $results        Array of scan result items.
+     * @param  array  $results  Array of scan result items.
      * @param  array  $noisePatterns  Noise config array.
      * @return array Filtered results with noise URLs removed.
      */
@@ -152,7 +149,7 @@ class ScanStatistics
         $exactUrls = $noisePatterns['exact'] ?? [];
         $prefixUrls = $noisePatterns['prefix'] ?? [];
 
-        if (empty($namespaceDomains) && !$detectPreconnect && empty($frameworkPatterns) && empty($exactUrls) && empty($prefixUrls)) {
+        if (empty($namespaceDomains) && ! $detectPreconnect && empty($frameworkPatterns) && empty($exactUrls) && empty($prefixUrls)) {
             return $results;
         }
 
@@ -162,7 +159,7 @@ class ScanStatistics
             $type = $result['type'] ?? 'internal';
 
             // 1. Namespace domain detection — any URL on a known namespace domain
-            if (!empty($namespaceDomains)) {
+            if (! empty($namespaceDomains)) {
                 $host = parse_url($url, PHP_URL_HOST);
                 if ($host !== null && $host !== false && in_array($host, $namespaceDomains, true)) {
                     return false;
@@ -175,7 +172,7 @@ class ScanStatistics
                 $path = $parsed['path'] ?? '';
                 $hasQuery = isset($parsed['query']);
                 // Bare domain: no path (or just "/") and no query string
-                if (($path === '' || $path === '/') && !$hasQuery) {
+                if (($path === '' || $path === '/') && ! $hasQuery) {
                     return false;
                 }
             }
@@ -203,4 +200,3 @@ class ScanStatistics
         });
     }
 }
-

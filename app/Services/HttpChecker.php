@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\LinkFlag;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -31,7 +30,7 @@ class HttpChecker
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving redirect URLs.
      * @param  LinkFlagService  $linkFlagService  The link flag service for detecting flags.
-     * @param  Client|null    $client         Optional Guzzle HTTP client instance.
+     * @param  Client|null  $client  Optional Guzzle HTTP client instance.
      */
     public function __construct(
         protected UrlNormalizer $urlNormalizer,
@@ -66,6 +65,7 @@ class HttpChecker
     public function setClient(Client $client): self
     {
         $this->client = $client;
+
         return $this;
     }
 
@@ -78,6 +78,7 @@ class HttpChecker
     public function setMaxRedirects(int $maxRedirects): self
     {
         $this->maxRedirects = $maxRedirects;
+
         return $this;
     }
 
@@ -88,8 +89,8 @@ class HttpChecker
      * configured maximum. Returns detailed information about the final
      * response and any redirects encountered.
      *
-     * @param string $url The URL to check.
-     * @param string $method HTTP method to use ('GET' or 'HEAD'). Default: 'GET'.
+     * @param  string  $url  The URL to check.
+     * @param  string  $method  HTTP method to use ('GET' or 'HEAD'). Default: 'GET'.
      * @return array{
      *     finalStatus: int|string,
      *     chain: array<string>,
@@ -97,6 +98,7 @@ class HttpChecker
      *     body: string|null,
      *     hasHttpsDowngrade: bool
      * }
+     *
      * @throws GuzzleException
      */
     public function checkUrl(string $url, string $method = 'GET'): array
@@ -112,8 +114,8 @@ class HttpChecker
      * www-to-non-www redirects (and vice versa) are not counted as hops
      * and are excluded from the redirect chain.
      *
-     * @param string $url The URL to request.
-     * @param string $method HTTP method ('GET' or 'HEAD').
+     * @param  string  $url  The URL to request.
+     * @param  string  $method  HTTP method ('GET' or 'HEAD').
      * @return array{
      *     finalStatus: int|string,
      *     finalUrl: string,
@@ -123,6 +125,7 @@ class HttpChecker
      *     hasHttpsDowngrade: bool,
      *     retryAfter: int|null
      * }
+     *
      * @throws GuzzleException
      */
     public function followRedirects(string $url, string $method = 'GET'): array
@@ -170,26 +173,27 @@ class HttpChecker
                     // Check for loop (redirecting to an already visited URL)
                     if (isset($visitedUrls[$location])) {
                         $loop = true;
-                        $chain[] = $location . ' (LOOP)';
+                        $chain[] = $location.' (LOOP)';
                         break;
                     }
 
                     $visitedUrls[$location] = true;
 
                     // Skip www-only redirects from the chain (but still follow them)
-                    if (!$this->isWwwOnlyRedirect($currentUrl, $location)) {
+                    if (! $this->isWwwOnlyRedirect($currentUrl, $location)) {
                         $chain[] = $location;
                         $hops++;
                     }
 
                     $currentUrl = $location;
+
                     continue;
                 }
 
                 // Extract Retry-After header for 429 responses (in seconds)
                 if ($finalStatus === 429) {
                     $retryAfterHeader = $response->getHeaderLine('Retry-After');
-                    if (!empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
+                    if (! empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
                         $retryAfter = (int) $retryAfterHeader;
                     }
                 }
@@ -228,8 +232,8 @@ class HttpChecker
     /**
      * Check if a redirect is only a www normalization (www to non-www or vice versa).
      *
-     * @param string $fromUrl The original URL.
-     * @param string $toUrl The redirect target URL.
+     * @param  string  $fromUrl  The original URL.
+     * @param  string  $toUrl  The redirect target URL.
      * @return bool True if the redirect only changes the www prefix.
      */
     public function isWwwOnlyRedirect(string $fromUrl, string $toUrl): bool
@@ -237,7 +241,7 @@ class HttpChecker
         $fromParsed = parse_url($fromUrl);
         $toParsed = parse_url($toUrl);
 
-        if (!isset($fromParsed['host']) || !isset($toParsed['host'])) {
+        if (! isset($fromParsed['host']) || ! isset($toParsed['host'])) {
             return false;
         }
 
@@ -251,12 +255,12 @@ class HttpChecker
         }
 
         // Check if the only difference is the www prefix
-        $fromWithoutHost = ($fromParsed['scheme'] ?? '') . '://' .
-                          ($fromParsed['path'] ?? '/') .
-                          (isset($fromParsed['query']) ? '?' . $fromParsed['query'] : '');
-        $toWithoutHost = ($toParsed['scheme'] ?? '') . '://' .
-                        ($toParsed['path'] ?? '/') .
-                        (isset($toParsed['query']) ? '?' . $toParsed['query'] : '');
+        $fromWithoutHost = ($fromParsed['scheme'] ?? '').'://'.
+                          ($fromParsed['path'] ?? '/').
+                          (isset($fromParsed['query']) ? '?'.$fromParsed['query'] : '');
+        $toWithoutHost = ($toParsed['scheme'] ?? '').'://'.
+                        ($toParsed['path'] ?? '/').
+                        (isset($toParsed['query']) ? '?'.$toParsed['query'] : '');
 
         // Same scheme, path, and query = www-only redirect
         return $fromWithoutHost === $toWithoutHost;
@@ -269,7 +273,7 @@ class HttpChecker
      * Used when --js is enabled to scan external bundles for download URLs.
      *
      * @param  string  $url  The absolute URL of the script file.
-     * @return string|null   The script content, or null on failure.
+     * @return string|null The script content, or null on failure.
      */
     public function fetchScriptContent(string $url): ?string
     {
@@ -305,9 +309,9 @@ class HttpChecker
      *
      * Only 404, 500+, timeouts, and connection errors indicate a truly broken endpoint.
      *
-     * @param string $url The form endpoint URL.
-     * @param string $source The source page where this URL was found.
-     * @param string $type 'internal' or 'external'.
+     * @param  string  $url  The form endpoint URL.
+     * @param  string  $source  The source page where this URL was found.
+     * @param  string  $type  'internal' or 'external'.
      * @return array The scan result array.
      */
     public function processFormEndpoint(string $url, string $source, string $type = 'internal'): array
@@ -335,7 +339,7 @@ class HttpChecker
                 $status = $e->getResponse()->getStatusCode();
                 if ($status === 429) {
                     $retryAfterHeader = $e->getResponse()->getHeaderLine('Retry-After');
-                    if (!empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
+                    if (! empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
                         $retryAfter = (int) $retryAfterHeader;
                     }
                 }
@@ -382,4 +386,3 @@ class HttpChecker
         ];
     }
 }
-

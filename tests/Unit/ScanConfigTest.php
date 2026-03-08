@@ -926,4 +926,3 @@ class ScanConfigTest extends TestCase
         return $command;
     }
 }
-

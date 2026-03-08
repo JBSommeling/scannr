@@ -15,10 +15,10 @@ use App\Enums\Severity;
 readonly class LinkAnalysis
 {
     /**
-     * @param array<LinkFlag> $flags The observation flags for this link.
-     * @param Severity $severity The derived severity level.
-     * @param Confidence $confidence The confidence level in the analysis.
-     * @param string $verification Verification recommendation: 'recommended', 'optional', or 'none'.
+     * @param  array<LinkFlag>  $flags  The observation flags for this link.
+     * @param  Severity  $severity  The derived severity level.
+     * @param  Confidence  $confidence  The confidence level in the analysis.
+     * @param  string  $verification  Verification recommendation: 'recommended', 'optional', or 'none'.
      */
     public function __construct(
         public array $flags = [],
@@ -30,7 +30,7 @@ readonly class LinkAnalysis
     /**
      * Create a new analysis with the given parameters.
      *
-     * @param array<LinkFlag> $flags
+     * @param  array<LinkFlag>  $flags
      */
     public static function create(
         array $flags,
@@ -52,7 +52,7 @@ readonly class LinkAnalysis
     /**
      * Create analysis from array data (for hydration from queue/results).
      *
-     * @param array{flags?: array<string>, confidence?: string, verification?: string} $data
+     * @param  array{flags?: array<string>, confidence?: string, verification?: string}  $data
      */
     public static function fromArray(array $data): self
     {
@@ -77,7 +77,7 @@ readonly class LinkAnalysis
         }
 
         $verification = $data['verification'] ?? 'none';
-        if (!in_array($verification, ['recommended', 'optional', 'none'], true)) {
+        if (! in_array($verification, ['recommended', 'optional', 'none'], true)) {
             $verification = 'none';
         }
 
@@ -95,7 +95,7 @@ readonly class LinkAnalysis
     /**
      * Check if this analysis has any of the given flags.
      *
-     * @param array<LinkFlag> $flags
+     * @param  array<LinkFlag>  $flags
      */
     public function hasAnyFlag(array $flags): bool
     {
@@ -104,6 +104,7 @@ readonly class LinkAnalysis
                 return true;
             }
         }
+
         return false;
     }
 
@@ -114,7 +115,7 @@ readonly class LinkAnalysis
      */
     public function getFlagValues(): array
     {
-        return array_map(fn(LinkFlag $f) => $f->value, $this->flags);
+        return array_map(fn (LinkFlag $f) => $f->value, $this->flags);
     }
 
     /**
@@ -181,4 +182,3 @@ readonly class LinkAnalysis
         ];
     }
 }
-

@@ -130,7 +130,7 @@ readonly class ScanConfig
             'customTrackingParams' => $customTrackingParams,
             'useJsRendering' => (bool) $command->option('js'),
             'useSmartJs' => (bool) $command->option('smart-js'),
-            'respectRobots' => !$command->option('no-robots'),
+            'respectRobots' => ! $command->option('no-robots'),
             'showAdvanced' => (bool) $command->option('advanced'),
         ]);
     }
@@ -178,7 +178,7 @@ readonly class ScanConfig
     public function getBaseHost(): string
     {
         $parsed = parse_url($this->baseUrl);
+
         return $parsed['host'] ?? '';
     }
 }
-

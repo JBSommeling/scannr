@@ -12,7 +12,7 @@ class ScanStatisticsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scanStatistics = new ScanStatistics();
+        $this->scanStatistics = new ScanStatistics;
     }
     // =====================
     // filterResults tests
@@ -417,7 +417,7 @@ class ScanStatisticsTest extends TestCase
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
         $this->assertCount(3, $filtered);
 
-        $filteredUrls = array_map(fn($r) => $r['url'] . '|' . $r['sourceElement'], array_values($filtered));
+        $filteredUrls = array_map(fn ($r) => $r['url'].'|'.$r['sourceElement'], array_values($filtered));
         $this->assertContains('https://other-cdn.example.com|a', $filteredUrls);
         $this->assertContains('https://cdn.example.com/style.css|link', $filteredUrls);
         $this->assertContains('https://example.com|link', $filteredUrls);
@@ -471,4 +471,3 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(0, $stats['lowConfidenceCount']);
     }
 }
-

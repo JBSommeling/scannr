@@ -10,12 +10,13 @@ use ReflectionClass;
 class ScanSiteTest extends TestCase
 {
     private ResultFormatterService $formatter;
+
     private ReflectionClass $reflection;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $scanStatistics = new ScanStatistics();
+        $scanStatistics = new ScanStatistics;
         $this->formatter = new ResultFormatterService($scanStatistics);
         $this->reflection = new ReflectionClass($this->formatter);
     }
@@ -23,6 +24,7 @@ class ScanSiteTest extends TestCase
     private function invokeMethod(string $methodName, array $parameters = []): mixed
     {
         $method = $this->reflection->getMethod($methodName);
+
         return $method->invokeArgs($this->formatter, $parameters);
     }
 

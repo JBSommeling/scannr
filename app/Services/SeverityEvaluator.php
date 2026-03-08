@@ -31,8 +31,8 @@ class SeverityEvaluator
      * 10. EXCESSIVE_REDIRECTS → WARNING
      * 11. Everything else → INFO
      *
-     * @param array<LinkFlag> $flags
-     * @param int|string $status HTTP status code or error string
+     * @param  array<LinkFlag>  $flags
+     * @param  int|string  $status  HTTP status code or error string
      */
     public function evaluate(array $flags, int|string $status = 0): Severity
     {
@@ -59,7 +59,7 @@ class SeverityEvaluator
         }
 
         // Critical: Internal 4xx, 5xx, or connection errors
-        if ($hasStatus4xx && !$hasExternalPlatform && !$hasBotProtection) {
+        if ($hasStatus4xx && ! $hasExternalPlatform && ! $hasBotProtection) {
             return Severity::CRITICAL;
         }
 
@@ -67,7 +67,7 @@ class SeverityEvaluator
             return Severity::CRITICAL;
         }
 
-        if ($hasConnectionError && !$hasExternalPlatform) {
+        if ($hasConnectionError && ! $hasExternalPlatform) {
             return Severity::CRITICAL;
         }
 
@@ -116,9 +116,9 @@ class SeverityEvaluator
      * - JS bundle extracted URLs (might not be real links)
      * - Malformed URLs (might be template literals)
      *
-     * @param array<LinkFlag> $flags
-     * @param int|string $status HTTP status or error string
-     * @param bool $isExternal Whether the URL is external
+     * @param  array<LinkFlag>  $flags
+     * @param  int|string  $status  HTTP status or error string
+     * @param  bool  $isExternal  Whether the URL is external
      */
     public function evaluateConfidence(array $flags, int|string $status, bool $isExternal): Confidence
     {
@@ -198,4 +198,3 @@ class SeverityEvaluator
         return 'none';
     }
 }
-

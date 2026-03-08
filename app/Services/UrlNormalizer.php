@@ -105,6 +105,7 @@ class UrlNormalizer
     public function setTrackingParams(array $params): self
     {
         $this->trackingParams = $params;
+
         return $this;
     }
 
@@ -117,6 +118,7 @@ class UrlNormalizer
     public function addTrackingParams(array $params): self
     {
         $this->trackingParams = array_unique(array_merge($this->trackingParams, $params));
+
         return $this;
     }
 
@@ -137,8 +139,8 @@ class UrlNormalizer
      * Removes URL fragments, trailing slashes, and known tracking parameters
      * (utm_*, fbclid, gclid, ref, source) in a case-insensitive manner.
      *
-     * @param  string|null  $url      The URL to normalize.
-     * @param  string       $baseUrl  The base URL for resolving relative URLs.
+     * @param  string|null  $url  The URL to normalize.
+     * @param  string  $baseUrl  The base URL for resolving relative URLs.
      * @return string|null The normalized absolute URL, or null if invalid.
      */
     public function normalizeUrl(?string $url, string $baseUrl): ?string
@@ -157,7 +159,7 @@ class UrlNormalizer
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
             $parsedBase = parse_url($baseUrl);
-            $url = ($parsedBase['scheme'] ?? 'https') . ':' . $url;
+            $url = ($parsedBase['scheme'] ?? 'https').':'.$url;
         }
 
         // Handle absolute URLs
@@ -169,7 +171,7 @@ class UrlNormalizer
         $parsedBase = parse_url($baseUrl);
         $scheme = $parsedBase['scheme'] ?? 'https';
         $host = $parsedBase['host'] ?? '';
-        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
+        $port = isset($parsedBase['port']) ? ':'.$parsedBase['port'] : '';
 
         if (str_starts_with($url, '/')) {
             // Absolute path
@@ -207,8 +209,8 @@ class UrlNormalizer
             $lowerHost = strtolower($parsed['host']);
             if ($lowerHost !== $parsed['host']) {
                 $url = preg_replace(
-                    '/^(' . preg_quote($parsed['scheme'] ?? 'https', '/') . ':\/\/)' . preg_quote($parsed['host'], '/') . '/',
-                    '$1' . $lowerHost,
+                    '/^('.preg_quote($parsed['scheme'] ?? 'https', '/').':\/\/)'.preg_quote($parsed['host'], '/').'/',
+                    '$1'.$lowerHost,
                     $url,
                     1
                 );
@@ -224,8 +226,8 @@ class UrlNormalizer
      * Similar to normalizeUrl but preserves trailing slashes and does not
      * strip tracking parameters. Used for following redirects accurately.
      *
-     * @param  string|null  $url      The redirect URL to resolve.
-     * @param  string       $baseUrl  The current URL for resolving relative URLs.
+     * @param  string|null  $url  The redirect URL to resolve.
+     * @param  string  $baseUrl  The current URL for resolving relative URLs.
      * @return string|null The absolute URL, or null if invalid.
      */
     public function resolveRedirectUrl(?string $url, string $baseUrl): ?string
@@ -244,7 +246,8 @@ class UrlNormalizer
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
             $parsedBase = parse_url($baseUrl);
-            return ($parsedBase['scheme'] ?? 'https') . ':' . $url;
+
+            return ($parsedBase['scheme'] ?? 'https').':'.$url;
         }
 
         // Handle absolute URLs - return as-is (no trailing slash stripping)
@@ -256,7 +259,7 @@ class UrlNormalizer
         $parsedBase = parse_url($baseUrl);
         $scheme = $parsedBase['scheme'] ?? 'https';
         $host = $parsedBase['host'] ?? '';
-        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
+        $port = isset($parsedBase['port']) ? ':'.$parsedBase['port'] : '';
 
         if (str_starts_with($url, '/')) {
             // Absolute path
@@ -283,7 +286,7 @@ class UrlNormalizer
     {
         $parsed = parse_url($url);
 
-        if (!isset($parsed['query'])) {
+        if (! isset($parsed['query'])) {
             return $url;
         }
 
@@ -291,7 +294,7 @@ class UrlNormalizer
 
         $filteredParams = [];
         foreach ($queryParams as $key => $value) {
-            if (!$this->isTrackingParam($key)) {
+            if (! $this->isTrackingParam($key)) {
                 $filteredParams[$key] = $value;
             }
         }
@@ -299,13 +302,13 @@ class UrlNormalizer
         // Rebuild URL without tracking params
         $scheme = $parsed['scheme'] ?? 'https';
         $host = $parsed['host'] ?? '';
-        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $port = isset($parsed['port']) ? ':'.$parsed['port'] : '';
         $path = $parsed['path'] ?? '';
 
         $newUrl = "{$scheme}://{$host}{$port}{$path}";
 
-        if (!empty($filteredParams)) {
-            $newUrl .= '?' . http_build_query($filteredParams);
+        if (! empty($filteredParams)) {
+            $newUrl .= '?'.http_build_query($filteredParams);
         }
 
         return $newUrl;
@@ -353,7 +356,7 @@ class UrlNormalizer
     {
         $parsed = parse_url($url);
 
-        if (!isset($parsed['host'])) {
+        if (! isset($parsed['host'])) {
             return false;
         }
 
@@ -365,7 +368,7 @@ class UrlNormalizer
             return false;
         }
 
-        return str_ends_with($urlHost, '.' . $this->baseHost);
+        return str_ends_with($urlHost, '.'.$this->baseHost);
     }
 
     /**
@@ -382,7 +385,7 @@ class UrlNormalizer
     {
         $parsed = parse_url($url);
 
-        if (!isset($parsed['host'])) {
+        if (! isset($parsed['host'])) {
             return true;
         }
 
@@ -395,11 +398,10 @@ class UrlNormalizer
         }
 
         // Check if URL host is a subdomain of base host
-        if (str_ends_with($urlHost, '.' . $this->baseHost)) {
+        if (str_ends_with($urlHost, '.'.$this->baseHost)) {
             return true;
         }
 
         return false;
     }
 }
-

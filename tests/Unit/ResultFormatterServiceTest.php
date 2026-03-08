@@ -11,12 +11,13 @@ use Tests\TestCase;
 class ResultFormatterServiceTest extends TestCase
 {
     private ResultFormatterService $formatter;
+
     private ScanStatistics $scanStatistics;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scanStatistics = new ScanStatistics();
+        $this->scanStatistics = new ScanStatistics;
         $this->formatter = new ResultFormatterService($this->scanStatistics);
     }
 
@@ -41,13 +42,20 @@ class ResultFormatterServiceTest extends TestCase
 
     private function createMockOutput(): OutputInterface
     {
-        return new class implements OutputInterface {
+        return new class implements OutputInterface
+        {
             public array $lines = [];
+
             public array $infos = [];
+
             public array $warnings = [];
+
             public array $errors = [];
+
             public array $tables = [];
+
             public int $newLines = 0;
+
             public bool $verbose = false;
 
             public function info(string $message): void
@@ -1962,5 +1970,3 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertCount(1, $output->tables);
     }
 }
-
-
