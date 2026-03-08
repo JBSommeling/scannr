@@ -572,7 +572,9 @@ class ResultFormatterService
      */
     private function sanitizeCsvField(string $value): string
     {
-        if ($value !== '' && in_array($value[0], ['=', '+', '-', '@'], true)) {
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
             return "\t" . $value;
         }
 
