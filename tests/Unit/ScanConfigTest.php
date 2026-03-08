@@ -232,6 +232,69 @@ class ScanConfigTest extends TestCase
         $this->assertTrue($config->hasFilter());
     }
 
+    public function test_has_display_filter_false_when_no_display_filter(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a', 'img'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        // scanElements is limited but no display filter → hasDisplayFilter = false
+        $this->assertFalse($config->hasDisplayFilter());
+        // But hasFilter still true because scanElements is limited
+        $this->assertTrue($config->hasFilter());
+    }
+
+    public function test_has_display_filter_true_when_status_filter(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
+            statusFilter: 'ok',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertTrue($config->hasDisplayFilter());
+    }
+
+    public function test_has_display_filter_true_when_element_filter(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a', 'link', 'script', 'img', 'media', 'form'],
+            statusFilter: 'all',
+            elementFilter: 'img',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertTrue($config->hasDisplayFilter());
+    }
+
     // ==================
     // fromCommandOptions tests (using mock)
     // ==================

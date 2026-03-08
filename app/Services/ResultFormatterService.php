@@ -32,27 +32,30 @@ class ResultFormatterService
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
-        // Filter results
+        // Compute integrity score from ALL results (before display filtering)
+        $scoreResult = $this->integrityScorer->calculate($results);
+
+        // Apply display filters (--status / --filter)
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
-        // Calculate stats
+        // Calculate stats from filtered results (for display counts)
         $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
-        $isFiltered = $config->hasFilter();
+        $isFiltered = $config->hasDisplayFilter();
 
         // Display based on format
         match ($config->outputFormat) {
-            'json' => $this->displayJson($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
-            'csv' => $this->displayCsv($filtered, $stats, $totalScanned, $output, $error),
-            default => $this->displayTable($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
+            'json' => $this->displayJson($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
+            'csv' => $this->displayCsv($filtered, $scoreResult, $stats, $totalScanned, $output, $error),
+            default => $this->displayTable($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
         };
     }
 
     /**
      * Display results as a table.
      */
-    protected function displayTable(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
+    protected function displayTable(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         // Display error message if present (e.g., rate limit abort)
         if ($error !== null) {
@@ -60,8 +63,7 @@ class ResultFormatterService
             $output->newLine();
         }
 
-        // Calculate and display integrity score
-        $scoreResult = $this->integrityScorer->calculate($results);
+        // Display integrity score (computed from unfiltered results)
         $this->displayIntegrityScore($scoreResult, $output);
 
         $output->info('Summary:');
@@ -332,12 +334,15 @@ class ResultFormatterService
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
+        // Compute integrity score from ALL results (before display filtering)
+        $scoreResult = $this->integrityScorer->calculate($results);
+
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
         $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
-        $isFiltered = $config->hasFilter();
+        $isFiltered = $config->hasDisplayFilter();
 
         $brokenLinks = array_values(array_filter($filtered, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
 
@@ -352,7 +357,7 @@ class ResultFormatterService
 
         $output = [
             'summary' => $summary,
-            'integrityScore' => $this->integrityScorer->calculate($filtered)->toArray(),
+            'integrityScore' => $scoreResult->toArray(),
             'results' => array_values($filtered),
             'brokenLinks' => $brokenLinks,
         ];
@@ -367,7 +372,7 @@ class ResultFormatterService
     /**
      * Display results as JSON.
      */
-    protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
+    protected function displayJson(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         $brokenLinks = array_values(array_filter($results, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
         $summary = ['totalScanned' => $totalScanned];
@@ -381,7 +386,7 @@ class ResultFormatterService
 
         $jsonOutput = [
             'summary' => $summary,
-            'integrityScore' => $this->integrityScorer->calculate($results)->toArray(),
+            'integrityScore' => $scoreResult->toArray(),
             'results' => array_values($results),
             'brokenLinks' => $brokenLinks,
         ];
@@ -397,15 +402,14 @@ class ResultFormatterService
     /**
      * Display results as CSV.
      */
-    protected function displayCsv(array $results, array $stats, int $totalScanned, OutputInterface $output, ?string $error = null): void
+    protected function displayCsv(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, OutputInterface $output, ?string $error = null): void
     {
         // Display error as comment line at the top if present
         if ($error !== null) {
             $output->line("# Error: {$error}");
         }
 
-        // Display integrity score as comment header
-        $scoreResult = $this->integrityScorer->calculate($results);
+        // Display integrity score as comment header (computed from unfiltered results)
         $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
         $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
 

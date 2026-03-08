@@ -2212,4 +2212,198 @@ class ResultFormatterServiceTest extends TestCase
         // Only the main table, no low confidence table
         $this->assertCount(1, $output->tables);
     }
+
+    // ====================================================
+    // Integrity score independence from display filters
+    // ====================================================
+
+    public function test_score_uses_unfiltered_results_with_status_ok_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // Get score without filter (baseline)
+        $outputNoFilter = $this->createMockOutput();
+        $configNoFilter = $this->createConfig(['outputFormat' => 'json']);
+        $this->formatter->format($results, $configNoFilter, $outputNoFilter);
+        $jsonNoFilter = json_decode($outputNoFilter->lines[0], true);
+        $scoreNoFilter = $jsonNoFilter['integrityScore']['overallScore'];
+
+        // Get score WITH --status=ok filter
+        $outputFiltered = $this->createMockOutput();
+        $configFiltered = $this->createConfig(['outputFormat' => 'json', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $configFiltered, $outputFiltered);
+        $jsonFiltered = json_decode($outputFiltered->lines[0], true);
+        $scoreFiltered = $jsonFiltered['integrityScore']['overallScore'];
+
+        // Score should be identical — display filter should not affect integrity score
+        $this->assertEquals($scoreNoFilter, $scoreFiltered);
+        // Score should be less than 100 (there's a broken link)
+        $this->assertLessThan(100, $scoreFiltered);
+        // But filtered results should only show OK items
+        $this->assertCount(1, $jsonFiltered['results']);
+    }
+
+    public function test_score_uses_unfiltered_results_with_element_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/style.css',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://example.com/page',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // With --filter=a, only <a> elements are displayed but score sees broken CSS too
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json', 'elementFilter' => 'a']);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // Score should reflect the broken CSS link
+        $this->assertLessThan(100, $json['integrityScore']['overallScore']);
+        // But only <a> element shown in results
+        $this->assertCount(1, $json['results']);
+        $this->assertEquals('https://example.com/page', $json['results'][0]['url']);
+    }
+
+    public function test_score_unchanged_when_no_filter_active(): void
+    {
+        $results = $this->createSampleResults();
+
+        // No filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // All results should be present and score computed from same set
+        $this->assertCount(3, $json['results']);
+        $this->assertArrayNotHasKey('filtered', $json['summary']);
+    }
+
+    public function test_scan_elements_does_not_trigger_filtered_label(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/logo.png',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'img',
+            ],
+        ];
+
+        // --scan-elements=img means only img was scanned — this is NOT a display filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json', 'scanElements' => ['img']]);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // No "filtered" key since no display filter is active
+        $this->assertArrayNotHasKey('filtered', $json['summary']);
+        $this->assertCount(1, $json['results']);
+    }
+
+    public function test_table_score_independent_of_status_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/ok',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 500,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // Table output with --status=ok filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+
+        // The Site Integrity Score line should NOT show 100 — it sees the 500 error in unfiltered set
+        $this->assertStringContainsString('Site Integrity Score:', $lines);
+        $this->assertStringNotContainsString('Site Integrity Score: 100.0 / 100', $lines);
+    }
+
+    public function test_csv_score_independent_of_status_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/ok',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 500,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // CSV output with --status=ok filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $config, $output);
+
+        // Score comment should NOT show 100 — sees the 500 in full set
+        $scoreLine = $output->lines[0];
+        $this->assertStringContainsString('Site Integrity Score', $scoreLine);
+        $this->assertStringNotContainsString('100.0 / 100', $scoreLine);
+    }
 }
