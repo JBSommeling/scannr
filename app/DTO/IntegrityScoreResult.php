@@ -16,7 +16,7 @@ readonly class IntegrityScoreResult
      * @param  string  $gradeColor  Color indicator: green, yellow, orange, red.
      * @param  string  $gradeEmoji  Emoji indicator: 🟢, 🟡, 🟠, 🔴.
      * @param  array<string, float>  $categoryScores  Sub-scores keyed by category.
-     * @param  array<array{flag: string, basePenalty: float, confidence: string, multiplier: float, dampening: float, effectivePenalty: float, url: string}>  $penalties  Individual penalty details.
+     * @param  array<array{issueType: string, basePenalty: float, confidence: string, multiplier: float, dampening: float, effectivePenalty: float, url: string}>  $penalties  Individual penalty details.
      * @param  array{criticalIssues: int, warnings: int, brokenLinks: int, manualVerification: int}  $summary  Issue count summary.
      */
     public function __construct(
