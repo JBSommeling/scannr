@@ -76,4 +76,3 @@ jobs:
           DB_PASSWORD: password
         run: php artisan test
 
-
