@@ -41,7 +41,7 @@ class ScanStatistics
 
         $ok = count(array_filter($results, fn ($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
         $redirects = count(array_filter($results, fn ($r) => ! empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
-        $broken = count(array_filter($results, fn ($r) => ! $isOk($r) && ($r['status'] ?? '') !== 'timeout' && ! $this->isHealthyFormEndpoint($r)));
+        $broken = count(array_filter($results, fn ($r) => $this->isBrokenResult($r)));
         $timeouts = count(array_filter($results, fn ($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
@@ -116,6 +116,40 @@ class ScanStatistics
         return in_array($status, $healthyStatuses, true) && $status < 500;
     }
 
+    protected function isBotProtected(array $result): bool
+    {
+        return in_array('bot_protection', $result['analysis']['flags'] ?? [], true);
+    }
+
+    /**
+     * Check if a result represents a broken link.
+     *
+     * A result is broken when it has a non-2xx status and is not a healthy
+     * form endpoint, not bot-protected, and has a non-empty status.
+     */
+    public function isBrokenResult(array $result): bool
+    {
+        $status = $result['status'] ?? '';
+
+        if ($status === '') {
+            return false;
+        }
+
+        if ($this->isOkResult($result)) {
+            return false;
+        }
+
+        if ($this->isHealthyFormEndpoint($result)) {
+            return false;
+        }
+
+        if ($this->isBotProtected($result)) {
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * Filter scan results by status.
      *
@@ -127,7 +161,7 @@ class ScanStatistics
     {
         return match ($filter) {
             'ok' => array_filter($results, fn ($r) => $this->isOkResult($r)),
-            'broken' => array_filter($results, fn ($r) => ! $this->isOkResult($r) && ! $this->isHealthyFormEndpoint($r)),
+            'broken' => array_filter($results, fn ($r) => $this->isBrokenResult($r)),
             default => $results,
         };
     }

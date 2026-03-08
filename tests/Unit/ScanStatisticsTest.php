@@ -184,8 +184,8 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(5, $stats['total']);
         $this->assertEquals(1, $stats['ok']);        // 200 without redirects
         $this->assertEquals(1, $stats['redirects']); // 200 with redirects
-        $this->assertEquals(2, $stats['broken']);    // 404 + 500
-        $this->assertEquals(1, $stats['timeouts']);  // timeout
+        $this->assertEquals(3, $stats['broken']);    // 404 + 500 + timeout
+        $this->assertEquals(1, $stats['timeouts']);  // timeout (still separately tracked)
         $this->assertEquals(0, $stats['redirectChainCount']); // single redirect is not a chain
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
@@ -570,5 +570,150 @@ class ScanStatisticsTest extends TestCase
         $filtered = $this->scanStatistics->filterResults($results, 'broken');
 
         $this->assertCount(1, $filtered);
+    }
+
+    // =============================================
+    // Broken link status classification
+    // =============================================
+
+    private function makeSimpleResult(string $status, array $flags = []): array
+    {
+        return [
+            'url' => 'https://example.com/page',
+            'sourcePage' => 'https://example.com',
+            'status' => $status,
+            'type' => 'external',
+            'sourceElement' => 'a',
+            'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+            'analysis' => ['flags' => $flags, 'confidence' => 'high', 'verification' => 'none'],
+            'network' => ['retryAfter' => null],
+        ];
+    }
+
+    #[DataProvider('brokenStatusProvider')]
+    public function test_status_counts_as_broken(string $status, array $flags): void
+    {
+        $stats = $this->scanStatistics->calculateStats([$this->makeSimpleResult($status, $flags)]);
+
+        $this->assertEquals(1, $stats['broken'], "Expected status '{$status}' to count as broken");
+    }
+
+    public static function brokenStatusProvider(): array
+    {
+        return [
+            '404 Not Found'        => ['404', ['status_4xx']],
+            '410 Gone'             => ['410', ['status_4xx']],
+            '500 Server Error'     => ['500', ['status_5xx']],
+            '503 Unavailable'      => ['503', ['status_5xx']],
+            'timeout'              => ['timeout', ['timeout']],
+            'error (connection)'   => ['error', ['connection_error']],
+        ];
+    }
+
+    #[DataProvider('notBrokenStatusProvider')]
+    public function test_status_does_not_count_as_broken(string $status, array $flags): void
+    {
+        $stats = $this->scanStatistics->calculateStats([$this->makeSimpleResult($status, $flags)]);
+
+        $this->assertEquals(0, $stats['broken'], "Expected status '{$status}' NOT to count as broken");
+    }
+
+    public static function notBrokenStatusProvider(): array
+    {
+        return [
+            '200 OK'              => ['200', []],
+            '201 Created'         => ['201', []],
+            '204 No Content'      => ['204', []],
+            'empty status'        => ['', []],
+            '403 bot protected'   => ['403', ['bot_protection']],
+            '405 bot protected'   => ['405', ['bot_protection', 'external_platform']],
+        ];
+    }
+
+    public function test_timeout_counted_in_both_broken_and_timeouts(): void
+    {
+        $stats = $this->scanStatistics->calculateStats([
+            $this->makeSimpleResult('timeout', ['timeout']),
+        ]);
+
+        $this->assertEquals(1, $stats['broken']);
+        $this->assertEquals(1, $stats['timeouts']);
+    }
+
+    // ======================
+    // isBrokenResult tests
+    // ======================
+
+    public function test_is_broken_result_404(): void
+    {
+        $this->assertTrue($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('404', ['status_4xx'])
+        ));
+    }
+
+    public function test_is_broken_result_200_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('200', [])
+        ));
+    }
+
+    public function test_is_broken_result_empty_status_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('', [])
+        ));
+    }
+
+    public function test_is_broken_result_bot_protected_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('403', ['bot_protection', 'external_platform'])
+        ));
+    }
+
+    public function test_is_broken_result_healthy_form_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('405', ['form_endpoint'])
+        ));
+    }
+
+    public function test_is_broken_result_timeout_is_broken(): void
+    {
+        $this->assertTrue($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('timeout', ['timeout'])
+        ));
+    }
+
+    // ======================
+    // filterResults('broken') consistency
+    // ======================
+
+    public function test_filter_results_broken_excludes_bot_protected(): void
+    {
+        $results = [
+            $this->makeSimpleResult('404', ['status_4xx']),
+            $this->makeSimpleResult('403', ['bot_protection', 'external_platform']),
+            $this->makeSimpleResult('200', []),
+        ];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('404', array_values($filtered)[0]['status']);
+    }
+
+    public function test_filter_results_broken_excludes_empty_status(): void
+    {
+        $results = [
+            $this->makeSimpleResult('', []),
+            $this->makeSimpleResult('404', ['status_4xx']),
+        ];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('404', array_values($filtered)[0]['status']);
     }
 }

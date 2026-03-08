@@ -15,6 +15,10 @@ use App\Enums\LinkFlag;
  */
 class IntegrityScorer
 {
+    public function __construct(
+        protected ScanStatistics $scanStatistics,
+    ) {}
+
     /**
      * Calculate the integrity score for a set of scan results.
      *
@@ -74,13 +78,8 @@ class IntegrityScorer
                 $manualVerification++;
             }
 
-            // Count broken links (non-2xx, non-timeout, non-healthy-form)
-            $statusInt = is_numeric($status) ? (int) $status : 0;
-            $isOk = $statusInt >= 200 && $statusInt < 300;
-            $isTimeout = $status === 'timeout';
-            $isHealthyForm = in_array(LinkFlag::FORM_ENDPOINT->value, $flags, true)
-                && in_array($statusInt, [400, 401, 403, 405, 422, 429], true);
-            if (! $isOk && ! $isTimeout && ! $isHealthyForm && $status !== '') {
+            // Count broken links
+            if ($this->scanStatistics->isBrokenResult($result)) {
                 $brokenLinks++;
             }
 

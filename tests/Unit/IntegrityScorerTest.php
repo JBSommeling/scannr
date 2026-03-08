@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\IntegrityScorer;
+use App\Services\ScanStatistics;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class IntegrityScorerTest extends TestCase
@@ -12,7 +14,7 @@ class IntegrityScorerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scorer = new IntegrityScorer;
+        $this->scorer = new IntegrityScorer(new ScanStatistics);
     }
 
     /** Helper to build a result item with analysis data. */
@@ -318,9 +320,22 @@ class IntegrityScorerTest extends TestCase
 
         $this->assertEquals(1, $result->summary['criticalIssues']);
         $this->assertEquals(2, $result->summary['warnings']);
-        $this->assertEquals(2, $result->summary['brokenLinks']); // 404 internal + 405 external
+        $this->assertEquals(1, $result->summary['brokenLinks']); // 404 internal only; 405 external is bot-protected (unverifiable, not broken)
         $this->assertEquals(1, $result->summary['manualVerification']);
     }
+
+    public function test_timeout_counts_as_broken_link(): void
+    {
+        // A timed-out link is broken from the visitor's perspective and should
+        // be included in the brokenLinks summary count.
+        $result = $this->scorer->calculate([
+            $this->makeResult(['static_html', 'status_4xx'], 'critical', 'high', 'internal', 404),
+            $this->makeResult(['timeout'], 'warning', 'high', 'external', 'timeout', 'http://localhost:3200/oauth2-redirect.html'),
+        ]);
+
+        $this->assertEquals(2, $result->summary['brokenLinks']);
+    }
+
 
     public function test_to_array_serialization(): void
     {
@@ -508,7 +523,7 @@ class IntegrityScorerTest extends TestCase
         // Summary counts
         $this->assertEquals(2, $result->summary['criticalIssues']);
         $this->assertEquals(4, $result->summary['warnings']);
-        $this->assertEquals(4, $result->summary['brokenLinks']); // 404 + status 0 (malformed) + 405 + 403
+        $this->assertEquals(2, $result->summary['brokenLinks']); // 404 internal + status 0 (malformed); bot-protected 405+403 are unverifiable, not broken
         $this->assertEquals(2, $result->summary['manualVerification']);
 
         // Penalty count
@@ -719,5 +734,90 @@ class IntegrityScorerTest extends TestCase
         $this->assertEquals('Critical', $result->grade);
         $this->assertEquals('red', $result->gradeColor);
         $this->assertEquals('🔴', $result->gradeEmoji);
+    }
+
+    // =============================================
+    // Broken link summary counter — status coverage
+    // =============================================
+
+    #[DataProvider('brokenLinkStatusProvider')]
+    public function test_status_increments_broken_link_count(string|int $status, array $flags): void
+    {
+        $result = $this->scorer->calculate([
+            $this->makeResult($flags, 'critical', 'high', 'external', $status),
+        ]);
+
+        $this->assertEquals(1, $result->summary['brokenLinks'], "Expected status '{$status}' to count as a broken link");
+    }
+
+    public static function brokenLinkStatusProvider(): array
+    {
+        return [
+            '404 Not Found'        => [404, ['status_4xx']],
+            '410 Gone'             => [410, ['status_4xx']],
+            '500 Server Error'     => [500, ['status_5xx']],
+            '503 Unavailable'      => [503, ['status_5xx']],
+            'timeout'              => ['timeout', ['timeout']],
+            'error (connection)'   => ['error', ['connection_error']],
+            'status 0 (malformed)' => [0, ['malformed_url']],
+        ];
+    }
+
+    #[DataProvider('notBrokenLinkStatusProvider')]
+    public function test_status_does_not_increment_broken_link_count(string|int $status, array $flags): void
+    {
+        $result = $this->scorer->calculate([
+            $this->makeResult($flags, 'info', 'high', 'internal', $status),
+        ]);
+
+        $this->assertEquals(0, $result->summary['brokenLinks'], "Expected status '{$status}' NOT to count as a broken link");
+    }
+
+    public static function notBrokenLinkStatusProvider(): array
+    {
+        return [
+            '200 OK'         => [200, []],
+            '201 Created'    => [201, []],
+            '204 No Content' => [204, []],
+        ];
+    }
+
+    public function test_healthy_form_endpoint_not_counted_as_broken(): void
+    {
+        // 405 on a form endpoint means the server is alive — not broken
+        $result = $this->scorer->calculate([
+            $this->makeResult(['form_endpoint', 'status_4xx'], 'info', 'high', 'internal', 405),
+        ]);
+
+        $this->assertEquals(0, $result->summary['brokenLinks']);
+    }
+
+    public function test_form_endpoint_404_counts_as_broken(): void
+    {
+        // 404 on a form endpoint means the endpoint is genuinely missing
+        $result = $this->scorer->calculate([
+            $this->makeResult(['form_endpoint', 'status_4xx'], 'critical', 'high', 'internal', 404),
+        ]);
+
+        $this->assertEquals(1, $result->summary['brokenLinks']);
+    }
+
+    public function test_bot_protected_link_not_counted_as_broken(): void
+    {
+        // A 405 from LinkedIn/similar is bot protection — server is alive, just unverifiable
+        $result = $this->scorer->calculate([
+            $this->makeResult(['bot_protection', 'external_platform'], 'warning', 'low', 'external', 405),
+        ]);
+
+        $this->assertEquals(0, $result->summary['brokenLinks']);
+    }
+
+    public function test_bot_protected_403_not_counted_as_broken(): void
+    {
+        $result = $this->scorer->calculate([
+            $this->makeResult(['bot_protection', 'external_platform'], 'warning', 'low', 'external', 403),
+        ]);
+
+        $this->assertEquals(0, $result->summary['brokenLinks']);
     }
 }

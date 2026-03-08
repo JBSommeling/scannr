@@ -232,7 +232,7 @@ class ResultFormatterService
      */
     protected function displayBrokenLinksTable(array $results, OutputInterface $output): void
     {
-        $brokenLinks = array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r));
+        $brokenLinks = array_filter($results, fn ($r) => $this->scanStatistics->isBrokenResult($r));
 
         if (empty($brokenLinks)) {
             return;
@@ -336,7 +336,7 @@ class ResultFormatterService
         $totalScanned = count($results);
         $isFiltered = $config->hasFilter();
 
-        $brokenLinks = array_values(array_filter($filtered, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
+        $brokenLinks = array_values(array_filter($filtered, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
 
         $summary = ['totalScanned' => $totalScanned];
 
@@ -366,9 +366,7 @@ class ResultFormatterService
      */
     protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
-        $brokenLinks = array_values(array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
-
-        // Build summary
+        $brokenLinks = array_values(array_filter($results, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
         $summary = ['totalScanned' => $totalScanned];
 
         if ($isFiltered) {
@@ -515,40 +513,6 @@ class ResultFormatterService
         }
 
         return substr($string, 0, $length - 3).'...';
-    }
-
-    /**
-     * Check if a status indicates success (2xx).
-     */
-    protected function isOkStatus(string|int $status): bool
-    {
-        if (is_numeric($status)) {
-            $statusInt = (int) $status;
-
-            return $statusInt >= 200 && $statusInt < 300;
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if a result is a healthy form endpoint (has form_endpoint flag).
-     */
-    protected function isHealthyFormEndpoint(array $result): bool
-    {
-        $flags = $result['analysis']['flags'] ?? [];
-
-        if (! in_array('form_endpoint', $flags, true)) {
-            return false;
-        }
-
-        $status = (int) ($result['status'] ?? 0);
-
-        // Only specific non-2xx statuses are "healthy" for form endpoints.
-        // 404 and 5xx mean the endpoint is genuinely broken.
-        $healthyStatuses = [400, 401, 403, 405, 422, 429];
-
-        return in_array($status, $healthyStatuses, true) && $status < 500;
     }
 
     /**

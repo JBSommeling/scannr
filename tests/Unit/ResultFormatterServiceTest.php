@@ -19,7 +19,7 @@ class ResultFormatterServiceTest extends TestCase
     {
         parent::setUp();
         $this->scanStatistics = new ScanStatistics;
-        $this->formatter = new ResultFormatterService($this->scanStatistics, new IntegrityScorer);
+        $this->formatter = new ResultFormatterService($this->scanStatistics, new IntegrityScorer($this->scanStatistics));
     }
 
     private function createConfig(array $overrides = []): ScanConfig
