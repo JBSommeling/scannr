@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\Confidence;
 use App\Enums\LinkFlag;
 use App\Services\SeverityEvaluator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class SeverityEvaluatorConfidenceTest extends TestCase
@@ -83,9 +84,7 @@ class SeverityEvaluatorConfidenceTest extends TestCase
         $this->assertEquals(Confidence::LOW, $confidence);
     }
 
-    /**
-     * @dataProvider botProtectionStatusProvider
-     */
+    #[DataProvider('botProtectionStatusProvider')]
     public function test_bot_protection_stays_low_regardless_of_status(int $status): void
     {
         $confidence = $this->evaluator->evaluateConfidence(

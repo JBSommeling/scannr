@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ScanStatistics;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class ScanStatisticsTest extends TestCase
@@ -520,9 +521,7 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(1, $stats['broken']);
     }
 
-    /**
-     * @dataProvider healthyFormEndpointStatusProvider
-     */
+    #[DataProvider('healthyFormEndpointStatusProvider')]
     public function test_form_endpoint_healthy_statuses_not_counted_as_broken(string $status): void
     {
         $results = [$this->makeFormEndpointResult($status)];
