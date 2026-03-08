@@ -37,20 +37,12 @@ class IntegrityScorer
         // Track occurrence counts per issue type for dampening
         $occurrenceCounts = [];
 
-        // Track penalties per category for sub-scores
-        $categoryPenalties = [
-            'link_integrity' => 0,
-            'security_hygiene' => 0,
-            'technical_hygiene' => 0,
-            'redirect_health' => 0,
-        ];
-
-        // Extract category type mappings and weights from config
+        // Extract category type mappings from config and initialise penalty accumulators
         $categoryTypes = [];
-        $categoryWeights = [];
+        $categoryPenalties = [];
         foreach ($categories as $catName => $catConfig) {
             $categoryTypes[$catName] = $catConfig['types'] ?? [];
-            $categoryWeights[$catName] = $catConfig['weight'] ?? 0;
+            $categoryPenalties[$catName] = 0;
         }
 
         $appliedPenalties = [];
