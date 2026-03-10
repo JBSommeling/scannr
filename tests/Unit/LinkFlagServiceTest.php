@@ -77,12 +77,13 @@ class LinkFlagServiceTest extends TestCase
         $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
-    public function test_url_with_vue_interpolation_is_flagged_as_malformed(): void
+    public function test_url_with_path_parameter_is_flagged_as_indirect_reference(): void
     {
         $url = 'https://example.com/user/{userId}';
         $flags = $this->linkFlagService->detectFromUrl($url, false);
 
-        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
     public function test_url_with_backtick_is_flagged_as_malformed(): void
@@ -93,12 +94,13 @@ class LinkFlagServiceTest extends TestCase
         $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
-    public function test_url_with_trailing_comma_word_is_flagged_as_malformed(): void
+    public function test_url_with_trailing_comma_word_is_flagged_as_indirect_reference(): void
     {
         $url = 'https://example.com/test,param';
         $flags = $this->linkFlagService->detectFromUrl($url, false);
 
-        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
     public function test_url_with_newline_is_flagged_as_malformed(): void
@@ -119,8 +121,55 @@ class LinkFlagServiceTest extends TestCase
     }
 
     // ===================
-    // detectFromUrl tests - external platform detection
+    // detectFromUrl tests - flag separation (malformed vs indirect)
     // ===================
+
+    public function test_backtick_only_fires_malformed_not_indirect(): void
+    {
+        $url = 'https://example.com/test`';
+        $flags = $this->linkFlagService->detectFromUrl($url, false);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_newline_only_fires_malformed_not_indirect(): void
+    {
+        $url = "https://example.com/test\nmore";
+        $flags = $this->linkFlagService->detectFromUrl($url, false);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertNotContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_closing_brace_context_fires_indirect_not_malformed(): void
+    {
+        $url = 'https://example.com/path}rest';
+        $flags = $this->linkFlagService->detectFromUrl($url, false);
+
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
+    }
+
+    public function test_template_literal_fires_both_malformed_and_indirect(): void
+    {
+        // ${userId} has ${ (malformed) AND {U (indirect)
+        $url = 'https://example.com/user/${userId}';
+        $flags = $this->linkFlagService->detectFromUrl($url, false);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
+
+    public function test_ruby_interpolation_fires_both_malformed_and_indirect(): void
+    {
+        // #{name} has #{ (malformed) AND {n (indirect)
+        $url = 'https://example.com/user/#{name}';
+        $flags = $this->linkFlagService->detectFromUrl($url, false);
+
+        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+    }
 
     public function test_linkedin_url_is_flagged_as_external_platform(): void
     {
@@ -246,7 +295,7 @@ class LinkFlagServiceTest extends TestCase
         $this->assertContains(LinkFlag::STATIC_HTML, $flags);
     }
 
-    public function test_suspicious_syntax_adds_malformed_and_indirect_flags(): void
+    public function test_suspicious_syntax_adds_malformed_flag(): void
     {
         $flags = $this->linkFlagService->detectFromDiscovery(
             isJsRendered: false,
@@ -255,7 +304,6 @@ class LinkFlagServiceTest extends TestCase
         );
 
         $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
-        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
     }
 
     // ===================
@@ -569,7 +617,8 @@ class LinkFlagServiceTest extends TestCase
         $url = 'https://api.example.com/users/{id}';
         $flags = $this->linkFlagService->detectFromUrl($url, true);
 
-        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
     public function test_url_with_backtick_is_flagged(): void
@@ -594,7 +643,8 @@ class LinkFlagServiceTest extends TestCase
         $url = 'https://example.com/api,userId';
         $flags = $this->linkFlagService->detectFromUrl($url, true);
 
-        $this->assertContains(LinkFlag::MALFORMED_URL, $flags);
+        $this->assertContains(LinkFlag::INDIRECT_REFERENCE, $flags);
+        $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
     }
 
     // ===================

@@ -29,7 +29,11 @@ class ScanStatistics
      *     httpsDowngrades: int,
      *     criticalCount: int,
      *     warningCount: int,
-     *     lowConfidenceCount: int
+     *     lowConfidenceCount: int,
+     *     pagesScanned: int,
+     *     internalLinks: int,
+     *     assetsScanned: int,
+     *     externalLinks: int
      * }
      */
     public function calculateStats(array $results): array
@@ -41,7 +45,7 @@ class ScanStatistics
 
         $ok = count(array_filter($results, fn ($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
         $redirects = count(array_filter($results, fn ($r) => ! empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
-        $broken = count(array_filter($results, fn ($r) => ! $isOk($r) && ($r['status'] ?? '') !== 'timeout'));
+        $broken = count(array_filter($results, fn ($r) => $this->isBrokenResult($r)));
         $timeouts = count(array_filter($results, fn ($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
@@ -64,6 +68,14 @@ class ScanStatistics
         $warningCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
         $lowConfidenceCount = count(array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
 
+        // Granular scan counts (internalLinks + assetsScanned + externalLinks = total)
+        $sourcePages = array_filter(array_column($results, 'sourcePage'), fn ($p) => $p !== null && $p !== '');
+        $pagesScanned = count(array_unique($sourcePages));
+        $nonAnchorElements = ['link', 'script', 'img', 'media', 'form'];
+        $assetsScanned = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && in_array($r['sourceElement'] ?? '', $nonAnchorElements, true)));
+        $internalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && ! in_array($r['sourceElement'] ?? 'a', $nonAnchorElements, true)));
+        $externalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'external'));
+
         return [
             'total' => $total,
             'ok' => $ok,
@@ -76,6 +88,10 @@ class ScanStatistics
             'criticalCount' => $criticalCount,
             'warningCount' => $warningCount,
             'lowConfidenceCount' => $lowConfidenceCount,
+            'pagesScanned' => $pagesScanned,
+            'internalLinks' => $internalLinks,
+            'assetsScanned' => $assetsScanned,
+            'externalLinks' => $externalLinks,
         ];
     }
 
@@ -96,6 +112,61 @@ class ScanStatistics
     }
 
     /**
+     * Check if a result is a form endpoint responding normally (non-2xx but functional).
+     * A 404 form endpoint is genuinely broken and should NOT be excluded.
+     */
+    protected function isHealthyFormEndpoint(array $result): bool
+    {
+        $flags = $result['analysis']['flags'] ?? [];
+
+        if (! in_array('form_endpoint', $flags, true)) {
+            return false;
+        }
+
+        $status = (int) ($result['status'] ?? 0);
+
+        // Only specific non-2xx statuses are "healthy" for form endpoints.
+        // 404 and 5xx mean the endpoint is genuinely broken.
+        $healthyStatuses = [400, 401, 403, 405, 422, 429];
+
+        return in_array($status, $healthyStatuses, true) && $status < 500;
+    }
+
+    protected function isBotProtected(array $result): bool
+    {
+        return in_array('bot_protection', $result['analysis']['flags'] ?? [], true);
+    }
+
+    /**
+     * Check if a result represents a broken link.
+     *
+     * A result is broken when it has a non-2xx status and is not a healthy
+     * form endpoint, not bot-protected, and has a non-empty status.
+     */
+    public function isBrokenResult(array $result): bool
+    {
+        $status = $result['status'] ?? '';
+
+        if ($status === '') {
+            return false;
+        }
+
+        if ($this->isOkResult($result)) {
+            return false;
+        }
+
+        if ($this->isHealthyFormEndpoint($result)) {
+            return false;
+        }
+
+        if ($this->isBotProtected($result)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Filter scan results by status.
      *
      * @param  array  $results  Array of scan result items.
@@ -106,7 +177,7 @@ class ScanStatistics
     {
         return match ($filter) {
             'ok' => array_filter($results, fn ($r) => $this->isOkResult($r)),
-            'broken' => array_filter($results, fn ($r) => ! $this->isOkResult($r)),
+            'broken' => array_filter($results, fn ($r) => $this->isBrokenResult($r)),
             default => $results,
         };
     }

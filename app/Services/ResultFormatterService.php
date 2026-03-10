@@ -14,6 +14,7 @@ class ResultFormatterService
 {
     public function __construct(
         protected ScanStatistics $scanStatistics,
+        protected IntegrityScorer $integrityScorer,
     ) {}
 
     /**
@@ -31,27 +32,30 @@ class ResultFormatterService
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
-        // Filter results
+        // Compute integrity score from ALL results (before display filtering)
+        $scoreResult = $this->integrityScorer->calculate($results);
+
+        // Apply display filters (--status / --filter)
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
-        // Calculate stats
+        // Calculate stats from filtered results (for display counts)
         $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
-        $isFiltered = $config->hasFilter();
+        $isFiltered = $config->hasDisplayFilter();
 
         // Display based on format
         match ($config->outputFormat) {
-            'json' => $this->displayJson($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
-            'csv' => $this->displayCsv($filtered, $output, $error),
-            default => $this->displayTable($filtered, $stats, $totalScanned, $isFiltered, $output, $error),
+            'json' => $this->displayJson($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
+            'csv' => $this->displayCsv($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
+            default => $this->displayTable($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
         };
     }
 
     /**
      * Display results as a table.
      */
-    protected function displayTable(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
+    protected function displayTable(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         // Display error message if present (e.g., rate limit abort)
         if ($error !== null) {
@@ -59,17 +63,24 @@ class ResultFormatterService
             $output->newLine();
         }
 
+        // Display integrity score (computed from unfiltered results)
+        $this->displayIntegrityScore($scoreResult, $output);
+
         $output->info('Summary:');
-        $output->line("  Total scanned:  {$totalScanned}");
+        $output->line("  Total scanned:     {$totalScanned}");
 
         if ($isFiltered) {
-            $output->line("  Filtered:       {$stats['total']}");
+            $output->line("  Filtered:          {$stats['total']}");
         }
 
-        $output->line("  Working (2xx):  {$stats['ok']}");
-        $output->line("  Redirects:      {$stats['redirects']}");
-        $output->line("  Broken:         {$stats['broken']}");
-        $output->line("  Timeouts:       {$stats['timeouts']}");
+        $output->line("  Pages scanned:     {$stats['pagesScanned']}");
+        $output->line("  Internal links:    {$stats['internalLinks']}");
+        $output->line("  Assets scanned:    {$stats['assetsScanned']}");
+        $output->line("  External links:    {$stats['externalLinks']}");
+        $output->line("  Working (2xx):     {$stats['ok']}");
+        $output->line("  Redirects:         {$stats['redirects']}");
+        $output->line("  Broken:            {$stats['broken']}");
+        $output->line("  Timeouts:          {$stats['timeouts']}");
         $output->newLine();
 
         // Redirect chain summary
@@ -146,8 +157,9 @@ class ResultFormatterService
 
         $output->table($headers, $tableData);
 
-        // Display critical issues, broken links, and low confidence links in separate tables
+        // Display critical issues, warnings, broken links, and low confidence links in separate tables
         $this->displayCriticalIssuesTable($results, $output);
+        $this->displayWarningsTable($results, $output);
         $this->displayBrokenLinksTable($results, $output);
         $this->displayLowConfidenceTable($results, $output);
     }
@@ -186,6 +198,39 @@ class ResultFormatterService
     }
 
     /**
+     * Display warning issues in a separate table.
+     *
+     * @param  array  $results  The scan results.
+     * @param  OutputInterface  $output  The output interface.
+     */
+    protected function displayWarningsTable(array $results, OutputInterface $output): void
+    {
+        $warnings = array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning');
+
+        if (empty($warnings)) {
+            return;
+        }
+
+        $output->newLine();
+        $output->warn('Warnings:');
+
+        $warningTableData = [];
+        foreach ($warnings as $result) {
+            $flags = $result['analysis']['flags'] ?? [];
+            $reason = $this->getWarningReason($flags, $result);
+            $warningTableData[] = [
+                'URL' => $this->truncate($result['url'], 60),
+                'Source' => $this->truncate($result['sourcePage'], 30),
+                'Element' => '<'.($result['sourceElement'] ?? 'a').'>',
+                'Status' => $result['status'],
+                'Reason' => $reason,
+            ];
+        }
+
+        $output->table(['URL', 'Source', 'Element', 'Status', 'Reason'], $warningTableData);
+    }
+
+    /**
      * Display broken links in a separate table.
      *
      * @param  array  $results  The scan results.
@@ -193,7 +238,7 @@ class ResultFormatterService
      */
     protected function displayBrokenLinksTable(array $results, OutputInterface $output): void
     {
-        $brokenLinks = array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r));
+        $brokenLinks = array_filter($results, fn ($r) => $this->scanStatistics->isBrokenResult($r));
 
         if (empty($brokenLinks)) {
             return;
@@ -249,6 +294,30 @@ class ResultFormatterService
     }
 
     /**
+     * Display the integrity score section.
+     */
+    protected function displayIntegrityScore(\App\DTO\IntegrityScoreResult $score, OutputInterface $output): void
+    {
+        $scoreDisplay = number_format($score->overallScore, 1);
+        $output->newLine();
+        $output->line("  {$score->gradeEmoji} Site Integrity Score: {$scoreDisplay} / 100  —  {$score->grade}");
+        $output->newLine();
+
+        foreach ($score->categoryScores as $category => $catScore) {
+            $label = str_pad(ucwords(str_replace('_', ' ', $category)) . ':', 22);
+            $catDisplay = number_format($catScore, 1);
+            $output->line("    {$label} {$catDisplay} / 100");
+        }
+
+        $output->newLine();
+        $output->line("  Critical Issues:       {$score->summary['criticalIssues']}");
+        $output->line("  Broken Links:          {$score->summary['brokenLinks']}");
+        $output->line("  Warnings:              {$score->summary['warnings']}");
+        $output->line("  Manual Verification:   {$score->summary['manualVerification']}");
+        $output->newLine();
+    }
+
+    /**
      * Build the JSON output array from results and config.
      *
      * Returns the structured array with summary, results, and broken links.
@@ -266,14 +335,17 @@ class ResultFormatterService
             $results = $this->scanStatistics->filterNoiseUrls($results, config('scanner.noise_urls', []));
         }
 
+        // Compute integrity score from ALL results (before display filtering)
+        $scoreResult = $this->integrityScorer->calculate($results);
+
         $filtered = $this->scanStatistics->filterResults($results, $config->statusFilter);
         $filtered = $this->scanStatistics->filterByElement($filtered, $config->elementFilter);
 
         $stats = $this->scanStatistics->calculateStats($filtered);
         $totalScanned = count($results);
-        $isFiltered = $config->hasFilter();
+        $isFiltered = $config->hasDisplayFilter();
 
-        $brokenLinks = array_values(array_filter($filtered, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
+        $brokenLinks = array_values(array_filter($filtered, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
 
         $summary = ['totalScanned' => $totalScanned];
 
@@ -286,6 +358,7 @@ class ResultFormatterService
 
         $output = [
             'summary' => $summary,
+            'integrityScore' => $scoreResult->toArray(),
             'results' => array_values($filtered),
             'brokenLinks' => $brokenLinks,
         ];
@@ -300,11 +373,9 @@ class ResultFormatterService
     /**
      * Display results as JSON.
      */
-    protected function displayJson(array $results, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
+    protected function displayJson(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
-        $brokenLinks = array_values(array_filter($results, fn ($r) => ! $this->isOkStatus($r['status'] ?? '') && ! $this->isHealthyFormEndpoint($r)));
-
-        // Build summary
+        $brokenLinks = array_values(array_filter($results, fn ($r) => $this->scanStatistics->isBrokenResult($r)));
         $summary = ['totalScanned' => $totalScanned];
 
         if ($isFiltered) {
@@ -316,6 +387,7 @@ class ResultFormatterService
 
         $jsonOutput = [
             'summary' => $summary,
+            'integrityScore' => $scoreResult->toArray(),
             'results' => array_values($results),
             'brokenLinks' => $brokenLinks,
         ];
@@ -331,27 +403,36 @@ class ResultFormatterService
     /**
      * Display results as CSV.
      */
-    protected function displayCsv(array $results, OutputInterface $output, ?string $error = null): void
+    protected function displayCsv(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         // Display error as comment line at the top if present
         if ($error !== null) {
             $output->line("# Error: {$error}");
         }
 
+        // Display integrity score as comment header (computed from unfiltered results)
+        $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
+
+        if ($isFiltered) {
+            $output->line("# Total: {$totalScanned} | Filtered: {$stats['total']} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+        } else {
+            $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+        }
+
         $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 
         foreach ($results as $result) {
             $redirectChain = $result['redirect']['chain'] ?? $result['redirectChain'] ?? [];
-            $redirects = implode(' -> ', $redirectChain);
-            $element = $result['sourceElement'] ?? 'a';
+            $redirects = implode(' -> ', array_map([$this, 'sanitizeCsvField'], $redirectChain));
+            $element = $this->sanitizeCsvField($result['sourceElement'] ?? 'a');
             $flags = implode('|', $result['analysis']['flags'] ?? []);
             $confidence = $result['analysis']['confidence'] ?? '';
             $verification = $result['analysis']['verification'] ?? '';
 
             $output->line(sprintf(
                 '"%s","%s","%s","%s","%s","%s","%s","%s","%s"',
-                str_replace('"', '""', $result['url']),
-                str_replace('"', '""', $result['sourcePage']),
+                str_replace('"', '""', $this->sanitizeCsvField($result['url'])),
+                str_replace('"', '""', $this->sanitizeCsvField($result['sourcePage'])),
                 $element,
                 $result['status'],
                 $result['type'],
@@ -401,6 +482,42 @@ class ResultFormatterService
     }
 
     /**
+     * Get a user-friendly reason for a warning issue.
+     */
+    protected function getWarningReason(array $flags, array $result): string
+    {
+        if (in_array('redirect_chain', $flags, true)) {
+            return 'Redirect chain detected';
+        }
+
+        if (in_array('excessive_redirects', $flags, true)) {
+            return 'Excessive redirects';
+        }
+
+        if (in_array('http_on_https', $flags, true)) {
+            return 'HTTP on HTTPS site';
+        }
+
+        if (in_array('bot_protection', $flags, true)) {
+            return 'Bot protection detected';
+        }
+
+        if (in_array('malformed_url', $flags, true)) {
+            return 'Malformed URL';
+        }
+
+        if (in_array('status_4xx', $flags, true)) {
+            return 'Client error ('.($result['status'] ?? '4xx').')';
+        }
+
+        if (! empty($flags)) {
+            return ucfirst(str_replace('_', ' ', $flags[0]));
+        }
+
+        return "Status: ".($result['status'] ?? 'unknown');
+    }
+
+    /**
      * Truncate a string to a maximum length.
      */
     protected function truncate(string $string, int $length): string
@@ -410,30 +527,6 @@ class ResultFormatterService
         }
 
         return substr($string, 0, $length - 3).'...';
-    }
-
-    /**
-     * Check if a status indicates success (2xx).
-     */
-    protected function isOkStatus(string|int $status): bool
-    {
-        if (is_numeric($status)) {
-            $statusInt = (int) $status;
-
-            return $statusInt >= 200 && $statusInt < 300;
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if a result is a healthy form endpoint (has form_endpoint flag).
-     */
-    protected function isHealthyFormEndpoint(array $result): bool
-    {
-        $flags = $result['analysis']['flags'] ?? [];
-
-        return in_array('form_endpoint', $flags, true);
     }
 
     /**
@@ -473,5 +566,23 @@ class ResultFormatterService
         }
 
         return (string) $status;
+    }
+
+    /**
+     * Sanitize a CSV field value to prevent formula injection.
+     *
+     * Spreadsheet applications (Excel, LibreOffice) treat cells beginning with
+     * =, +, -, or @ as formulas. Prefixing with a tab character neutralizes this
+     * while keeping the value human-readable.
+     */
+    private function sanitizeCsvField(string $value): string
+    {
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "\t" . $value;
+        }
+
+        return $value;
     }
 }

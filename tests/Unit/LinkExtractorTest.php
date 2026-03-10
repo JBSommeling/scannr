@@ -1045,7 +1045,8 @@ class LinkExtractorTest extends TestCase
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? []);
-        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_comma_suffix_not_flagged_as_indirect(): void
@@ -1252,7 +1253,7 @@ class LinkExtractorTest extends TestCase
         $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
-    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_malformed(): void
+    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_indirect(): void
     {
         $html = '<html><body><script>const profile="https://example.com/user/{userId}/profile";</script></body></html>';
 
@@ -1261,8 +1262,9 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'user/') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        // Vue/Angular interpolation syntax SHOULD trigger malformed_url
-        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        // Path parameter syntax triggers indirect_reference, not malformed_url
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_linkedin_url_in_array_not_flagged_as_malformed(): void
@@ -1417,7 +1419,7 @@ class LinkExtractorTest extends TestCase
 
     public function test_extract_links_js_bundle_url_with_brace_variable_is_flagged(): void
     {
-        // URL with {variable} syntax SHOULD be flagged
+        // URL with {variable} syntax SHOULD be flagged as indirect_reference
         $html = '<html><body><script>const user = "https://api.example.com/users/{id}/profile";</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
@@ -1425,7 +1427,8 @@ class LinkExtractorTest extends TestCase
         $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'API URL should be extracted');
-        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
     }
 
     // ===================
