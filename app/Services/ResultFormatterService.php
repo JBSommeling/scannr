@@ -47,7 +47,7 @@ class ResultFormatterService
         // Display based on format
         match ($config->outputFormat) {
             'json' => $this->displayJson($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
-            'csv' => $this->displayCsv($filtered, $scoreResult, $stats, $totalScanned, $output, $error),
+            'csv' => $this->displayCsv($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
             default => $this->displayTable($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
         };
     }
@@ -403,7 +403,7 @@ class ResultFormatterService
     /**
      * Display results as CSV.
      */
-    protected function displayCsv(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, OutputInterface $output, ?string $error = null): void
+    protected function displayCsv(array $results, \App\DTO\IntegrityScoreResult $scoreResult, array $stats, int $totalScanned, bool $isFiltered, OutputInterface $output, ?string $error = null): void
     {
         // Display error as comment line at the top if present
         if ($error !== null) {
@@ -412,7 +412,12 @@ class ResultFormatterService
 
         // Display integrity score as comment header (computed from unfiltered results)
         $output->line("# Site Integrity Score: {$scoreResult->overallScore} / 100 ({$scoreResult->grade})");
-        $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+
+        if ($isFiltered) {
+            $output->line("# Total: {$totalScanned} | Filtered: {$stats['total']} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+        } else {
+            $output->line("# Total: {$totalScanned} | Pages: {$stats['pagesScanned']} | Internal: {$stats['internalLinks']} | Assets: {$stats['assetsScanned']} | External: {$stats['externalLinks']} | Broken: {$stats['broken']}");
+        }
 
         $output->line('URL,Source,Element,Status,Type,Redirects,Flags,Confidence,Verification');
 
