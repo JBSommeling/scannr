@@ -69,8 +69,9 @@ class ScanStatistics
         $lowConfidenceCount = count(array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
 
         // Granular scan counts (internalLinks + assetsScanned + externalLinks = total)
-        $pagesScanned = count(array_unique(array_column($results, 'sourcePage')));
-        $nonAnchorElements = ['link', 'script', 'img', 'video', 'audio', 'source', 'form'];
+        $sourcePages = array_filter(array_column($results, 'sourcePage'), fn ($p) => $p !== null && $p !== '');
+        $pagesScanned = count(array_unique($sourcePages));
+        $nonAnchorElements = ['link', 'script', 'img', 'media', 'form'];
         $assetsScanned = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && in_array($r['sourceElement'] ?? '', $nonAnchorElements, true)));
         $internalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && ! in_array($r['sourceElement'] ?? 'a', $nonAnchorElements, true)));
         $externalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'external'));
