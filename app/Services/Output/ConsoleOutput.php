@@ -51,8 +51,8 @@ class ConsoleOutput implements OutputInterface
     /**
      * Output a table.
      *
-     * @param array<string> $headers
-     * @param array<array<string, mixed>> $rows
+     * @param  array<string>  $headers
+     * @param  array<array<string, mixed>>  $rows
      */
     public function table(array $headers, array $rows): void
     {
@@ -75,4 +75,3 @@ class ConsoleOutput implements OutputInterface
         return $this->command->getOutput()->isVerbose();
     }
 }
-

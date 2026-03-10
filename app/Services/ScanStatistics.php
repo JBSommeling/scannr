@@ -29,7 +29,11 @@ class ScanStatistics
      *     httpsDowngrades: int,
      *     criticalCount: int,
      *     warningCount: int,
-     *     lowConfidenceCount: int
+     *     lowConfidenceCount: int,
+     *     pagesScanned: int,
+     *     internalLinks: int,
+     *     assetsScanned: int,
+     *     externalLinks: int
      * }
      */
     public function calculateStats(array $results): array
@@ -37,35 +41,40 @@ class ScanStatistics
         $total = count($results);
 
         // Determine if result is OK based on status (2xx)
-        $isOk = fn($r) => $this->isOkResult($r);
+        $isOk = fn ($r) => $this->isOkResult($r);
 
-        $ok = count(array_filter($results, fn($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
-        $redirects = count(array_filter($results, fn($r) => !empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
-        $broken = count(array_filter($results, fn($r) => !$isOk($r) && ($r['status'] ?? '') !== 'timeout'));
-        $timeouts = count(array_filter($results, fn($r) => ($r['status'] ?? '') === 'timeout'));
+        $ok = count(array_filter($results, fn ($r) => $isOk($r) && empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])));
+        $redirects = count(array_filter($results, fn ($r) => ! empty($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) && $isOk($r)));
+        $broken = count(array_filter($results, fn ($r) => $this->isBrokenResult($r)));
+        $timeouts = count(array_filter($results, fn ($r) => ($r['status'] ?? '') === 'timeout'));
 
         // Redirect chain statistics — only for internal URLs (external chains are not actionable)
-        $redirectChainCount = count(array_filter($results, fn($r) =>
-            ($r['type'] ?? 'internal') === 'internal' &&
+        $redirectChainCount = count(array_filter($results, fn ($r) => ($r['type'] ?? 'internal') === 'internal' &&
             count($r['redirect']['chain'] ?? $r['redirectChain'] ?? []) >= 2
         ));
-        $totalRedirectHops = array_sum(array_map(fn($r) =>
-            ($r['type'] ?? 'internal') === 'internal'
+        $totalRedirectHops = array_sum(array_map(fn ($r) => ($r['type'] ?? 'internal') === 'internal'
                 ? count($r['redirect']['chain'] ?? $r['redirectChain'] ?? [])
                 : 0,
             $results
         ));
 
         // HTTPS downgrade count
-        $httpsDowngrades = count(array_filter($results, fn($r) =>
-            $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
+        $httpsDowngrades = count(array_filter($results, fn ($r) => $r['redirect']['hasHttpsDowngrade'] ?? $r['hasHttpsDowngrade'] ?? false
         ));
 
         // Severity and confidence counts — read the pre-computed scalar serialized by
         // SeverityEvaluator (via LinkFlagService::buildAnalysis) at scan-time.
-        $criticalCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'critical'));
-        $warningCount = count(array_filter($results, fn($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
-        $lowConfidenceCount = count(array_filter($results, fn($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
+        $criticalCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'critical'));
+        $warningCount = count(array_filter($results, fn ($r) => ($r['analysis']['severity'] ?? '') === 'warning'));
+        $lowConfidenceCount = count(array_filter($results, fn ($r) => ($r['analysis']['confidence'] ?? '') === 'low'));
+
+        // Granular scan counts (internalLinks + assetsScanned + externalLinks = total)
+        $sourcePages = array_filter(array_column($results, 'sourcePage'), fn ($p) => $p !== null && $p !== '');
+        $pagesScanned = count(array_unique($sourcePages));
+        $nonAnchorElements = ['link', 'script', 'img', 'media', 'form'];
+        $assetsScanned = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && in_array($r['sourceElement'] ?? '', $nonAnchorElements, true)));
+        $internalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'internal' && ! in_array($r['sourceElement'] ?? 'a', $nonAnchorElements, true)));
+        $externalLinks = count(array_filter($results, fn ($r) => ($r['type'] ?? '') === 'external'));
 
         return [
             'total' => $total,
@@ -79,6 +88,10 @@ class ScanStatistics
             'criticalCount' => $criticalCount,
             'warningCount' => $warningCount,
             'lowConfidenceCount' => $lowConfidenceCount,
+            'pagesScanned' => $pagesScanned,
+            'internalLinks' => $internalLinks,
+            'assetsScanned' => $assetsScanned,
+            'externalLinks' => $externalLinks,
         ];
     }
 
@@ -91,25 +104,80 @@ class ScanStatistics
 
         if (is_numeric($status)) {
             $statusInt = (int) $status;
+
             return $statusInt >= 200 && $statusInt < 300;
         }
 
         return false;
     }
 
+    /**
+     * Check if a result is a form endpoint responding normally (non-2xx but functional).
+     * A 404 form endpoint is genuinely broken and should NOT be excluded.
+     */
+    protected function isHealthyFormEndpoint(array $result): bool
+    {
+        $flags = $result['analysis']['flags'] ?? [];
+
+        if (! in_array('form_endpoint', $flags, true)) {
+            return false;
+        }
+
+        $status = (int) ($result['status'] ?? 0);
+
+        // Only specific non-2xx statuses are "healthy" for form endpoints.
+        // 404 and 5xx mean the endpoint is genuinely broken.
+        $healthyStatuses = [400, 401, 403, 405, 422, 429];
+
+        return in_array($status, $healthyStatuses, true) && $status < 500;
+    }
+
+    protected function isBotProtected(array $result): bool
+    {
+        return in_array('bot_protection', $result['analysis']['flags'] ?? [], true);
+    }
+
+    /**
+     * Check if a result represents a broken link.
+     *
+     * A result is broken when it has a non-2xx status and is not a healthy
+     * form endpoint, not bot-protected, and has a non-empty status.
+     */
+    public function isBrokenResult(array $result): bool
+    {
+        $status = $result['status'] ?? '';
+
+        if ($status === '') {
+            return false;
+        }
+
+        if ($this->isOkResult($result)) {
+            return false;
+        }
+
+        if ($this->isHealthyFormEndpoint($result)) {
+            return false;
+        }
+
+        if ($this->isBotProtected($result)) {
+            return false;
+        }
+
+        return true;
+    }
 
     /**
      * Filter scan results by status.
      *
-     * @param  array   $results  Array of scan result items.
-     * @param  string  $filter   Filter type: 'all', 'ok', or 'broken'.
+     * @param  array  $results  Array of scan result items.
+     * @param  string  $filter  Filter type: 'all', 'ok', or 'broken'.
      * @return array Filtered results.
      */
     public function filterResults(array $results, string $filter): array
     {
         return match ($filter) {
-            'ok' => array_filter($results, fn($r) => $this->isOkResult($r)),
-            'broken' => array_filter($results, fn($r) => !$this->isOkResult($r)),
+            'ok' => array_filter($results, fn ($r) => $this->isOkResult($r)),
+            'broken' => array_filter($results, fn ($r) => $this->isBrokenResult($r)),
             default => $results,
         };
     }
@@ -117,7 +185,7 @@ class ScanStatistics
     /**
      * Filter scan results by source element type.
      *
-     * @param  array   $results  Array of scan result items.
+     * @param  array  $results  Array of scan result items.
      * @param  string  $element  Element filter: 'all', 'a', 'link', 'script', 'img', or 'media'.
      * @return array Filtered results.
      */
@@ -127,7 +195,7 @@ class ScanStatistics
             return $results;
         }
 
-        return array_filter($results, fn($r) => ($r['sourceElement'] ?? 'a') === $element);
+        return array_filter($results, fn ($r) => ($r['sourceElement'] ?? 'a') === $element);
     }
 
     /**
@@ -140,7 +208,7 @@ class ScanStatistics
      * - 'exact': Additional exact URL matches.
      * - 'prefix': Additional URL prefix matches.
      *
-     * @param  array  $results        Array of scan result items.
+     * @param  array  $results  Array of scan result items.
      * @param  array  $noisePatterns  Noise config array.
      * @return array Filtered results with noise URLs removed.
      */
@@ -152,7 +220,7 @@ class ScanStatistics
         $exactUrls = $noisePatterns['exact'] ?? [];
         $prefixUrls = $noisePatterns['prefix'] ?? [];
 
-        if (empty($namespaceDomains) && !$detectPreconnect && empty($frameworkPatterns) && empty($exactUrls) && empty($prefixUrls)) {
+        if (empty($namespaceDomains) && ! $detectPreconnect && empty($frameworkPatterns) && empty($exactUrls) && empty($prefixUrls)) {
             return $results;
         }
 
@@ -162,7 +230,7 @@ class ScanStatistics
             $type = $result['type'] ?? 'internal';
 
             // 1. Namespace domain detection — any URL on a known namespace domain
-            if (!empty($namespaceDomains)) {
+            if (! empty($namespaceDomains)) {
                 $host = parse_url($url, PHP_URL_HOST);
                 if ($host !== null && $host !== false && in_array($host, $namespaceDomains, true)) {
                     return false;
@@ -175,7 +243,7 @@ class ScanStatistics
                 $path = $parsed['path'] ?? '';
                 $hasQuery = isset($parsed['query']);
                 // Bare domain: no path (or just "/") and no query string
-                if (($path === '' || $path === '/') && !$hasQuery) {
+                if (($path === '' || $path === '/') && ! $hasQuery) {
                     return false;
                 }
             }
@@ -203,4 +271,3 @@ class ScanStatistics
         });
     }
 }
-

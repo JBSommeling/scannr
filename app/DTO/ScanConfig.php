@@ -130,7 +130,7 @@ readonly class ScanConfig
             'customTrackingParams' => $customTrackingParams,
             'useJsRendering' => (bool) $command->option('js'),
             'useSmartJs' => (bool) $command->option('smart-js'),
-            'respectRobots' => !$command->option('no-robots'),
+            'respectRobots' => ! $command->option('no-robots'),
             'showAdvanced' => (bool) $command->option('advanced'),
         ]);
     }
@@ -163,13 +163,24 @@ readonly class ScanConfig
     }
 
     /**
-     * Check if a filter is applied.
+     * Check if any filter is applied (display or scan-level).
      */
     public function hasFilter(): bool
     {
-        return $this->statusFilter !== 'all'
-            || $this->elementFilter !== 'all'
+        return $this->hasDisplayFilter()
             || $this->scanElements !== ['a', 'link', 'script', 'img', 'media', 'form'];
+    }
+
+    /**
+     * Check if a display-only filter is applied (--status or --filter).
+     *
+     * Does not include --scan-elements since that restricts what gets scanned,
+     * not what gets displayed from already-scanned results.
+     */
+    public function hasDisplayFilter(): bool
+    {
+        return $this->statusFilter !== 'all'
+            || $this->elementFilter !== 'all';
     }
 
     /**
@@ -178,7 +189,7 @@ readonly class ScanConfig
     public function getBaseHost(): string
     {
         $parsed = parse_url($this->baseUrl);
+
         return $parsed['host'] ?? '';
     }
 }
-

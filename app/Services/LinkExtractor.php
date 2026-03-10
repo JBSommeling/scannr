@@ -18,7 +18,7 @@ class LinkExtractor
      * Create a new LinkExtractor instance.
      *
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving URLs.
-     * @param  HttpChecker    $httpChecker    The HTTP checker for fetching external script content.
+     * @param  HttpChecker  $httpChecker  The HTTP checker for fetching external script content.
      * @param  LinkFlagService  $linkFlagService  The link flag service for detecting flags.
      */
     public function __construct(
@@ -48,9 +48,9 @@ class LinkExtractor
      * Filters out javascript:, mailto:, tel:, and fragment-only links.
      * Normalizes relative URLs to absolute URLs.
      *
-     * @param  string  $html               The HTML content to parse.
-     * @param  string  $sourceUrl          The URL the HTML was fetched from (for resolving relative URLs).
-     * @param  bool    $scanScriptContent  Whether to scan <script> contents for URLs, downloads, and form endpoints (requires --js).
+     * @param  string  $html  The HTML content to parse.
+     * @param  string  $sourceUrl  The URL the HTML was fetched from (for resolving relative URLs).
+     * @param  bool  $scanScriptContent  Whether to scan <script> contents for URLs, downloads, and form endpoints (requires --js).
      * @return array<array{url: string, source: string, element: string}> Array of extracted links with URL, source page, and element type.
      */
     public function extractLinks(string $html, string $sourceUrl, bool $scanScriptContent = false): array
@@ -184,7 +184,7 @@ class LinkExtractor
                     }
 
                     $scriptUrl = $this->urlNormalizer->normalizeUrl($src, $sourceUrl);
-                    if ($scriptUrl === null || !$this->urlNormalizer->isInternalUrl($scriptUrl)) {
+                    if ($scriptUrl === null || ! $this->urlNormalizer->isInternalUrl($scriptUrl)) {
                         return;
                     }
 
@@ -206,12 +206,11 @@ class LinkExtractor
     /**
      * Add a link from an element attribute to the links array.
      *
-     * @param  Crawler  $node       The DOM node to extract from.
-     * @param  string   $attribute  The attribute name ('href' or 'src').
-     * @param  string   $sourceUrl  The source page URL.
-     * @param  string   $element    The element type ('a', 'link', 'script', 'img', 'media', 'form').
-     * @param  array    &$links     Reference to the links array.
-     * @return void
+     * @param  Crawler  $node  The DOM node to extract from.
+     * @param  string  $attribute  The attribute name ('href' or 'src').
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  string  $element  The element type ('a', 'link', 'script', 'img', 'media', 'form').
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addLinkFromAttribute(Crawler $node, string $attribute, string $sourceUrl, string $element, array &$links): void
     {
@@ -242,10 +241,9 @@ class LinkExtractor
     /**
      * Extract URLs from inline JavaScript code (e.g., onclick attributes).
      *
-     * @param  string  $js         The inline JavaScript code.
+     * @param  string  $js  The inline JavaScript code.
      * @param  string  $sourceUrl  The source page URL.
-     * @param  array   &$links     Reference to the links array.
-     * @return void
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addLinksFromInlineJs(string $js, string $sourceUrl, array &$links): void
     {
@@ -279,10 +277,9 @@ class LinkExtractor
     /**
      * Extract downloadable file URLs from inline script content.
      *
-     * @param  string  $content    The inline script content.
+     * @param  string  $content  The inline script content.
      * @param  string  $sourceUrl  The source page URL.
-     * @param  array   &$links     Reference to the links array.
-     * @return void
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addDownloadUrlsFromScriptContent(string $content, string $sourceUrl, array &$links): void
     {
@@ -297,7 +294,7 @@ class LinkExtractor
 
         $extPattern = implode('|', array_map('preg_quote', $extensions));
 
-        $pattern = '/[\'\"]((?:\/|https?:\/\/)[^\s\'"]*\.(?:' . $extPattern . '))[\'\"]/i';
+        $pattern = '/[\'\"]((?:\/|https?:\/\/)[^\s\'"]*\.(?:'.$extPattern.'))[\'\"]/i';
 
         if (preg_match_all($pattern, $content, $matches)) {
             $seen = [];
@@ -376,10 +373,9 @@ class LinkExtractor
     /**
      * Extract form submission endpoint URLs from JavaScript/JSON content.
      *
-     * @param  string  $content    The script content to scan.
+     * @param  string  $content  The script content to scan.
      * @param  string  $sourceUrl  The source page URL.
-     * @param  array   &$links     Reference to the links array.
-     * @return void
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addFormEndpointUrlsFromScriptContent(string $content, string $sourceUrl, array &$links): void
     {
@@ -416,7 +412,7 @@ class LinkExtractor
             if (preg_match_all($pattern, $content, $matches)) {
                 foreach ($matches[1] as $url) {
                     // Only include URLs that contain form-related keywords
-                    if (preg_match('/(?:' . $formKeywords . ')/i', $url)) {
+                    if (preg_match('/(?:'.$formKeywords.')/i', $url)) {
                         $urls[] = $url;
                     }
                 }
@@ -434,8 +430,8 @@ class LinkExtractor
 
                     if (preg_match_all('/[\'\"](\/[^\s\'"]+)[\'"]/i', $context, $pathMatches)) {
                         foreach ($pathMatches[1] as $path) {
-                            if (preg_match('/(?:' . $formKeywords . ')/i', $path)) {
-                                $urls[] = $baseUrl . $path;
+                            if (preg_match('/(?:'.$formKeywords.')/i', $path)) {
+                                $urls[] = $baseUrl.$path;
                             }
                         }
                     }
@@ -470,11 +466,10 @@ class LinkExtractor
     /**
      * Add links from a srcset attribute to the links array.
      *
-     * @param  Crawler  $node       The DOM node to extract from.
-     * @param  string   $sourceUrl  The source page URL.
-     * @param  string   $element    The element type ('img').
-     * @param  array    &$links     Reference to the links array.
-     * @return void
+     * @param  Crawler  $node  The DOM node to extract from.
+     * @param  string  $sourceUrl  The source page URL.
+     * @param  string  $element  The element type ('img').
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addLinksFromSrcset(Crawler $node, string $sourceUrl, string $element, array &$links): void
     {
@@ -520,7 +515,7 @@ class LinkExtractor
                 }
             }
 
-            if (!$alreadyAdded) {
+            if (! $alreadyAdded) {
                 $links[] = [
                     'url' => $normalizedUrl,
                     'source' => $sourceUrl,
@@ -537,25 +532,20 @@ class LinkExtractor
      * (React, Vue, Svelte, Angular, etc.) by searching for full URL
      * patterns (https://... or http://...) in the JavaScript source.
      *
-     * @param  string  $content    The JavaScript content to scan.
+     * @param  string  $content  The JavaScript content to scan.
      * @param  string  $sourceUrl  The source page URL.
-     * @param  array   &$links     Reference to the links array.
-     * @return void
+     * @param  array  &$links  Reference to the links array.
      */
     protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
     {
         // Extract full URLs from JavaScript (https://... or http://...)
-        // Capture up to 6 chars after URL to detect suspicious patterns (e.g., ",userId or `,r)
-        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,a-zA-Z$_]{0,6})/i', $content, $matches, PREG_SET_ORDER)) {
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)/i', $content, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $rawUrl = $match[1];
-                $postContext = $match[2] ?? '';
 
-                // Check for suspicious syntax in URL itself OR suspicious post-context patterns
-                // Post-context is suspicious if it has: quote+comma+letter (string concatenation)
-                // NOT suspicious: just quote+comma+quote (normal array/object syntax like ["url1", "url2"])
-                $hasSuspiciousSyntax = $this->hasSuspiciousDynamicUrlSyntax($rawUrl) ||
-                                      preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
+                // Check for malformed syntax and indirect reference patterns separately
+                $hasMalformedRaw = $this->linkFlagService->hasMalformedUrlSyntax($rawUrl);
+                $hasIndirectRaw = $this->linkFlagService->hasIndirectReferenceSyntax($rawUrl);
 
                 // Clean up any trailing punctuation or quotes
                 $url = rtrim($rawUrl, '.,;:"\')}>]');
@@ -580,7 +570,7 @@ class LinkExtractor
                     }
                 }
 
-                if (!$alreadyAdded) {
+                if (! $alreadyAdded) {
                     // Check if this is an internal or external URL
                     // Note: UrlNormalizer's isInternalUrl uses the base URL from sourceUrl for comparison
                     $isInternal = $this->urlNormalizer->isInternalUrl($normalizedUrl);
@@ -589,16 +579,17 @@ class LinkExtractor
                     $flags = [LinkFlag::DETECTED_IN_JS_BUNDLE];
 
                     // Add URL-based flags (external platform detection, malformed URL detection)
-                    $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, !$isInternal);
+                    $urlFlags = $this->linkFlagService->detectFromUrl($normalizedUrl, ! $isInternal);
                     $flags = array_merge($flags, $urlFlags);
 
-                    // Only add malformed/indirect flags if the URL itself has suspicious syntax
-                    // (not based on post-context which can have false positives)
-                    if ($hasSuspiciousSyntax && $this->hasSuspiciousDynamicUrlSyntax($url)) {
-                        if (!in_array(LinkFlag::MALFORMED_URL, $flags, true)) {
+                    // Add malformed/indirect flags independently based on which signal fires
+                    if ($hasMalformedRaw && $this->linkFlagService->hasMalformedUrlSyntax($url)) {
+                        if (! in_array(LinkFlag::MALFORMED_URL, $flags, true)) {
                             $flags[] = LinkFlag::MALFORMED_URL;
                         }
-                        if (!in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true)) {
+                    }
+                    if ($hasIndirectRaw && $this->linkFlagService->hasIndirectReferenceSyntax($url)) {
+                        if (! in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true)) {
                             $flags[] = LinkFlag::INDIRECT_REFERENCE;
                         }
                     }
@@ -607,35 +598,10 @@ class LinkExtractor
                         'url' => $normalizedUrl,
                         'source' => $sourceUrl,
                         'element' => 'a', // Treat as anchor link
-                        'flags' => array_map(fn(LinkFlag $f) => $f->value, $flags),
+                        'flags' => array_map(fn (LinkFlag $f) => $f->value, $flags),
                     ];
                 }
             }
         }
-    }
-
-    /**
-     * Check if a URL contains suspicious dynamic syntax indicating an incomplete template literal.
-     *
-     * Detects patterns like:
-     * - ${variable} - JavaScript template literal syntax
-     * - #{variable} - Ruby/CoffeeScript interpolation
-     * - {variable} - Vue, Angular, Handlebars interpolation (with letter after brace)
-     * - Backticks (`) - Incomplete template literal delimiters
-     * - Unencoded commas or newlines - Malformed URLs
-     * - Quotes followed by comma (array/concatenation fragments)
-     *
-     * @param  string  $url  The URL to check.
-     * @return bool True if the URL contains suspicious dynamic syntax.
-     */
-    protected function hasSuspiciousDynamicUrlSyntax(string $url): bool
-    {
-        // Check for template literal syntax, curly braces with variable names, backticks, newlines, trailing commas, or quote+comma patterns
-        // Note: \{[a-zA-Z] requires a letter after the brace to avoid matching URL-encoded braces like %7B
-        if (preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url)) {
-            return true;
-        }
-
-        return false;
     }
 }

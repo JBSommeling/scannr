@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Contracts\OutputInterface;
 use App\DTO\ScanConfig;
+use App\Services\IntegrityScorer;
 use App\Services\ResultFormatterService;
 use App\Services\ScanStatistics;
 use Tests\TestCase;
@@ -11,13 +12,14 @@ use Tests\TestCase;
 class ResultFormatterServiceTest extends TestCase
 {
     private ResultFormatterService $formatter;
+
     private ScanStatistics $scanStatistics;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scanStatistics = new ScanStatistics();
-        $this->formatter = new ResultFormatterService($this->scanStatistics);
+        $this->scanStatistics = new ScanStatistics;
+        $this->formatter = new ResultFormatterService($this->scanStatistics, new IntegrityScorer($this->scanStatistics));
     }
 
     private function createConfig(array $overrides = []): ScanConfig
@@ -41,13 +43,20 @@ class ResultFormatterServiceTest extends TestCase
 
     private function createMockOutput(): OutputInterface
     {
-        return new class implements OutputInterface {
+        return new class implements OutputInterface
+        {
             public array $lines = [];
+
             public array $infos = [];
+
             public array $warnings = [];
+
             public array $errors = [];
+
             public array $tables = [];
+
             public int $newLines = 0;
+
             public bool $verbose = false;
 
             public function info(string $message): void
@@ -392,6 +401,124 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertNotContains('Broken Links:', $output->errors);
     }
 
+    public function test_format_table_form_endpoint_404_appears_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '404',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertContains('Broken Links:', $output->errors);
+    }
+
+    public function test_format_table_form_endpoint_500_appears_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '500',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $this->assertContains('Broken Links:', $output->errors);
+    }
+
+    public function test_format_json_form_endpoint_429_not_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '429',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'rate_limited', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertEmpty($decoded['brokenLinks']);
+    }
+
+    public function test_format_json_form_endpoint_404_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '404',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertCount(1, $decoded['brokenLinks']);
+    }
+
+    public function test_format_json_form_endpoint_500_in_broken_links(): void
+    {
+        $results = [
+            [
+                'url' => 'https://app.example.com/api/contacts',
+                'sourcePage' => 'https://example.com',
+                'status' => '500',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['form_endpoint', 'status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'form',
+                'network' => ['retryAfter' => null],
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+
+        $this->formatter->format($results, $config, $output);
+
+        $decoded = json_decode(implode("\n", $output->lines), true);
+        $this->assertCount(1, $decoded['brokenLinks']);
+    }
+
     // ==================
     // JSON format tests
     // ==================
@@ -486,9 +613,11 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         $firstLine = $output->lines[0];
-        $this->assertStringContainsString('URL', $firstLine);
-        $this->assertStringContainsString('Source', $firstLine);
-        $this->assertStringContainsString('Status', $firstLine);
+        $this->assertStringContainsString('Site Integrity Score', $firstLine);
+        $headerLine = $output->lines[2];
+        $this->assertStringContainsString('URL', $headerLine);
+        $this->assertStringContainsString('Source', $headerLine);
+        $this->assertStringContainsString('Status', $headerLine);
     }
 
     public function test_format_csv_outputs_data_rows(): void
@@ -499,8 +628,8 @@ class ResultFormatterServiceTest extends TestCase
 
         $this->formatter->format($results, $config, $output);
 
-        // Header + 3 data rows
-        $this->assertCount(4, $output->lines);
+        // Score comment + Totals comment + Header + 3 data rows
+        $this->assertCount(6, $output->lines);
     }
 
     public function test_format_csv_escapes_quotes(): void
@@ -525,7 +654,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // Quotes should be doubled for CSV escaping
-        $this->assertStringContainsString('""test""', $output->lines[1]);
+        $this->assertStringContainsString('""test""', $output->lines[3]);
     }
 
     public function test_format_csv_includes_element_column(): void
@@ -536,8 +665,130 @@ class ResultFormatterServiceTest extends TestCase
 
         $this->formatter->format($results, $config, $output);
 
-        $firstLine = $output->lines[0];
+        $firstLine = $output->lines[2];
         $this->assertStringContainsString('Element', $firstLine);
+    }
+
+    // ==================
+    // CSV formula injection sanitization tests
+    // ==================
+
+    public function test_format_csv_sanitizes_url_starting_with_equals(): void
+    {
+        $results = $this->makeCsvResult('=CMD|"/C calc"!A0');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=CMD", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_plus(): void
+    {
+        $results = $this->makeCsvResult('+1-2');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t+1-2", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_minus(): void
+    {
+        $results = $this->makeCsvResult('-2+3');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t-2+3", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitizes_url_starting_with_at(): void
+    {
+        $results = $this->makeCsvResult('@SUM(1+1)');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t@SUM", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitizes_source_page_formula(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page',
+                'sourcePage' => '=HYPERLINK("http://evil.com")',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=HYPERLINK", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitizes_formula_url_in_redirect_chain(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/old',
+                'sourcePage' => 'https://example.com',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => ['https://example.com/old', '=evil()'], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['redirect_chain'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=evil", $output->lines[3]);
+    }
+
+    public function test_format_csv_does_not_modify_normal_url(): void
+    {
+        $results = $this->makeCsvResult('https://example.com/page');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString('"https://example.com/page"', $output->lines[3]);
+        $this->assertStringNotContainsString("\thttps", $output->lines[3]);
+    }
+
+    public function test_format_csv_sanitization_preserves_quote_escaping(): void
+    {
+        // A formula URL that also contains quotes should be both sanitized and quote-escaped
+        $results = $this->makeCsvResult('=CMD|"calc"');
+
+        $output = $this->createMockOutput();
+        $this->formatter->format($results, $this->createConfig(['outputFormat' => 'csv']), $output);
+
+        $this->assertStringContainsString("\t=CMD|\"\"calc\"\"", $output->lines[3]);
+    }
+
+    /** Helper to build a single CSV result with the given URL. */
+    private function makeCsvResult(string $url): array
+    {
+        return [
+            [
+                'url' => $url,
+                'sourcePage' => 'https://example.com',
+                'status' => '200',
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
     }
 
     // ==================
@@ -816,7 +1067,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // CSV should include redirects column with chain
-        $dataLine = $output->lines[1];
+        $dataLine = $output->lines[3];
         $this->assertStringContainsString('step1', $dataLine);
         $this->assertStringContainsString('step2', $dataLine);
     }
@@ -1075,7 +1326,7 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         // Data line should have empty redirects
-        $dataLine = $output->lines[1];
+        $dataLine = $output->lines[3];
         // Redirects column should be empty (consecutive commas or empty quoted string)
         $this->assertStringContainsString('""', $dataLine);
     }
@@ -1491,10 +1742,10 @@ class ResultFormatterServiceTest extends TestCase
 
         // Total scanned should reflect filtered count
         $lines = implode("\n", $output->lines);
-        $this->assertStringContainsString('Total scanned:  1', $lines);
+        $this->assertStringContainsString('Total scanned:     1', $lines);
 
         // Broken count should be 0 (the 404 fonts.googleapis.com is noise)
-        $this->assertStringContainsString('Broken:         0', $lines);
+        $this->assertStringContainsString('Broken:            0', $lines);
     }
 
     public function test_format_table_shows_noise_urls_with_advanced_flag(): void
@@ -1557,7 +1808,7 @@ class ResultFormatterServiceTest extends TestCase
 
         // Total scanned should be 4
         $lines = implode("\n", $output->lines);
-        $this->assertStringContainsString('Total scanned:  4', $lines);
+        $this->assertStringContainsString('Total scanned:     4', $lines);
     }
 
     public function test_to_json_array_hides_noise_urls_by_default(): void
@@ -1811,8 +2062,8 @@ class ResultFormatterServiceTest extends TestCase
         $this->formatter->format($results, $config, $output);
 
         $csvLines = $output->lines;
-        $this->assertStringContainsString('Flags,Confidence,Verification', $csvLines[0]);
-        $this->assertStringContainsString('detected_in_js_bundle', $csvLines[1]);
+        $this->assertStringContainsString('Flags,Confidence,Verification', $csvLines[2]);
+        $this->assertStringContainsString('detected_in_js_bundle', $csvLines[3]);
     }
 
     public function test_format_table_shows_verification_annotation_for_suspicious_url_with_404(): void
@@ -1961,6 +2212,198 @@ class ResultFormatterServiceTest extends TestCase
         // Only the main table, no low confidence table
         $this->assertCount(1, $output->tables);
     }
+
+    // ====================================================
+    // Integrity score independence from display filters
+    // ====================================================
+
+    public function test_score_uses_unfiltered_results_with_status_ok_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/page1',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // Get score without filter (baseline)
+        $outputNoFilter = $this->createMockOutput();
+        $configNoFilter = $this->createConfig(['outputFormat' => 'json']);
+        $this->formatter->format($results, $configNoFilter, $outputNoFilter);
+        $jsonNoFilter = json_decode($outputNoFilter->lines[0], true);
+        $scoreNoFilter = $jsonNoFilter['integrityScore']['overallScore'];
+
+        // Get score WITH --status=ok filter
+        $outputFiltered = $this->createMockOutput();
+        $configFiltered = $this->createConfig(['outputFormat' => 'json', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $configFiltered, $outputFiltered);
+        $jsonFiltered = json_decode($outputFiltered->lines[0], true);
+        $scoreFiltered = $jsonFiltered['integrityScore']['overallScore'];
+
+        // Score should be identical — display filter should not affect integrity score
+        $this->assertEquals($scoreNoFilter, $scoreFiltered);
+        // Score should be less than 100 (there's a broken link)
+        $this->assertLessThan(100, $scoreFiltered);
+        // But filtered results should only show OK items
+        $this->assertCount(1, $jsonFiltered['results']);
+    }
+
+    public function test_score_uses_unfiltered_results_with_element_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/style.css',
+                'sourcePage' => 'https://example.com',
+                'status' => 404,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'link',
+            ],
+            [
+                'url' => 'https://example.com/page',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // With --filter=a, only <a> elements are displayed but score sees broken CSS too
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json', 'elementFilter' => 'a']);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // Score should reflect the broken CSS link
+        $this->assertLessThan(100, $json['integrityScore']['overallScore']);
+        // But only <a> element shown in results
+        $this->assertCount(1, $json['results']);
+        $this->assertEquals('https://example.com/page', $json['results'][0]['url']);
+    }
+
+    public function test_score_unchanged_when_no_filter_active(): void
+    {
+        $results = $this->createSampleResults();
+
+        // No filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json']);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // All results should be present and score computed from same set
+        $this->assertCount(3, $json['results']);
+        $this->assertArrayNotHasKey('filtered', $json['summary']);
+    }
+
+    public function test_scan_elements_does_not_trigger_filtered_label(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/logo.png',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'img',
+            ],
+        ];
+
+        // --scan-elements=img means only img was scanned — this is NOT a display filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'json', 'scanElements' => ['img']]);
+        $this->formatter->format($results, $config, $output);
+        $json = json_decode($output->lines[0], true);
+
+        // No "filtered" key since no display filter is active
+        $this->assertArrayNotHasKey('filtered', $json['summary']);
+        $this->assertCount(1, $json['results']);
+    }
+
+    public function test_table_score_independent_of_status_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/ok',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 500,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // Table output with --status=ok filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $config, $output);
+
+        $lines = implode("\n", $output->lines);
+
+        // The Site Integrity Score line should NOT show 100 — it sees the 500 error in unfiltered set
+        $this->assertStringContainsString('Site Integrity Score:', $lines);
+        $this->assertStringNotContainsString('Site Integrity Score: 100.0 / 100', $lines);
+    }
+
+    public function test_csv_score_independent_of_status_filter(): void
+    {
+        $results = [
+            [
+                'url' => 'https://example.com/ok',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+            [
+                'url' => 'https://example.com/broken',
+                'sourcePage' => 'https://example.com',
+                'status' => 500,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['status_5xx'], 'confidence' => 'high', 'verification' => 'none'],
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        // CSV output with --status=ok filter
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'csv', 'statusFilter' => 'ok']);
+        $this->formatter->format($results, $config, $output);
+
+        // Score comment should NOT show 100 — sees the 500 in full set
+        $scoreLine = $output->lines[0];
+        $this->assertStringContainsString('Site Integrity Score', $scoreLine);
+        $this->assertStringNotContainsString('100.0 / 100', $scoreLine);
+    }
 }
-
-

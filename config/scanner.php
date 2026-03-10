@@ -271,6 +271,110 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Integrity Scoring
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the weight-based integrity scoring model.
+    | Score starts at 100 and penalties are subtracted based on issue type,
+    | confidence level, and duplicate dampening.
+    |
+    */
+
+    'integrity_scoring' => [
+
+        // Base penalties per flag (absolute values, applied as subtraction)
+        'penalties' => [
+            'developer_leftover' => 12,
+            'status_4xx_internal' => 10,
+            'status_5xx' => 10,
+            'connection_error' => 10,
+            'form_endpoint_404' => 10,
+            'status_4xx_external_platform' => 5,
+            'malformed_url' => 8,
+            'excessive_redirects' => 5,
+            'http_on_https' => 4,
+            'redirect_chain' => 3,
+            'timeout' => 3,
+            'bot_protection' => 2,
+            'rate_limited' => 1,
+        ],
+
+        // Confidence multipliers — lower confidence = reduced penalty
+        'confidence_multipliers' => [
+            'high' => 1.0,
+            'medium' => 0.6,
+            'low' => 0.3,
+        ],
+
+        // Category penalty multiplier — amplifies penalties within category
+        // sub-scores so individual issues have meaningful impact.
+        // Does not affect the overall score.
+        'category_penalty_multiplier' => 2.5,
+
+        // Duplicate dampening — tiered reduction for repeated issue types
+        // First occurrence: 100%, 2nd–5th: 50%, 6th+: 25%
+        'dampening' => [
+            'tier_1_max' => 1,    // occurrences 1..tier_1_max → 100%
+            'tier_2_max' => 5,    // occurrences tier_1_max+1..tier_2_max → tier_2_factor
+            'tier_2_factor' => 0.5,
+            'tier_3_factor' => 0.25,
+        ],
+
+        // Category assignments — which penalty types belong to which category.
+        // The optional "weight" field expresses intended relative importance but
+        // is not currently applied by the IntegrityScorer when computing overallScore.
+        'categories' => [
+            'link_integrity' => [
+                'weight' => 0.45,
+                'types' => [
+                    'status_4xx_internal',
+                    'status_5xx',
+                    'connection_error',
+                    'form_endpoint_404',
+                    'timeout',
+                    'status_4xx_external_platform',
+                ],
+            ],
+            'security_hygiene' => [
+                'weight' => 0.20,
+                'types' => [
+                    'http_on_https',
+                ],
+            ],
+            'technical_hygiene' => [
+                'weight' => 0.15,
+                'types' => [
+                    'developer_leftover',
+                    'malformed_url',
+                ],
+            ],
+            'redirect_health' => [
+                'weight' => 0.10,
+                'types' => [
+                    'redirect_chain',
+                    'excessive_redirects',
+                ],
+            ],
+            'link_verifiability' => [
+                'weight' => 0.10,
+                'types' => [
+                    'bot_protection',
+                    'rate_limited',
+                ],
+            ],
+        ],
+
+        // Grade thresholds (score must be >= threshold for the grade)
+        'grades' => [
+            'excellent' => 90,
+            'good' => 75,
+            'needs_attention' => 50,
+            // Below needs_attention → Critical
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | External Platforms
     |--------------------------------------------------------------------------
     |
@@ -324,4 +428,3 @@ return [
         'producthunt.com',
     ],
 ];
-

@@ -20,16 +20,15 @@ class SitemapServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new SitemapService();
+        $this->service = new SitemapService;
     }
 
     /**
      * Create a mock HTTP client with a predefined response.
      *
-     * @param  int     $statusCode   The HTTP status code to return.
-     * @param  string  $body         The response body content.
+     * @param  int  $statusCode  The HTTP status code to return.
+     * @param  string  $body  The response body content.
      * @param  string  $contentType  The Content-Type header value.
-     * @return Client
      */
     private function createMockClient(int $statusCode, string $body, string $contentType): Client
     {
@@ -49,8 +48,6 @@ class SitemapServiceTest extends TestCase
 
     /**
      * Create a mock HTTP client that throws an exception.
-     *
-     * @return Client
      */
     private function createExceptionClient(): Client
     {
@@ -158,9 +155,10 @@ class SitemapServiceTest extends TestCase
         $mockClient = $this->createMock(Client::class);
         $mockClient->method('request')
             ->willReturnCallback(function ($method, $url) use ($mockResponseIndex, $mockResponseChild) {
-                if (str_contains($url, 'sitemap.xml') && !str_contains($url, 'sitemap1')) {
+                if (str_contains($url, 'sitemap.xml') && ! str_contains($url, 'sitemap1')) {
                     return $mockResponseIndex;
                 }
+
                 return $mockResponseChild;
             });
 
@@ -401,7 +399,6 @@ class SitemapServiceTest extends TestCase
         $this->assertCount(2, $result);
     }
 
-
     // ===================
     // isInternalUrl tests
     // ===================
@@ -497,6 +494,7 @@ class SitemapServiceTest extends TestCase
 
                 if (str_contains($url, 'robots.txt')) {
                     $mockResponse->method('getStatusCode')->willReturn(404);
+
                     return $mockResponse;
                 }
 
@@ -504,6 +502,7 @@ class SitemapServiceTest extends TestCase
                 $mockResponse->method('getStatusCode')->willReturn(200);
                 $mockResponse->method('getBody')->willReturn($mockStream);
                 $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+
                 return $mockResponse;
             });
 
@@ -538,6 +537,7 @@ class SitemapServiceTest extends TestCase
 
                 if (str_contains($url, 'robots.txt')) {
                     $mockResponse->method('getStatusCode')->willReturn(404);
+
                     return $mockResponse;
                 }
 
@@ -545,6 +545,7 @@ class SitemapServiceTest extends TestCase
                 $mockResponse->method('getStatusCode')->willReturn(200);
                 $mockResponse->method('getBody')->willReturn($mockStream);
                 $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+
                 return $mockResponse;
             });
 
@@ -573,6 +574,7 @@ class SitemapServiceTest extends TestCase
 
                 if (str_contains($url, 'robots.txt')) {
                     $mockResponse->method('getStatusCode')->willReturn(404);
+
                     return $mockResponse;
                 }
 
@@ -580,6 +582,7 @@ class SitemapServiceTest extends TestCase
                 $mockResponse->method('getStatusCode')->willReturn(200);
                 $mockResponse->method('getBody')->willReturn($mockStream);
                 $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+
                 return $mockResponse;
             });
 
@@ -598,6 +601,7 @@ class SitemapServiceTest extends TestCase
             ->willReturnCallback(function ($method, $url) {
                 $mockResponse = $this->createMock(ResponseInterface::class);
                 $mockResponse->method('getStatusCode')->willReturn(404);
+
                 return $mockResponse;
             });
 
@@ -626,6 +630,7 @@ class SitemapServiceTest extends TestCase
 
                 if (str_contains($url, 'robots.txt')) {
                     $mockResponse->method('getStatusCode')->willReturn(404);
+
                     return $mockResponse;
                 }
 
@@ -633,6 +638,7 @@ class SitemapServiceTest extends TestCase
                 $mockResponse->method('getStatusCode')->willReturn(200);
                 $mockResponse->method('getBody')->willReturn($mockStream);
                 $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+
                 return $mockResponse;
             });
 
@@ -693,7 +699,7 @@ class SitemapServiceTest extends TestCase
 
     public function test_user_agent_does_not_impersonate_browser(): void
     {
-        $service = new SitemapService();
+        $service = new SitemapService;
 
         // Use reflection to access the client's default headers
         $reflection = new \ReflectionClass($service);
@@ -709,4 +715,3 @@ class SitemapServiceTest extends TestCase
         $this->assertStringNotContainsString('Safari', $userAgent);
     }
 }
-

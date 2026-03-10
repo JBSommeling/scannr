@@ -7,12 +7,12 @@ use App\Services\BrowsershotFetcher;
 use App\Services\CrawlerService;
 use App\Services\HttpChecker;
 use App\Services\LinkExtractor;
+use App\Services\LinkFlagService;
 use App\Services\ScannerService;
 use App\Services\ScanStatistics;
+use App\Services\SeverityEvaluator;
 use App\Services\SitemapService;
 use App\Services\UrlNormalizer;
-use App\Services\LinkFlagService;
-use App\Services\SeverityEvaluator;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
@@ -27,6 +27,7 @@ class CrawlerServiceTest extends TestCase
     {
         $mock = new MockHandler($responses);
         $handlerStack = HandlerStack::create($mock);
+
         return new Client([
             'handler' => $handlerStack,
             'allow_redirects' => false,
@@ -62,12 +63,12 @@ class CrawlerServiceTest extends TestCase
      */
     private function createServices(): array
     {
-        $urlNormalizer = new UrlNormalizer();
-        $severityEvaluator = new SeverityEvaluator();
+        $urlNormalizer = new UrlNormalizer;
+        $severityEvaluator = new SeverityEvaluator;
         $linkFlagService = new LinkFlagService($urlNormalizer, $severityEvaluator);
         $httpChecker = new HttpChecker($urlNormalizer, $linkFlagService);
         $linkExtractor = new LinkExtractor($urlNormalizer, $httpChecker, $linkFlagService);
-        $scanStatistics = new ScanStatistics();
+        $scanStatistics = new ScanStatistics;
         $scannerService = new ScannerService($httpChecker, $linkExtractor, $urlNormalizer, $scanStatistics, $linkFlagService);
         $sitemapService = new SitemapService(null, $urlNormalizer);
 
@@ -256,7 +257,7 @@ class CrawlerServiceTest extends TestCase
         $config = $this->createConfig(['maxUrls' => 10]);
         $crawlResult = $crawler->crawl($config);
 
-        $externalResults = array_filter($crawlResult['results'], fn($r) => $r['type'] === 'external');
+        $externalResults = array_filter($crawlResult['results'], fn ($r) => $r['type'] === 'external');
         $this->assertNotEmpty($externalResults);
     }
 
@@ -527,7 +528,7 @@ class CrawlerServiceTest extends TestCase
 
         $config = $this->createConfig([
             'baseUrl' => 'https://www.example.com',
-            'maxUrls' => 10
+            'maxUrls' => 10,
         ]);
         $crawler->crawl($config);
 
@@ -560,13 +561,14 @@ class CrawlerServiceTest extends TestCase
 
         $config = $this->createConfig([
             'baseUrl' => 'https://www.example.com',
-            'maxUrls' => 10
+            'maxUrls' => 10,
         ]);
         $crawlResult = $crawler->crawl($config);
 
         // Should only have one result for the homepage (not two for www and non-www)
         $homepageResults = array_filter($crawlResult['results'], function ($r) {
             $url = $r['url'] ?? '';
+
             return $url === 'https://www.example.com' || $url === 'https://example.com';
         });
 
@@ -602,8 +604,7 @@ class CrawlerServiceTest extends TestCase
 
         // When JS rendering is enabled, the callback should receive a message
         // about either successful enablement or a fallback warning
-        $jsMessages = array_filter($messages, fn($m) =>
-            stripos($m, 'javascript') !== false || stripos($m, 'puppeteer') !== false
+        $jsMessages = array_filter($messages, fn ($m) => stripos($m, 'javascript') !== false || stripos($m, 'puppeteer') !== false
         );
         $this->assertNotEmpty($jsMessages, 'Should display a JS rendering status message');
     }
@@ -632,7 +633,7 @@ class CrawlerServiceTest extends TestCase
             }
         );
 
-        $jsMessages = array_filter($messages, fn($m) => stripos($m, 'javascript') !== false);
+        $jsMessages = array_filter($messages, fn ($m) => stripos($m, 'javascript') !== false);
         $this->assertEmpty($jsMessages, 'Should NOT display JS rendering message when disabled');
     }
 
@@ -971,15 +972,15 @@ class CrawlerServiceTest extends TestCase
         // The contact page has two forms that post to itself (with fragments)
         // — only one form result should be recorded (deduplication)
         $contactHtml = '<html><body>'
-            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
-            . '<input type="text" name="name">'
-            . '<input type="submit" value="Send">'
-            . '</form>'
-            . '<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
-            . '<input type="text" name="email">'
-            . '<input type="submit" value="Subscribe">'
-            . '</form>'
-            . '</body></html>';
+            .'<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            .'<input type="text" name="name">'
+            .'<input type="submit" value="Send">'
+            .'</form>'
+            .'<form action="/contact/#wpcf7-f54-o1" method="post" class="wpcf7-form">'
+            .'<input type="text" name="email">'
+            .'<input type="submit" value="Subscribe">'
+            .'</form>'
+            .'</body></html>';
 
         $client = $this->createMockClient([
             // GET /contact/ (the page itself)
@@ -1002,7 +1003,7 @@ class CrawlerServiceTest extends TestCase
         $results = $crawlResult['results'];
 
         // Should have 2 results: the page itself + one form endpoint (deduplicated)
-        $formResults = array_filter($results, fn($r) => $r['sourceElement'] === 'form');
+        $formResults = array_filter($results, fn ($r) => $r['sourceElement'] === 'form');
         $this->assertNotEmpty($formResults, 'Self-referencing form action should be reported');
         $this->assertCount(1, $formResults, 'Duplicate self-referencing forms should be deduplicated');
 
@@ -1070,8 +1071,7 @@ class CrawlerServiceTest extends TestCase
         );
 
         // Should have a message about smart-JS activation (or fallback warning if Puppeteer not installed)
-        $smartJsMessages = array_filter($messages, fn($m) =>
-            stripos($m, 'Smart JS') !== false || stripos($m, 'smart js') !== false
+        $smartJsMessages = array_filter($messages, fn ($m) => stripos($m, 'Smart JS') !== false || stripos($m, 'smart js') !== false
         );
         $this->assertNotEmpty($smartJsMessages, 'Should display a smart-JS status message when SPA signals detected');
     }
@@ -1101,8 +1101,7 @@ class CrawlerServiceTest extends TestCase
             }
         );
 
-        $smartJsMessages = array_filter($messages, fn($m) =>
-            stripos($m, 'Smart JS') !== false
+        $smartJsMessages = array_filter($messages, fn ($m) => stripos($m, 'Smart JS') !== false
         );
         $this->assertEmpty($smartJsMessages, 'Should NOT display smart-JS message on normal HTML');
     }
@@ -1161,7 +1160,8 @@ class CrawlerServiceTest extends TestCase
         $scannerMock->method('processInternalUrl')->willReturn($jsResult);
 
         // Anonymous subclass that reports Browsershot as available.
-        $crawler = new class($scannerMock, $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+        $crawler = new class($scannerMock, $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService
+        {
             protected function checkBrowsershotDeps(): array
             {
                 return ['available' => true, 'message' => ''];
@@ -1182,10 +1182,10 @@ class CrawlerServiceTest extends TestCase
 
         // SPA shell: no navigable links + single JS bundle — triggers SPA detection.
         $spaResult = [
-            'rawBody'        => '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            'rawBody' => '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
             'extractedLinks' => [],
-            'url'            => 'https://example.com',
-            'status'         => '200',
+            'url' => 'https://example.com',
+            'status' => '200',
         ];
 
         $tryMethod = new \ReflectionMethod($crawler, 'tryActivateSmartJs');
@@ -1218,7 +1218,8 @@ class CrawlerServiceTest extends TestCase
 
         // Anonymous subclass that reports Browsershot as available so the re-fetch
         // code path (where the old array_pop lived) is actually exercised.
-        $crawler = new class($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService {
+        $crawler = new class($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']) extends CrawlerService
+        {
             protected function checkBrowsershotDeps(): array
             {
                 return ['available' => true, 'message' => ''];
@@ -1258,4 +1259,3 @@ class CrawlerServiceTest extends TestCase
         $this->assertFalse($restored->useJsRendering);
     }
 }
-

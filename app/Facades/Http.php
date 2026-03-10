@@ -26,4 +26,3 @@ class Http extends Facade
         return 'http-checker';
     }
 }
-

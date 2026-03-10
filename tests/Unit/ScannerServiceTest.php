@@ -18,22 +18,28 @@ use Psr\Http\Message\StreamInterface;
 class ScannerServiceTest extends TestCase
 {
     private ScannerService $service;
+
     private UrlNormalizer $urlNormalizer;
+
     private HttpChecker $httpChecker;
+
     private LinkExtractor $linkExtractor;
+
     private ScanStatistics $scanStatistics;
+
     private LinkFlagService $linkFlagService;
+
     private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->urlNormalizer = new UrlNormalizer();
-        $this->severityEvaluator = new SeverityEvaluator();
+        $this->urlNormalizer = new UrlNormalizer;
+        $this->severityEvaluator = new SeverityEvaluator;
         $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
         $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
         $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->linkFlagService);
-        $this->scanStatistics = new ScanStatistics();
+        $this->scanStatistics = new ScanStatistics;
         $this->service = new ScannerService(
             $this->httpChecker,
             $this->linkExtractor,
@@ -361,7 +367,6 @@ class ScannerServiceTest extends TestCase
         $this->assertContains('https://example.com/page1', $extractedUrls);
     }
 
-
     public function test_process_internal_url_includes_retry_after(): void
     {
         $mockClient = $this->createMockClient(429, '', ['Retry-After' => '10']);
@@ -374,7 +379,6 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals(10, $result['network']['retryAfter']);
     }
 
-
     public function test_process_external_url_includes_retry_after(): void
     {
         $mockClient = $this->createMockClient(429, '', ['Retry-After' => '15']);
@@ -386,7 +390,6 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('429', $result['status']);
         $this->assertEquals(15, $result['network']['retryAfter']);
     }
-
 
     // ======================
     // Form endpoint health check tests
@@ -837,6 +840,3 @@ class ScannerServiceTest extends TestCase
         $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
 }
-
-
-

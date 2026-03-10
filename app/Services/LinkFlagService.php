@@ -23,9 +23,9 @@ class LinkFlagService
     /**
      * Build a complete LinkAnalysis from collected flags.
      *
-     * @param array<LinkFlag> $flags
-     * @param int|string $status HTTP status or error string
-     * @param bool $isExternal Whether the URL is external
+     * @param  array<LinkFlag>  $flags
+     * @param  int|string  $status  HTTP status or error string
+     * @param  bool  $isExternal  Whether the URL is external
      */
     public function buildAnalysis(array $flags, int|string $status, bool $isExternal): LinkAnalysis
     {
@@ -40,7 +40,7 @@ class LinkFlagService
     /**
      * Detect flags from HTTP response status.
      *
-     * @param int|string $status The HTTP status code or error string.
+     * @param  int|string  $status  The HTTP status code or error string.
      * @return array<LinkFlag>
      */
     public function detectFromHttpResponse(int|string $status): array
@@ -49,16 +49,19 @@ class LinkFlagService
 
         if ($status === 'Timeout') {
             $flags[] = LinkFlag::TIMEOUT;
+
             return $flags;
         }
 
         if ($status === 'Error') {
             $flags[] = LinkFlag::CONNECTION_ERROR;
+
             return $flags;
         }
 
-        if (!is_int($status)) {
+        if (! is_int($status)) {
             $flags[] = LinkFlag::UNVERIFIED;
+
             return $flags;
         }
 
@@ -88,9 +91,9 @@ class LinkFlagService
     /**
      * Detect flags from URL discovery method.
      *
-     * @param bool $isJsRendered Whether the page was rendered with JS (headless browser)
-     * @param bool $fromJsBundle Whether the URL was extracted from a JS bundle
-     * @param bool $hasSuspiciousSyntax Whether the URL has suspicious dynamic syntax
+     * @param  bool  $isJsRendered  Whether the page was rendered with JS (headless browser)
+     * @param  bool  $fromJsBundle  Whether the URL was extracted from a JS bundle
+     * @param  bool  $hasSuspiciousSyntax  Whether the URL has suspicious dynamic syntax
      * @return array<LinkFlag>
      */
     public function detectFromDiscovery(
@@ -110,7 +113,6 @@ class LinkFlagService
 
         if ($hasSuspiciousSyntax) {
             $flags[] = LinkFlag::MALFORMED_URL;
-            $flags[] = LinkFlag::INDIRECT_REFERENCE;
         }
 
         return $flags;
@@ -119,8 +121,8 @@ class LinkFlagService
     /**
      * Detect flags from URL characteristics.
      *
-     * @param string $url The URL to analyze
-     * @param bool $isExternal Whether the URL is external
+     * @param  string  $url  The URL to analyze
+     * @param  bool  $isExternal  Whether the URL is external
      * @return array<LinkFlag>
      */
     public function detectFromUrl(string $url, bool $isExternal): array
@@ -137,9 +139,13 @@ class LinkFlagService
             $flags[] = LinkFlag::DEVELOPER_LEFTOVER;
         }
 
-        // Check for malformed URL syntax
-        if ($this->hasMalformedSyntax($url)) {
+        // Check for malformed URL syntax (template literals, control chars)
+        if ($this->hasMalformedUrlSyntax($url)) {
             $flags[] = LinkFlag::MALFORMED_URL;
+        }
+
+        // Check for indirect reference patterns (path parameters, extraction artifacts)
+        if ($this->hasIndirectReferenceSyntax($url)) {
             $flags[] = LinkFlag::INDIRECT_REFERENCE;
         }
 
@@ -149,9 +155,9 @@ class LinkFlagService
     /**
      * Detect flags from redirect chain analysis.
      *
-     * @param array<string> $chain The redirect chain
-     * @param bool $hasLoop Whether a redirect loop was detected
-     * @param bool $hasHttpsDowngrade Whether HTTPS to HTTP downgrade occurred
+     * @param  array<string>  $chain  The redirect chain
+     * @param  bool  $hasLoop  Whether a redirect loop was detected
+     * @param  bool  $hasHttpsDowngrade  Whether HTTPS to HTTP downgrade occurred
      * @return array<LinkFlag>
      */
     public function detectFromRedirect(array $chain, bool $hasLoop, bool $hasHttpsDowngrade): array
@@ -200,7 +206,7 @@ class LinkFlagService
 
         foreach ($platforms as $platform) {
             // Match exact domain or subdomain (e.g., www.linkedin.com matches linkedin.com)
-            if ($host === $platform || str_ends_with($host, '.' . $platform)) {
+            if ($host === $platform || str_ends_with($host, '.'.$platform)) {
                 return true;
             }
         }
@@ -209,13 +215,26 @@ class LinkFlagService
     }
 
     /**
-     * Check if a URL has malformed syntax (template literals, placeholders, etc.).
+     * Check if a URL has malformed syntax that makes it impossible to visit.
+     *
+     * Detects template literal / interpolation syntax and control characters:
+     * ${var}, #{var}, backticks, newlines.
      */
-    protected function hasMalformedSyntax(string $url): bool
+    public function hasMalformedUrlSyntax(string $url): bool
     {
-        // Check for template literal syntax with variable names, backticks, etc.
-        // Note: \{[a-zA-Z] requires a letter after the brace to avoid false positives
-        return (bool) preg_match('/\$\{|\#\{|\{[a-zA-Z]|\}[a-zA-Z]|`|,\w+$|"\s*,|\n/', $url);
+        return (bool) preg_match('/\$\{|\#\{|`|\n/', $url);
+    }
+
+    /**
+     * Check if a URL contains template patterns or extraction artifacts
+     * suggesting it's not a concrete, visitable URL.
+     *
+     * Detects path parameters ({var}), closing-brace+code, trailing
+     * comma+word, and quote+comma patterns.
+     */
+    public function hasIndirectReferenceSyntax(string $url): bool
+    {
+        return (bool) preg_match('/\{[a-zA-Z]|\}[a-zA-Z]|,\w+$|"\s*,/', $url);
     }
 
     /**
@@ -314,4 +333,3 @@ class LinkFlagService
         return $status === 200 && $this->urlNormalizer->isSubdomainUrl($url);
     }
 }
-

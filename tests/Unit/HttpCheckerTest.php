@@ -3,9 +3,9 @@
 namespace Tests\Unit;
 
 use App\Services\HttpChecker;
-use App\Services\UrlNormalizer;
 use App\Services\LinkFlagService;
 use App\Services\SeverityEvaluator;
+use App\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
@@ -18,15 +18,18 @@ use Psr\Http\Message\StreamInterface;
 class HttpCheckerTest extends TestCase
 {
     private HttpChecker $httpChecker;
+
     private UrlNormalizer $urlNormalizer;
+
     private LinkFlagService $linkFlagService;
+
     private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->urlNormalizer = new UrlNormalizer();
-        $this->severityEvaluator = new SeverityEvaluator();
+        $this->urlNormalizer = new UrlNormalizer;
+        $this->severityEvaluator = new SeverityEvaluator;
         $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
         $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
     }
@@ -354,8 +357,8 @@ class HttpCheckerTest extends TestCase
 
     public function test_default_client_uses_scannrbot_user_agent(): void
     {
-        $urlNormalizer = new UrlNormalizer();
-        $severityEvaluator = new SeverityEvaluator();
+        $urlNormalizer = new UrlNormalizer;
+        $severityEvaluator = new SeverityEvaluator;
         $linkFlagService = new LinkFlagService($urlNormalizer, $severityEvaluator);
         $service = new HttpChecker($urlNormalizer, $linkFlagService);
 
@@ -496,10 +499,10 @@ class HttpCheckerTest extends TestCase
     public static function healthyFormStatusProvider(): array
     {
         return [
-            'bad request'               => [400],
-            'unauthorized'              => [401],
-            'unprocessable entity'      => [422],
-            'too many requests'         => [429],
+            'bad request' => [400],
+            'unauthorized' => [401],
+            'unprocessable entity' => [422],
+            'too many requests' => [429],
         ];
     }
 
@@ -667,5 +670,4 @@ class HttpCheckerTest extends TestCase
         $this->assertFalse($result['redirect']['isLoop']);
         $this->assertFalse($result['redirect']['hasHttpsDowngrade']);
     }
-
 }

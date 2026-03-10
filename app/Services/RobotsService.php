@@ -68,6 +68,7 @@ class RobotsService
     public function setClient(Client $client): self
     {
         $this->client = $client;
+
         return $this;
     }
 
@@ -89,9 +90,9 @@ class RobotsService
         }
 
         $scheme = $parsed['scheme'] ?? 'https';
-        $host   = preg_replace('/^www\./i', '', $parsed['host']);
-        $port   = isset($parsed['port']) ? ':' . $parsed['port'] : '';
-        $robotsUrl = $scheme . '://' . $host . $port . '/robots.txt';
+        $host = preg_replace('/^www\./i', '', $parsed['host']);
+        $port = isset($parsed['port']) ? ':'.$parsed['port'] : '';
+        $robotsUrl = $scheme.'://'.$host.$port.'/robots.txt';
 
         try {
             $response = $this->client->request('GET', $robotsUrl, [
@@ -149,6 +150,7 @@ class RobotsService
             // Check for Sitemap directive (always global)
             if (preg_match('/^Sitemap:\s*(.+)/i', $line, $matches)) {
                 $this->sitemapUrls[] = trim($matches[1]);
+
                 continue;
             }
 
@@ -254,14 +256,14 @@ class RobotsService
      */
     public function isAllowed(string $url): bool
     {
-        if (!$this->parsed || empty($this->rules)) {
+        if (! $this->parsed || empty($this->rules)) {
             return true;
         }
 
         $path = parse_url($url, PHP_URL_PATH) ?? '/';
         $query = parse_url($url, PHP_URL_QUERY);
         if ($query !== null) {
-            $path .= '?' . $query;
+            $path .= '?'.$query;
         }
 
         $bestMatch = null;
@@ -303,9 +305,9 @@ class RobotsService
             $regex = str_replace('\*', '.*', $regex);
 
             if ($hasEndAnchor) {
-                $regex = '#^' . $regex . '$#';
+                $regex = '#^'.$regex.'$#';
             } else {
-                $regex = '#^' . $regex . '#';
+                $regex = '#^'.$regex.'#';
             }
 
             return (bool) preg_match($regex, $path);
@@ -324,6 +326,7 @@ class RobotsService
     protected function getPatternSpecificity(string $pattern): int
     {
         $clean = str_replace(['$', '*'], '', $pattern);
+
         return strlen($clean);
     }
 
@@ -368,7 +371,7 @@ class RobotsService
         $this->crawlDelay = null;
         $this->sitemapUrls = [];
         $this->parsed = false;
+
         return $this;
     }
 }
-

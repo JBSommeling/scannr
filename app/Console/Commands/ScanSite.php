@@ -35,7 +35,6 @@ class ScanSite extends Command
         {--advanced : Show XML namespaces, CDN root domains, and JS framework links}
         {--queue : Dispatch scan as a background job}';
 
-
     /**
      * The console command description.
      *
@@ -59,8 +58,9 @@ class ScanSite extends Command
         $url = $this->argument('url');
         $parsedUrl = parse_url($url);
 
-        if (!isset($parsedUrl['host'])) {
+        if (! isset($parsedUrl['host'])) {
             $this->error('Invalid URL provided.');
+
             return CommandAlias::FAILURE;
         }
 
@@ -123,13 +123,13 @@ class ScanSite extends Command
         $crawlResult = $this->crawlerService->crawl(
             $config,
             function (int $scanned, int $total) use ($progressBar, &$progressBarStarted) {
-                if (!$progressBarStarted) {
+                if (! $progressBarStarted) {
                     $progressBar->start();
                     $progressBarStarted = true;
                 }
                 $progressBar->setProgress($scanned);
             },
-            fn(string $message) => $this->info($message),
+            fn (string $message) => $this->info($message),
         );
 
         if ($progressBarStarted) {

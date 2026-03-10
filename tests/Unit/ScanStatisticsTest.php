@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ScanStatistics;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class ScanStatisticsTest extends TestCase
@@ -12,7 +13,7 @@ class ScanStatisticsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scanStatistics = new ScanStatistics();
+        $this->scanStatistics = new ScanStatistics;
     }
     // =====================
     // filterResults tests
@@ -183,11 +184,15 @@ class ScanStatisticsTest extends TestCase
         $this->assertEquals(5, $stats['total']);
         $this->assertEquals(1, $stats['ok']);        // 200 without redirects
         $this->assertEquals(1, $stats['redirects']); // 200 with redirects
-        $this->assertEquals(2, $stats['broken']);    // 404 + 500
-        $this->assertEquals(1, $stats['timeouts']);  // timeout
+        $this->assertEquals(3, $stats['broken']);    // 404 + 500 + timeout
+        $this->assertEquals(1, $stats['timeouts']);  // timeout (still separately tracked)
         $this->assertEquals(0, $stats['redirectChainCount']); // single redirect is not a chain
         $this->assertEquals(1, $stats['totalRedirectHops']); // 1 hop
         $this->assertEquals(0, $stats['httpsDowngrades']); // no downgrades
+        $this->assertEquals(0, $stats['pagesScanned']); // no sourcePage in test data
+        $this->assertEquals(5, $stats['internalLinks']); // all internal, default element 'a'
+        $this->assertEquals(0, $stats['assetsScanned']); // no non-anchor elements
+        $this->assertEquals(0, $stats['externalLinks']); // all internal
     }
 
     public function test_calculate_stats_handles_empty_results(): void
@@ -417,7 +422,7 @@ class ScanStatisticsTest extends TestCase
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
         $this->assertCount(3, $filtered);
 
-        $filteredUrls = array_map(fn($r) => $r['url'] . '|' . $r['sourceElement'], array_values($filtered));
+        $filteredUrls = array_map(fn ($r) => $r['url'].'|'.$r['sourceElement'], array_values($filtered));
         $this->assertContains('https://other-cdn.example.com|a', $filteredUrls);
         $this->assertContains('https://cdn.example.com/style.css|link', $filteredUrls);
         $this->assertContains('https://example.com|link', $filteredUrls);
@@ -470,5 +475,311 @@ class ScanStatisticsTest extends TestCase
 
         $this->assertEquals(0, $stats['lowConfidenceCount']);
     }
-}
 
+    // =============================================
+    // Form endpoint broken/healthy classification
+    // =============================================
+
+    private function makeFormEndpointResult(string $status): array
+    {
+        return [
+            'url' => 'https://app.example.com/api/contacts',
+            'sourcePage' => 'https://example.com',
+            'status' => $status,
+            'type' => 'internal',
+            'sourceElement' => 'form',
+            'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+            'analysis' => ['flags' => ['form_endpoint', 'status_4xx'], 'confidence' => 'high', 'verification' => 'none'],
+            'network' => ['retryAfter' => null],
+        ];
+    }
+
+    public function test_form_endpoint_404_is_counted_as_broken(): void
+    {
+        $results = [$this->makeFormEndpointResult('404')];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    public function test_form_endpoint_500_is_counted_as_broken(): void
+    {
+        $result = $this->makeFormEndpointResult('500');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    public function test_form_endpoint_503_is_counted_as_broken(): void
+    {
+        $result = $this->makeFormEndpointResult('503');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(1, $stats['broken']);
+    }
+
+    #[DataProvider('healthyFormEndpointStatusProvider')]
+    public function test_form_endpoint_healthy_statuses_not_counted_as_broken(string $status): void
+    {
+        $results = [$this->makeFormEndpointResult($status)];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(0, $stats['broken']);
+    }
+
+    public static function healthyFormEndpointStatusProvider(): array
+    {
+        return [
+            '400 Bad Request' => ['400'],
+            '401 Unauthorized' => ['401'],
+            '403 Forbidden' => ['403'],
+            '405 Method Not Allowed' => ['405'],
+            '422 Unprocessable Entity' => ['422'],
+            '429 Too Many Requests' => ['429'],
+        ];
+    }
+
+    public function test_filter_broken_excludes_healthy_form_endpoints(): void
+    {
+        $results = [$this->makeFormEndpointResult('422')];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertEmpty($filtered);
+    }
+
+    public function test_filter_broken_includes_404_form_endpoint(): void
+    {
+        $results = [$this->makeFormEndpointResult('404')];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+    }
+
+    public function test_filter_broken_includes_500_form_endpoint(): void
+    {
+        $result = $this->makeFormEndpointResult('500');
+        $result['analysis']['flags'] = ['form_endpoint', 'status_5xx'];
+        $results = [$result];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+    }
+
+    // =============================================
+    // Broken link status classification
+    // =============================================
+
+    private function makeSimpleResult(string $status, array $flags = []): array
+    {
+        return [
+            'url' => 'https://example.com/page',
+            'sourcePage' => 'https://example.com',
+            'status' => $status,
+            'type' => 'external',
+            'sourceElement' => 'a',
+            'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+            'analysis' => ['flags' => $flags, 'confidence' => 'high', 'verification' => 'none'],
+            'network' => ['retryAfter' => null],
+        ];
+    }
+
+    #[DataProvider('brokenStatusProvider')]
+    public function test_status_counts_as_broken(string $status, array $flags): void
+    {
+        $stats = $this->scanStatistics->calculateStats([$this->makeSimpleResult($status, $flags)]);
+
+        $this->assertEquals(1, $stats['broken'], "Expected status '{$status}' to count as broken");
+    }
+
+    public static function brokenStatusProvider(): array
+    {
+        return [
+            '404 Not Found'        => ['404', ['status_4xx']],
+            '410 Gone'             => ['410', ['status_4xx']],
+            '500 Server Error'     => ['500', ['status_5xx']],
+            '503 Unavailable'      => ['503', ['status_5xx']],
+            'timeout'              => ['timeout', ['timeout']],
+            'error (connection)'   => ['error', ['connection_error']],
+        ];
+    }
+
+    #[DataProvider('notBrokenStatusProvider')]
+    public function test_status_does_not_count_as_broken(string $status, array $flags): void
+    {
+        $stats = $this->scanStatistics->calculateStats([$this->makeSimpleResult($status, $flags)]);
+
+        $this->assertEquals(0, $stats['broken'], "Expected status '{$status}' NOT to count as broken");
+    }
+
+    public static function notBrokenStatusProvider(): array
+    {
+        return [
+            '200 OK'              => ['200', []],
+            '201 Created'         => ['201', []],
+            '204 No Content'      => ['204', []],
+            'empty status'        => ['', []],
+            '403 bot protected'   => ['403', ['bot_protection']],
+            '405 bot protected'   => ['405', ['bot_protection', 'external_platform']],
+        ];
+    }
+
+    public function test_timeout_counted_in_both_broken_and_timeouts(): void
+    {
+        $stats = $this->scanStatistics->calculateStats([
+            $this->makeSimpleResult('timeout', ['timeout']),
+        ]);
+
+        $this->assertEquals(1, $stats['broken']);
+        $this->assertEquals(1, $stats['timeouts']);
+    }
+
+    // ======================
+    // isBrokenResult tests
+    // ======================
+
+    public function test_is_broken_result_404(): void
+    {
+        $this->assertTrue($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('404', ['status_4xx'])
+        ));
+    }
+
+    public function test_is_broken_result_200_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('200', [])
+        ));
+    }
+
+    public function test_is_broken_result_empty_status_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('', [])
+        ));
+    }
+
+    public function test_is_broken_result_bot_protected_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('403', ['bot_protection', 'external_platform'])
+        ));
+    }
+
+    public function test_is_broken_result_healthy_form_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('405', ['form_endpoint'])
+        ));
+    }
+
+    public function test_is_broken_result_timeout_is_broken(): void
+    {
+        $this->assertTrue($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('timeout', ['timeout'])
+        ));
+    }
+
+    // ======================
+    // filterResults('broken') consistency
+    // ======================
+
+    public function test_filter_results_broken_excludes_bot_protected(): void
+    {
+        $results = [
+            $this->makeSimpleResult('404', ['status_4xx']),
+            $this->makeSimpleResult('403', ['bot_protection', 'external_platform']),
+            $this->makeSimpleResult('200', []),
+        ];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('404', array_values($filtered)[0]['status']);
+    }
+
+    public function test_filter_results_broken_excludes_empty_status(): void
+    {
+        $results = [
+            $this->makeSimpleResult('', []),
+            $this->makeSimpleResult('404', ['status_4xx']),
+        ];
+
+        $filtered = $this->scanStatistics->filterResults($results, 'broken');
+
+        $this->assertCount(1, $filtered);
+        $this->assertEquals('404', array_values($filtered)[0]['status']);
+    }
+
+    public function test_calculate_stats_counts_pages_scanned(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/a', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/b', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/c', 'sourcePage' => 'https://example.com/about', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(2, $stats['pagesScanned']);
+    }
+
+    public function test_calculate_stats_counts_assets_scanned(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/style.css', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'link', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/app.js', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'script', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/logo.png', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'img', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://example.com/about', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://cdn.example.com/font.woff', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'external', 'sourceElement' => 'link', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        // 3 internal non-anchor elements (link, script, img); anchor and external link excluded
+        $this->assertEquals(3, $stats['assetsScanned']);
+        // 1 internal <a> element
+        $this->assertEquals(1, $stats['internalLinks']);
+        // 1 external element
+        $this->assertEquals(1, $stats['externalLinks']);
+        // All three sum to total
+        $this->assertEquals($stats['total'], $stats['internalLinks'] + $stats['assetsScanned'] + $stats['externalLinks']);
+    }
+
+    public function test_calculate_stats_counts_external_links(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/a', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://twitter.com/test', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'external', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+            ['url' => 'https://linkedin.com/in/test', 'sourcePage' => 'https://example.com/', 'status' => '405', 'type' => 'external', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => ['bot_protection'], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertEquals(2, $stats['externalLinks']);
+    }
+
+    public function test_calculate_stats_granular_counts_in_existing_stats(): void
+    {
+        $results = [
+            ['url' => 'https://example.com/page', 'sourcePage' => 'https://example.com/', 'status' => '200', 'type' => 'internal', 'sourceElement' => 'a', 'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false], 'analysis' => ['flags' => [], 'confidence' => 'high', 'verification' => 'none']],
+        ];
+
+        $stats = $this->scanStatistics->calculateStats($results);
+
+        $this->assertArrayHasKey('pagesScanned', $stats);
+        $this->assertArrayHasKey('internalLinks', $stats);
+        $this->assertArrayHasKey('assetsScanned', $stats);
+        $this->assertArrayHasKey('externalLinks', $stats);
+    }
+}

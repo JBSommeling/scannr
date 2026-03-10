@@ -15,16 +15,20 @@ use Psr\Http\Message\StreamInterface;
 class LinkExtractorTest extends TestCase
 {
     private LinkExtractor $linkExtractor;
+
     private UrlNormalizer $urlNormalizer;
+
     private HttpChecker $httpChecker;
+
     private LinkFlagService $linkFlagService;
+
     private SeverityEvaluator $severityEvaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->urlNormalizer = new UrlNormalizer();
-        $this->severityEvaluator = new SeverityEvaluator();
+        $this->urlNormalizer = new UrlNormalizer;
+        $this->severityEvaluator = new SeverityEvaluator;
         $this->linkFlagService = new LinkFlagService($this->urlNormalizer, $this->severityEvaluator);
         $this->httpChecker = new HttpChecker($this->urlNormalizer, $this->linkFlagService);
         $this->linkExtractor = new LinkExtractor($this->urlNormalizer, $this->httpChecker, $this->linkFlagService);
@@ -352,7 +356,6 @@ class LinkExtractorTest extends TestCase
         $this->assertEquals('media', $links[0]['element']);
     }
 
-
     public function test_extract_links_finds_a_download(): void
     {
         $html = '<html><body><a href="/report.pdf" download>Download Report</a></body></html>';
@@ -360,7 +363,7 @@ class LinkExtractorTest extends TestCase
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
 
         // Should appear as both 'a' (from a[href]) and 'media' (from a[download][href])
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertNotEmpty($mediaLinks);
         $this->assertEquals('https://example.com/report.pdf', array_values($mediaLinks)[0]['url']);
     }
@@ -494,7 +497,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(1, $mediaLinks);
         $this->assertEquals('https://example.com/files/cv.pdf', array_values($mediaLinks)[0]['url']);
     }
@@ -505,7 +508,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', false);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -515,7 +518,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -525,7 +528,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(1, $mediaLinks);
         $this->assertEquals('https://example.com/docs/report.xlsx', array_values($mediaLinks)[0]['url']);
     }
@@ -536,7 +539,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -546,7 +549,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -560,7 +563,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $mediaLinks = array_values(array_filter($links, fn ($l) => $l['element'] === 'media'));
         $urls = array_column($mediaLinks, 'url');
         $this->assertCount(3, $mediaLinks);
         $this->assertContains('https://example.com/files/cv.pdf', $urls);
@@ -574,7 +577,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(1, $mediaLinks);
         $this->assertEquals('https://cdn.example.com/files/report.pdf', array_values($mediaLinks)[0]['url']);
     }
@@ -588,7 +591,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(1, $mediaLinks);
     }
 
@@ -599,10 +602,10 @@ class LinkExtractorTest extends TestCase
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
         // Should find the src as 'script' element, but NOT the inline content
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
 
-        $scriptLinks = array_filter($links, fn($l) => $l['element'] === 'script');
+        $scriptLinks = array_filter($links, fn ($l) => $l['element'] === 'script');
         $this->assertCount(1, $scriptLinks);
     }
 
@@ -613,7 +616,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(1, $mediaLinks);
         $this->assertEquals('https://example.com/downloads/report.pdf', array_values($mediaLinks)[0]['url']);
     }
@@ -635,7 +638,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $mediaLinks = array_values(array_filter($links, fn ($l) => $l['element'] === 'media'));
         $this->assertNotEmpty($mediaLinks);
         $urls = array_column($mediaLinks, 'url');
         $this->assertContains('https://example.com/cv.pdf', $urls);
@@ -654,7 +657,7 @@ class LinkExtractorTest extends TestCase
         // scanScriptContent = false (default)
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', false);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -667,7 +670,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_filter($links, fn($l) => $l['element'] === 'media');
+        $mediaLinks = array_filter($links, fn ($l) => $l['element'] === 'media');
         $this->assertCount(0, $mediaLinks);
     }
 
@@ -683,7 +686,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $mediaLinks = array_values(array_filter($links, fn($l) => $l['element'] === 'media'));
+        $mediaLinks = array_values(array_filter($links, fn ($l) => $l['element'] === 'media'));
         $urls = array_column($mediaLinks, 'url');
         $this->assertContains('https://example.com/files/cv.pdf', $urls);
         $this->assertContains('https://example.com/docs/brochure.docx', $urls);
@@ -697,7 +700,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://formspree.io/f/abc123', $formLink['url']);
@@ -710,7 +713,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/contact', $formLink['url']);
@@ -723,7 +726,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertEmpty($formLinks);
     }
 
@@ -737,7 +740,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/contact', $formLink['url']);
@@ -749,7 +752,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/submit', $formLink['url']);
@@ -761,10 +764,10 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         // Should find it via both fetch pattern and formspree pattern, but deduplicated
-        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $formUrls = array_map(fn ($l) => $l['url'], array_values($formLinks));
         $this->assertContains('https://formspree.io/f/xpzvqwer', $formUrls);
     }
 
@@ -774,9 +777,9 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
-        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $formUrls = array_map(fn ($l) => $l['url'], array_values($formLinks));
         $this->assertContains('https://api.web3forms.com/submit', $formUrls);
     }
 
@@ -786,7 +789,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/contact', $formLink['url']);
@@ -798,7 +801,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/contact', $formLink['url']);
@@ -810,7 +813,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', false);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertEmpty($formLinks);
     }
 
@@ -820,7 +823,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form' && $l['url'] === 'https://example.com/api/contact');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form' && $l['url'] === 'https://example.com/api/contact');
         $this->assertCount(1, $formLinks);
     }
 
@@ -830,7 +833,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/submit-form', $formLink['url']);
@@ -842,20 +845,20 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertEmpty($formLinks);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('newFormKeywordEndpointsProvider')]
     public function test_extract_links_finds_new_keyword_endpoints(string $endpoint, string $expectedUrl): void
     {
-        $html = '<html><body><script>fetch("' . $endpoint . '", { method: "POST", body: JSON.stringify(data) });</script></body></html>';
+        $html = '<html><body><script>fetch("'.$endpoint.'", { method: "POST", body: JSON.stringify(data) });</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks, "Expected form endpoint for: {$endpoint}");
-        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $formUrls = array_map(fn ($l) => $l['url'], array_values($formLinks));
         $this->assertContains($expectedUrl, $formUrls);
     }
 
@@ -894,7 +897,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://app.example.com/contacts', $formLink['url']);
@@ -906,7 +909,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
         $formLink = array_values($formLinks)[0];
         $this->assertEquals('https://example.com/api/newsletter/subscribe', $formLink['url']);
@@ -919,9 +922,9 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
-        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $formUrls = array_map(fn ($l) => $l['url'], array_values($formLinks));
         $this->assertContains('https://app.example.com/api/contacts', $formUrls);
     }
 
@@ -932,9 +935,9 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://sommeling.dev', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertNotEmpty($formLinks);
-        $formUrls = array_map(fn($l) => $l['url'], array_values($formLinks));
+        $formUrls = array_map(fn ($l) => $l['url'], array_values($formLinks));
         $this->assertContains('https://app.sommeling.dev/api/contacts', $formUrls);
     }
 
@@ -945,7 +948,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertEmpty($formLinks);
     }
 
@@ -955,7 +958,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', false);
 
-        $formLinks = array_filter($links, fn($l) => $l['element'] === 'form');
+        $formLinks = array_filter($links, fn ($l) => $l['element'] === 'form');
         $this->assertEmpty($formLinks);
     }
 
@@ -1038,11 +1041,12 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/test') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'example.com/test') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? []);
-        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertNotContains('indirect_reference', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_comma_suffix_not_flagged_as_indirect(): void
@@ -1054,7 +1058,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/plugins') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'example.com/plugins') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
@@ -1069,7 +1073,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'alpinejs.dev') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'alpinejs.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? []);
@@ -1083,7 +1087,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'example.com/api') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'example.com/api') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? []);
@@ -1121,7 +1125,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'react.dev') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'react.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? [], 'External URL from JS bundle should have flags');
@@ -1136,7 +1140,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'app.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertNotEmpty($link['flags'] ?? [], 'Internal URL with suspicious syntax should have flags');
@@ -1151,7 +1155,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // localhost URLs from JS bundles should have detected_in_js_bundle flag
@@ -1166,7 +1170,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // 127.0.0.1 URLs from JS bundles should have detected_in_js_bundle flag
@@ -1185,7 +1189,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'yoga-demo') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'yoga-demo') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
@@ -1202,7 +1206,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'app.sommeling') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'app.sommeling') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // Should NOT have malformed_url flag
@@ -1215,7 +1219,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'laravel.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // Should NOT have malformed_url flag
@@ -1228,7 +1232,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // Query params should not trigger malformed_url
@@ -1241,7 +1245,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // Template literal syntax SHOULD trigger malformed_url
@@ -1249,17 +1253,18 @@ class LinkExtractorTest extends TestCase
         $this->assertContains('indirect_reference', $link['flags'] ?? []);
     }
 
-    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_malformed(): void
+    public function test_extract_links_js_bundle_url_with_vue_interpolation_is_flagged_as_indirect(): void
     {
         $html = '<html><body><script>const profile="https://example.com/user/{userId}/profile";</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'user/') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'user/') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
-        // Vue/Angular interpolation syntax SHOULD trigger malformed_url
-        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        // Path parameter syntax triggers indirect_reference, not malformed_url
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
     }
 
     public function test_extract_links_js_bundle_linkedin_url_in_array_not_flagged_as_malformed(): void
@@ -1269,7 +1274,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'linkedin.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'linkedin.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'LinkedIn URL should be extracted from JS bundle');
         // Should NOT have malformed_url flag - this is a clean URL in an array
@@ -1288,7 +1293,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link);
         // Post-context concatenation should NOT trigger malformed_url (too many false positives)
@@ -1307,7 +1312,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'github.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'github.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'GitHub URL should be extracted');
         $this->assertNotContains('malformed_url', $link['flags'] ?? []);
@@ -1321,7 +1326,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'pusher.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'pusher.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'Pusher URL should be extracted');
         $this->assertNotContains('malformed_url', $link['flags'] ?? []);
@@ -1334,7 +1339,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'JS Pusher URL should be extracted');
         $this->assertNotContains('malformed_url', $link['flags'] ?? []);
@@ -1346,7 +1351,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://app.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'js.pusher.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'HTTP JS Pusher URL should be extracted');
         $this->assertNotContains('malformed_url', $link['flags'] ?? []);
@@ -1358,7 +1363,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => $l['url'] === 'https://example.com'))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => $l['url'] === 'https://example.com'))[0] ?? null;
 
         $this->assertNotNull($link, 'Example.com URL should be extracted');
         $this->assertNotContains('malformed_url', $link['flags'] ?? []);
@@ -1404,7 +1409,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'API URL should be extracted');
         // URL itself contains ${userId} so it SHOULD be flagged
@@ -1414,15 +1419,16 @@ class LinkExtractorTest extends TestCase
 
     public function test_extract_links_js_bundle_url_with_brace_variable_is_flagged(): void
     {
-        // URL with {variable} syntax SHOULD be flagged
+        // URL with {variable} syntax SHOULD be flagged as indirect_reference
         $html = '<html><body><script>const user = "https://api.example.com/users/{id}/profile";</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.example.com') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'API URL should be extracted');
-        $this->assertContains('malformed_url', $link['flags'] ?? []);
+        $this->assertContains('indirect_reference', $link['flags'] ?? []);
+        $this->assertNotContains('malformed_url', $link['flags'] ?? []);
     }
 
     // ===================
@@ -1435,7 +1441,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'localhost') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'Localhost URL should be extracted');
         $this->assertContains('detected_in_js_bundle', $link['flags'] ?? []);
@@ -1448,7 +1454,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], '127.0.0.1') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '127.0.0.1 URL should be extracted');
         $this->assertContains('developer_leftover', $link['flags'] ?? []);
@@ -1460,7 +1466,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'myapp.local') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'myapp.local') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '.local URL should be extracted');
         $this->assertContains('developer_leftover', $link['flags'] ?? []);
@@ -1472,7 +1478,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'laravel.test') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'laravel.test') !== false))[0] ?? null;
 
         $this->assertNotNull($link, '.test URL should be extracted');
         $this->assertContains('developer_leftover', $link['flags'] ?? []);
@@ -1486,7 +1492,7 @@ class LinkExtractorTest extends TestCase
 
         $links = $this->linkExtractor->extractLinks($html, 'https://www.sommeling.dev', true);
 
-        $link = array_values(array_filter($links, fn($l) => strpos($l['url'], 'api.sommeling.dev') !== false))[0] ?? null;
+        $link = array_values(array_filter($links, fn ($l) => strpos($l['url'], 'api.sommeling.dev') !== false))[0] ?? null;
 
         $this->assertNotNull($link, 'Production URL should be extracted');
         $this->assertNotContains('developer_leftover', $link['flags'] ?? []);

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Symfony\Component\DomCrawler\Crawler;
@@ -66,7 +65,7 @@ class SitemapService
                 'Accept' => 'text/xml,application/xml,text/html,text/plain,*/*',
             ],
         ]);
-        $this->urlNormalizer = $urlNormalizer ?? new UrlNormalizer();
+        $this->urlNormalizer = $urlNormalizer ?? new UrlNormalizer;
     }
 
     /**
@@ -78,6 +77,7 @@ class SitemapService
     public function setClient(Client $client): self
     {
         $this->client = $client;
+
         return $this;
     }
 
@@ -111,8 +111,9 @@ class SitemapService
      * 1. Checking robots.txt for sitemap declarations
      * 2. Trying common sitemap locations (sitemap.xml, sitemap_index.xml, sitemap/)
      *
-     * @param string $baseUrl The base URL of the website to scan.
+     * @param  string  $baseUrl  The base URL of the website to scan.
      * @return array{urls: array<array{url: string, source: string}>, count: int} An array containing discovered URLs and total count.
+     *
      * @throws GuzzleException
      */
     public function discoverUrls(string $baseUrl): array
@@ -125,7 +126,7 @@ class SitemapService
         $discoveredUrls = [];
 
         // If we found sitemaps in robots.txt, parse ALL of them
-        if (!empty($robotsSitemaps)) {
+        if (! empty($robotsSitemaps)) {
             foreach ($robotsSitemaps as $sitemapUrl) {
                 $sitemapUrl = trim($sitemapUrl);
                 $urls = $this->parseSitemap($sitemapUrl);
@@ -136,16 +137,16 @@ class SitemapService
         // If no URLs found from robots.txt sitemaps, try default locations
         if (empty($discoveredUrls)) {
             $defaultSitemapUrls = [
-                $this->baseUrl . '/sitemap.xml',
-                $this->baseUrl . '/sitemap_index.xml',
-                $this->baseUrl . '/sitemap/',
+                $this->baseUrl.'/sitemap.xml',
+                $this->baseUrl.'/sitemap_index.xml',
+                $this->baseUrl.'/sitemap/',
             ];
 
             foreach ($defaultSitemapUrls as $sitemapUrl) {
                 $sitemapUrl = trim($sitemapUrl);
                 $urls = $this->parseSitemap($sitemapUrl);
 
-                if (!empty($urls)) {
+                if (! empty($urls)) {
                     $discoveredUrls = array_merge($discoveredUrls, $urls);
                     break; // Found a working sitemap in default locations
                 }
@@ -158,7 +159,7 @@ class SitemapService
         foreach ($discoveredUrls as $url) {
             $normalizedUrl = $this->urlNormalizer->normalizeUrl($url, $this->baseUrl) ?? rtrim($url, '/');
             $urlKey = $this->urlNormalizer->canonicalUrlKey($normalizedUrl);
-            if (!isset($seen[$urlKey]) && $this->isInternalUrl($normalizedUrl)) {
+            if (! isset($seen[$urlKey]) && $this->isInternalUrl($normalizedUrl)) {
                 $seen[$urlKey] = true;
                 $filteredUrls[] = [
                     'url' => $normalizedUrl,
@@ -179,11 +180,12 @@ class SitemapService
      * Parses the robots.txt file to extract any Sitemap: directives.
      *
      * @return array<string> Array of sitemap URLs found in robots.txt.
+     *
      * @throws GuzzleException
      */
     public function getSitemapsFromRobots(): array
     {
-        $robotsUrl = $this->baseUrl . '/robots.txt';
+        $robotsUrl = $this->baseUrl.'/robots.txt';
 
         try {
             $response = $this->client->request('GET', $robotsUrl, [
@@ -210,9 +212,10 @@ class SitemapService
      * Supports XML sitemaps (standard and index), HTML sitemaps, and plain text sitemaps.
      * Automatically detects the format based on content type and content inspection.
      *
-     * @param string $url The URL of the sitemap to parse.
-     * @param int $depth Current recursion depth (used for sitemap index files).
+     * @param  string  $url  The URL of the sitemap to parse.
+     * @param  int  $depth  Current recursion depth (used for sitemap index files).
      * @return array<string> Array of discovered page URLs.
+     *
      * @throws GuzzleException
      */
     public function parseSitemap(string $url, int $depth = 0): array
@@ -259,7 +262,7 @@ class SitemapService
      * Checks both the Content-Type header and the actual content for XML indicators
      * such as XML declarations or standard sitemap root elements.
      *
-     * @param  string  $content      The response body content.
+     * @param  string  $content  The response body content.
      * @param  string  $contentType  The Content-Type header value.
      * @return bool True if the content appears to be XML.
      */
@@ -272,6 +275,7 @@ class SitemapService
 
         // Check if content starts with XML declaration or root element
         $trimmed = ltrim($content);
+
         return str_starts_with($trimmed, '<?xml') ||
                str_starts_with($trimmed, '<urlset') ||
                str_starts_with($trimmed, '<sitemapindex');
@@ -283,7 +287,7 @@ class SitemapService
      * Checks both the Content-Type header and the actual content for HTML indicators
      * such as DOCTYPE declarations or HTML root elements.
      *
-     * @param  string  $content      The response body content.
+     * @param  string  $content  The response body content.
      * @param  string  $contentType  The Content-Type header value.
      * @return bool True if the content appears to be HTML.
      */
@@ -296,6 +300,7 @@ class SitemapService
 
         // Check if content looks like HTML
         $trimmed = ltrim($content);
+
         return str_starts_with($trimmed, '<!DOCTYPE') ||
                str_starts_with($trimmed, '<html') ||
                str_starts_with($trimmed, '<HTML');
@@ -318,9 +323,10 @@ class SitemapService
      * Handles both standard sitemaps (<urlset>) and sitemap index files (<sitemapindex>).
      * Supports both namespaced and non-namespaced XML formats.
      *
-     * @param string $content The XML sitemap content.
-     * @param int $depth Current recursion depth for sitemap index processing.
+     * @param  string  $content  The XML sitemap content.
+     * @param  int  $depth  Current recursion depth for sitemap index processing.
      * @return array<string> Array of discovered page URLs.
+     *
      * @throws GuzzleException
      */
     public function parseXmlSitemap(string $content, int $depth = 0): array
@@ -334,8 +340,8 @@ class SitemapService
         // If parsing failed, try wrapping content in urlset (for sitemaps missing the wrapper)
         if ($xml === false) {
             // Check if content has <url> elements but no <urlset> wrapper
-            if (preg_match('/<url\s*>/i', $content) && !preg_match('/<urlset/i', $content)) {
-                $wrappedContent = '<?xml version="1.0" encoding="UTF-8"?><urlset>' . $content . '</urlset>';
+            if (preg_match('/<url\s*>/i', $content) && ! preg_match('/<urlset/i', $content)) {
+                $wrappedContent = '<?xml version="1.0" encoding="UTF-8"?><urlset>'.$content.'</urlset>';
                 $xml = simplexml_load_string($wrappedContent);
             }
         }
@@ -356,18 +362,19 @@ class SitemapService
 
         // Check if it's a sitemap index
         $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
-        if (!empty($sitemapNodes)) {
+        if (! empty($sitemapNodes)) {
             foreach ($sitemapNodes as $node) {
                 $childSitemapUrl = (string) $node;
                 $childUrls = $this->parseSitemap($childSitemapUrl, $depth + 1);
                 $urls = array_merge($urls, $childUrls);
             }
+
             return $urls;
         }
 
         // Parse regular sitemap URLs
         $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
-        if (!empty($urlNodes)) {
+        if (! empty($urlNodes)) {
             foreach ($urlNodes as $node) {
                 $urls[] = (string) $node;
             }
@@ -461,7 +468,6 @@ class SitemapService
         return $urls;
     }
 
-
     /**
      * Check if a URL is internal to the base host.
      *
@@ -476,7 +482,7 @@ class SitemapService
     {
         $parsed = parse_url($url);
 
-        if (!isset($parsed['host'])) {
+        if (! isset($parsed['host'])) {
             return true;
         }
 
@@ -489,11 +495,10 @@ class SitemapService
         }
 
         // Check if URL host is a subdomain of base host
-        if (str_ends_with($urlHost, '.' . $this->baseHost)) {
+        if (str_ends_with($urlHost, '.'.$this->baseHost)) {
             return true;
         }
 
         return false;
     }
 }
-

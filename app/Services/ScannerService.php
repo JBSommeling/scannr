@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\DTO\LinkAnalysis;
 use App\Enums\LinkFlag;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -23,11 +22,11 @@ class ScannerService
     /**
      * Create a new ScannerService instance.
      *
-     * @param  HttpChecker    $httpChecker    The HTTP checker for following redirects and checking URLs.
+     * @param  HttpChecker  $httpChecker  The HTTP checker for following redirects and checking URLs.
      * @param  LinkExtractor  $linkExtractor  The link extractor for parsing HTML content.
      * @param  UrlNormalizer  $urlNormalizer  The URL normalizer for resolving and classifying URLs.
-     * @param  ScanStatistics $scanStatistics The statistics calculator for scan results.
-     * @param  LinkFlagService $linkFlagService The service for detecting link flags.
+     * @param  ScanStatistics  $scanStatistics  The statistics calculator for scan results.
+     * @param  LinkFlagService  $linkFlagService  The service for detecting link flags.
      */
     public function __construct(
         protected HttpChecker $httpChecker,
@@ -46,6 +45,7 @@ class ScannerService
     public function setClient(Client $client): self
     {
         $this->httpChecker->setClient($client);
+
         return $this;
     }
 
@@ -61,6 +61,7 @@ class ScannerService
     public function setBrowsershotFetcher(?BrowsershotFetcher $fetcher): self
     {
         $this->browsershotFetcher = $fetcher;
+
         return $this;
     }
 
@@ -70,11 +71,11 @@ class ScannerService
      * Checks the URL status, follows redirects, and extracts links
      * from successful HTML responses.
      *
-     * @param string $url The internal URL to process.
-     * @param string $source The source page where this URL was found.
-     * @param string $element The HTML element type that contained this URL.
-     * @param array<LinkFlag> $discoveryFlags Flags from link discovery/extraction.
-     * @return array
+     * @param  string  $url  The internal URL to process.
+     * @param  string  $source  The source page where this URL was found.
+     * @param  string  $element  The HTML element type that contained this URL.
+     * @param  array<LinkFlag>  $discoveryFlags  Flags from link discovery/extraction.
+     *
      * @throws GuzzleException
      */
     public function processInternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
@@ -97,7 +98,7 @@ class ScannerService
 
             if ($this->browsershotFetcher !== null) {
                 $renderedResult = $this->browsershotFetcher->fetch($result['finalUrl'] ?? $url);
-                if ($renderedResult['status'] === 200 && !empty($renderedResult['body'])) {
+                if ($renderedResult['status'] === 200 && ! empty($renderedResult['body'])) {
                     $htmlForExtraction = $renderedResult['body'];
                 }
             }
@@ -132,7 +133,7 @@ class ScannerService
         // A bare internal subdomain that responds with 200 is proven alive;
         // clear any flags that might indicate issues
         if ($this->linkFlagService->shouldClearForSubdomain($url, $status)) {
-            $flags = array_filter($flags, fn($f) => !in_array($f, [
+            $flags = array_filter($flags, fn ($f) => ! in_array($f, [
                 LinkFlag::DETECTED_IN_JS_BUNDLE,
                 LinkFlag::INDIRECT_REFERENCE,
                 LinkFlag::MALFORMED_URL,
@@ -174,11 +175,11 @@ class ScannerService
      * external page content. Only keeps the first redirect destination —
      * external redirect chains are not actionable for site owners.
      *
-     * @param string $url The external URL to process.
-     * @param string $source The source page where this URL was found.
-     * @param string $element The HTML element type that contained this URL.
-     * @param array<LinkFlag> $discoveryFlags Flags from link discovery/extraction.
-     * @return array
+     * @param  string  $url  The external URL to process.
+     * @param  string  $source  The source page where this URL was found.
+     * @param  string  $element  The HTML element type that contained this URL.
+     * @param  array<LinkFlag>  $discoveryFlags  Flags from link discovery/extraction.
+     *
      * @throws GuzzleException
      */
     public function processExternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
@@ -192,7 +193,7 @@ class ScannerService
 
         // For external URLs, only keep the first redirect destination.
         // We don't care about external redirect chains, only whether the link works.
-        $firstRedirect = !empty($result['chain']) ? [$result['chain'][0]] : [];
+        $firstRedirect = ! empty($result['chain']) ? [$result['chain'][0]] : [];
 
         $status = $result['finalStatus'];
 
@@ -243,4 +244,3 @@ class ScannerService
         return strtolower($status);
     }
 }
-

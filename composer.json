@@ -9,7 +9,7 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "ext-libxml": "*",
         "ext-simplexml": "*",
         "laravel/framework": "^12.0",
@@ -77,6 +77,9 @@
         ],
         "sail-up": [
             "./vendor/bin/sail up"
+        ],
+        "pint": [
+            "./vendor/bin/pint"
         ]
     },
     "extra": {

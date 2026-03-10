@@ -12,6 +12,7 @@ use Tests\TestCase;
 class ScanSiteCommandTest extends TestCase
 {
     use RefreshDatabase;
+
     /**
      * Test command requires a URL argument
      */
@@ -69,16 +70,16 @@ class ScanSiteCommandTest extends TestCase
     public function test_json_output_format(): void
     {
         $this->markTestSkipped('This test is currently skipped because the JSON output format is not fully implemented yet.');
-//        $this->artisan('site:scan', [
-//            'url' => 'https://example.com',
-//            '--depth' => 1,
-//            '--max' => 2,
-//            '--format' => 'json',
-//        ])
-//            ->expectsOutputToContain('"summary"')
-//            ->expectsOutputToContain('"results"')
-//            ->expectsOutputToContain('"total"')
-//            ->assertExitCode(0);
+        //        $this->artisan('site:scan', [
+        //            'url' => 'https://example.com',
+        //            '--depth' => 1,
+        //            '--max' => 2,
+        //            '--format' => 'json',
+        //        ])
+        //            ->expectsOutputToContain('"summary"')
+        //            ->expectsOutputToContain('"results"')
+        //            ->expectsOutputToContain('"total"')
+        //            ->assertExitCode(0);
     }
 
     /**
@@ -330,7 +331,7 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => $hardMaxDepth + 5,
             '--max' => 1,
         ])
-            ->expectsOutputToContain("Depth " . ($hardMaxDepth + 5) . " exceeds hard limit, capping to {$hardMaxDepth}")
+            ->expectsOutputToContain('Depth '.($hardMaxDepth + 5)." exceeds hard limit, capping to {$hardMaxDepth}")
             ->assertExitCode(0);
     }
 
@@ -346,7 +347,7 @@ class ScanSiteCommandTest extends TestCase
             '--depth' => 1,
             '--max' => $hardMaxUrls + 500,
         ])
-            ->expectsOutputToContain("Max URLs " . ($hardMaxUrls + 500) . " exceeds hard limit, capping to {$hardMaxUrls}")
+            ->expectsOutputToContain('Max URLs '.($hardMaxUrls + 500)." exceeds hard limit, capping to {$hardMaxUrls}")
             ->assertExitCode(0);
     }
 

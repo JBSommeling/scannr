@@ -220,4 +220,3 @@ class ScanSiteJobTest extends TestCase
         $this->assertEquals($originalConfig->respectRobots, $restored->respectRobots);
     }
 }
-

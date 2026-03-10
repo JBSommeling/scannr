@@ -12,7 +12,7 @@ class SpaDetectorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->detector = new SpaDetector();
+        $this->detector = new SpaDetector;
     }
 
     // ==================
@@ -329,7 +329,3 @@ class SpaDetectorTest extends TestCase
         $this->assertStringContainsString('Angular', $result);
     }
 }
-
-
-
-

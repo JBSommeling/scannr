@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\IntegrityScorer;
 use App\Services\ResultFormatterService;
 use App\Services\ScanStatistics;
 use PHPUnit\Framework\TestCase;
@@ -10,19 +11,21 @@ use ReflectionClass;
 class ScanSiteTest extends TestCase
 {
     private ResultFormatterService $formatter;
+
     private ReflectionClass $reflection;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $scanStatistics = new ScanStatistics();
-        $this->formatter = new ResultFormatterService($scanStatistics);
+        $scanStatistics = new ScanStatistics;
+        $this->formatter = new ResultFormatterService($scanStatistics, new IntegrityScorer($scanStatistics));
         $this->reflection = new ReflectionClass($this->formatter);
     }
 
     private function invokeMethod(string $methodName, array $parameters = []): mixed
     {
         $method = $this->reflection->getMethod($methodName);
+
         return $method->invokeArgs($this->formatter, $parameters);
     }
 

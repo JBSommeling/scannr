@@ -31,8 +31,8 @@ class SeverityEvaluator
      * 10. EXCESSIVE_REDIRECTS → WARNING
      * 11. Everything else → INFO
      *
-     * @param array<LinkFlag> $flags
-     * @param int|string $status HTTP status code or error string
+     * @param  array<LinkFlag>  $flags
+     * @param  int|string  $status  HTTP status code or error string
      */
     public function evaluate(array $flags, int|string $status = 0): Severity
     {
@@ -58,8 +58,14 @@ class SeverityEvaluator
             return Severity::INFO;
         }
 
+        // Critical: Developer leftover (localhost/dev URLs should never be in production)
+        $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
+        if ($hasDeveloperLeftover) {
+            return Severity::CRITICAL;
+        }
+
         // Critical: Internal 4xx, 5xx, or connection errors
-        if ($hasStatus4xx && !$hasExternalPlatform && !$hasBotProtection) {
+        if ($hasStatus4xx && ! $hasExternalPlatform && ! $hasBotProtection) {
             return Severity::CRITICAL;
         }
 
@@ -67,7 +73,7 @@ class SeverityEvaluator
             return Severity::CRITICAL;
         }
 
-        if ($hasConnectionError && !$hasExternalPlatform) {
+        if ($hasConnectionError && ! $hasExternalPlatform) {
             return Severity::CRITICAL;
         }
 
@@ -105,6 +111,8 @@ class SeverityEvaluator
      * High confidence:
      * - Direct 2xx response
      * - Internal 404 (clear broken link)
+     * - Developer leftover (deterministic, always a problem)
+     * - Malformed URL (deterministic, always a problem)
      *
      * Medium confidence:
      * - Timeout (might be temporary)
@@ -114,11 +122,11 @@ class SeverityEvaluator
      * Low confidence:
      * - External platform with bot protection (likely false positive)
      * - JS bundle extracted URLs (might not be real links)
-     * - Malformed URLs (might be template literals)
+     * - Indirect references (might be template literals)
      *
-     * @param array<LinkFlag> $flags
-     * @param int|string $status HTTP status or error string
-     * @param bool $isExternal Whether the URL is external
+     * @param  array<LinkFlag>  $flags
+     * @param  int|string  $status  HTTP status or error string
+     * @param  bool  $isExternal  Whether the URL is external
      */
     public function evaluateConfidence(array $flags, int|string $status, bool $isExternal): Confidence
     {
@@ -130,17 +138,39 @@ class SeverityEvaluator
         $hasTimeout = in_array(LinkFlag::TIMEOUT, $flags, true);
         $hasStatus5xx = in_array(LinkFlag::STATUS_5XX, $flags, true);
         $hasRedirectChain = in_array(LinkFlag::REDIRECT_CHAIN, $flags, true);
+        $hasDeveloperLeftover = in_array(LinkFlag::DEVELOPER_LEFTOVER, $flags, true);
+
+        // High confidence: deterministic issues override any noise signals
+        if ($hasDeveloperLeftover) {
+            return Confidence::HIGH;
+        }
+
+        // Low confidence: indirect references are templates/patterns, inherently uncertain
+        if ($hasIndirectReference) {
+            return Confidence::LOW;
+        }
+
+        // Malformed URL from JS bundle — likely library template literal,
+        // not something the site owner wrote
+        if ($hasMalformedUrl && $hasJsBundleExtracted) {
+            return Confidence::LOW;
+        }
+
+        if ($hasMalformedUrl) {
+            return Confidence::HIGH;
+        }
+
+        // Check for definitive HTTP status — a clear 2xx or 4xx response means
+        // we verified the link, regardless of how it was discovered
+        $hasStatus4xx = in_array(LinkFlag::STATUS_4XX, $flags, true);
+        $hasVerifiedStatus = $hasStatus4xx || (is_numeric($status) && (int) $status >= 200 && (int) $status < 500);
 
         // Low confidence: likely false positives
         if ($hasExternalPlatform && $hasBotProtection) {
             return Confidence::LOW;
         }
 
-        if ($hasMalformedUrl || $hasIndirectReference) {
-            return Confidence::LOW;
-        }
-
-        if ($hasJsBundleExtracted && $isExternal) {
+        if ($hasJsBundleExtracted && $isExternal && ! $hasVerifiedStatus) {
             return Confidence::LOW;
         }
 
@@ -157,7 +187,7 @@ class SeverityEvaluator
             return Confidence::MEDIUM;
         }
 
-        if ($hasJsBundleExtracted) {
+        if ($hasJsBundleExtracted && ! $hasVerifiedStatus) {
             return Confidence::MEDIUM;
         }
 
@@ -198,4 +228,3 @@ class SeverityEvaluator
         return 'none';
     }
 }
-

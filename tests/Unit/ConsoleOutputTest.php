@@ -172,4 +172,3 @@ class ConsoleOutputTest extends TestCase
         $this->assertTrue($output->isVerbose());
     }
 }
-

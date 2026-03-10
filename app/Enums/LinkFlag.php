@@ -20,7 +20,7 @@ enum LinkFlag: string
     /** Discovered via JavaScript rendering (headless browser). */
     case RUNTIME_RENDERED = 'runtime_rendered';
 
-    /** Not explicitly in DOM, inferred from context. */
+    /** URL contains template patterns ({var}), path parameters, or extraction artifacts suggesting concatenation. */
     case INDIRECT_REFERENCE = 'indirect_reference';
 
     /** Extracted from inline or external JS bundle parsing. */
@@ -43,7 +43,7 @@ enum LinkFlag: string
     // C. Technical Anomalies
     // ========================================
 
-    /** URL contains template literals, placeholders, or malformed syntax. */
+    /** URL contains template literal syntax (${var}, #{var}), backticks, or control characters that make it impossible to visit. */
     case MALFORMED_URL = 'malformed_url';
 
     /** URL points to localhost or development environment (localhost, 127.0.0.1, .local, .test). */
@@ -84,4 +84,3 @@ enum LinkFlag: string
     /** Form submission endpoint (POST-based). */
     case FORM_ENDPOINT = 'form_endpoint';
 }
-
