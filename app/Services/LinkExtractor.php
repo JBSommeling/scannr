@@ -539,17 +539,13 @@ class LinkExtractor
     protected function addUrlsFromJsBundleContent(string $content, string $sourceUrl, array &$links): void
     {
         // Extract full URLs from JavaScript (https://... or http://...)
-        // Capture up to 6 chars after URL to detect suspicious patterns (e.g., ",userId or `,r)
-        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)(["\'`\s,a-zA-Z$_]{0,6})/i', $content, $matches, PREG_SET_ORDER)) {
+        if (preg_match_all('/(https?:\/\/[^\s"\')<>]+)/i', $content, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $rawUrl = $match[1];
-                $postContext = $match[2] ?? '';
 
                 // Check for malformed syntax and indirect reference patterns separately
                 $hasMalformedRaw = $this->linkFlagService->hasMalformedUrlSyntax($rawUrl);
-                // Post-context with quote+comma+letter suggests string concatenation (indirect only)
-                $hasIndirectRaw = $this->linkFlagService->hasIndirectReferenceSyntax($rawUrl) ||
-                                 preg_match('/["\'`]\s*,\s*[a-zA-Z$_]/', $postContext);
+                $hasIndirectRaw = $this->linkFlagService->hasIndirectReferenceSyntax($rawUrl);
 
                 // Clean up any trailing punctuation or quotes
                 $url = rtrim($rawUrl, '.,;:"\')}>]');
