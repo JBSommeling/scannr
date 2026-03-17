@@ -784,7 +784,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set low backoff for test speed
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -812,7 +812,7 @@ class CrawlerServiceTest extends TestCase
         // Set low backoff with enough retries to reach abort threshold
         // We have 1 URL, and with 5 backoff delays we get 6 requests (1 original + 5 retries)
         // Setting max_429_before_abort to 3 means we abort on the 3rd 429
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10, 10, 10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 3,
@@ -840,7 +840,7 @@ class CrawlerServiceTest extends TestCase
         $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10], // Very short default
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -873,7 +873,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set specific backoff delay
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [500], // 500ms
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -907,7 +907,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set escalating backoff delays: 200ms, then 400ms
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [200, 400],
             'respect_retry_after' => false,
             'max_429_before_abort' => 10,
@@ -945,7 +945,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // With 2 backoff delays, we can retry up to 2 times per URL
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 3,
@@ -1027,7 +1027,7 @@ class CrawlerServiceTest extends TestCase
         $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 0, // Disable abort
