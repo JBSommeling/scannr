@@ -127,7 +127,7 @@ class ScanStatistics
 
         // Only specific non-2xx statuses are "healthy" for form endpoints.
         // 404 and 5xx mean the endpoint is genuinely broken.
-        $healthyStatuses = [400, 401, 403, 405, 422, 429];
+        $healthyStatuses = [400, 401, 403, 405, 419, 422, 429];
 
         return in_array($status, $healthyStatuses, true) && $status < 500;
     }
@@ -203,7 +203,7 @@ class ScanStatistics
      *
      * Uses dynamic detection strategies from the noise config:
      * - 'namespace_domains': Any URL on known namespace-hosting domains.
-     * - 'detect_preconnect': Bare external domain URLs from <link> elements.
+     * - 'detect_preconnect': Bare domain `<link rel="preconnect|dns-prefetch">` URLs (internal or external).
      * - 'framework_error_patterns': Regex patterns for JS framework error docs.
      * - 'exact': Additional exact URL matches.
      * - 'prefix': Additional URL prefix matches.
@@ -237,13 +237,21 @@ class ScanStatistics
                 }
             }
 
-            // 2. Preconnect/dns-prefetch detection — bare external domain in <link>
-            if ($detectPreconnect && $element === 'link' && $type === 'external') {
+            // 2. Preconnect/dns-prefetch detection — bare domain in <link rel="preconnect|dns-prefetch">
+            if ($detectPreconnect && $element === 'link') {
+                $rel = $result['rel'] ?? null;
                 $parsed = parse_url($url);
                 $path = $parsed['path'] ?? '';
                 $hasQuery = isset($parsed['query']);
-                // Bare domain: no path (or just "/") and no query string
-                if (($path === '' || $path === '/') && ! $hasQuery) {
+                $isBareDomain = ($path === '' || $path === '/') && ! $hasQuery;
+
+                // Filter if rel explicitly marks it as a resource hint (internal or external).
+                if (in_array($rel, ['preconnect', 'dns-prefetch'], true) && $isBareDomain) {
+                    return false;
+                }
+
+                // Fallback for scan results without rel data: bare external domain heuristic.
+                if ($rel === null && $type === 'external' && $isBareDomain) {
                     return false;
                 }
             }
