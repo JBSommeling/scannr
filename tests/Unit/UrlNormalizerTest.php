@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\UrlNormalizer;
+use Scannr\Services\UrlNormalizer;
 use PHPUnit\Framework\TestCase;
 
 class UrlNormalizerTest extends TestCase

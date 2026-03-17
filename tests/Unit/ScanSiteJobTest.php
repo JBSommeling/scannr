@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\DTO\ScanConfig;
-use App\Jobs\ScanSiteJob;
-use App\Models\ScanResult;
-use App\Services\CrawlerService;
-use App\Services\ResultFormatterService;
+use Scannr\DTO\ScanConfig;
+use Scannr\Jobs\ScanSiteJob;
+use Scannr\Models\ScanResult;
+use Scannr\Services\CrawlerService;
+use Scannr\Services\ResultFormatterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

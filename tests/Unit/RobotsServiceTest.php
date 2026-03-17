@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\RobotsService;
+use Scannr\Services\RobotsService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;

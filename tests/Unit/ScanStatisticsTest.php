@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\ScanStatistics;
+use Scannr\Services\ScanStatistics;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

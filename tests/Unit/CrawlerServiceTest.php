@@ -2,17 +2,17 @@
 
 namespace Tests\Unit;
 
-use App\DTO\ScanConfig;
-use App\Services\BrowsershotFetcher;
-use App\Services\CrawlerService;
-use App\Services\HttpChecker;
-use App\Services\LinkExtractor;
-use App\Services\LinkFlagService;
-use App\Services\ScannerService;
-use App\Services\ScanStatistics;
-use App\Services\SeverityEvaluator;
-use App\Services\SitemapService;
-use App\Services\UrlNormalizer;
+use Scannr\DTO\ScanConfig;
+use Scannr\Services\BrowsershotFetcher;
+use Scannr\Services\CrawlerService;
+use Scannr\Services\HttpChecker;
+use Scannr\Services\LinkExtractor;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\ScannerService;
+use Scannr\Services\ScanStatistics;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\SitemapService;
+use Scannr\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
@@ -745,7 +745,7 @@ class CrawlerServiceTest extends TestCase
             'allow_redirects' => false,
             'http_errors' => false,
             'headers' => [
-                'User-Agent' => config('scanner.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
+                'User-Agent' => config('scannr.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
             ],
         ]);
 

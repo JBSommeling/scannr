@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\DTO\ScanConfig;
+use Scannr\DTO\ScanConfig;
 use Illuminate\Console\Command;
 use Tests\TestCase;
 
@@ -875,7 +875,7 @@ class ScanConfigTest extends TestCase
 
         $this->assertNotEmpty($result['warnings']);
         $this->assertStringContainsString('Depth', $result['warnings'][0]);
-        $this->assertLessThanOrEqual(config('scanner.hard_max_depth', 10), $result['config']->maxDepth);
+        $this->assertLessThanOrEqual(config('scannr.hard_max_depth', 10), $result['config']->maxDepth);
     }
 
     public function test_from_array_caps_max_urls_exceeding_hard_limit(): void
@@ -887,7 +887,7 @@ class ScanConfigTest extends TestCase
 
         $this->assertNotEmpty($result['warnings']);
         $this->assertStringContainsString('Max URLs', $result['warnings'][0]);
-        $this->assertLessThanOrEqual(config('scanner.hard_max_urls', 2000), $result['config']->maxUrls);
+        $this->assertLessThanOrEqual(config('scannr.hard_max_urls', 2000), $result['config']->maxUrls);
     }
 
     // ==================

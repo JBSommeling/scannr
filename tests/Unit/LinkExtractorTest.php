@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Services\HttpChecker;
-use App\Services\LinkExtractor;
-use App\Services\LinkFlagService;
-use App\Services\SeverityEvaluator;
-use App\Services\UrlNormalizer;
+use Scannr\Services\HttpChecker;
+use Scannr\Services\LinkExtractor;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;

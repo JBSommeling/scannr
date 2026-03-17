@@ -2,14 +2,14 @@
 
 namespace Tests\Unit;
 
-use App\Services\BrowsershotFetcher;
-use App\Services\HttpChecker;
-use App\Services\LinkExtractor;
-use App\Services\LinkFlagService;
-use App\Services\ScannerService;
-use App\Services\ScanStatistics;
-use App\Services\SeverityEvaluator;
-use App\Services\UrlNormalizer;
+use Scannr\Services\BrowsershotFetcher;
+use Scannr\Services\HttpChecker;
+use Scannr\Services\LinkExtractor;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\ScannerService;
+use Scannr\Services\ScanStatistics;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -661,7 +661,7 @@ class ScannerServiceTest extends TestCase
             'https://external.com/page',
             'https://example.com',
             'a',
-            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
+            [\Scannr\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
         $this->assertEquals('200', $result['status']);
@@ -704,7 +704,7 @@ class ScannerServiceTest extends TestCase
             'https://linkedin.com/in/user',
             'https://example.com',
             'a',
-            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
+            [\Scannr\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
         $this->assertEquals('403', $result['status']);
@@ -724,7 +724,7 @@ class ScannerServiceTest extends TestCase
             'https://www.linkedin.com/in/user',
             'https://example.com',
             'a',
-            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
+            [\Scannr\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
         $this->assertEquals('405', $result['status']);
@@ -758,7 +758,7 @@ class ScannerServiceTest extends TestCase
             'https://example.com',
             'start',
             'a',
-            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
+            [\Scannr\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
         $this->assertEquals('200', $result['status']);
@@ -779,7 +779,7 @@ class ScannerServiceTest extends TestCase
             'https://yoga-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]  // flagged as needing verification
+            [\Scannr\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]  // flagged as needing verification
         );
 
         $this->assertEquals('200', $result['status']);
@@ -797,7 +797,7 @@ class ScannerServiceTest extends TestCase
             'https://app.demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            [\App\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
+            [\Scannr\Enums\LinkFlag::DETECTED_IN_JS_BUNDLE]
         );
 
         $this->assertEquals('200', $result['status']);
@@ -816,7 +816,7 @@ class ScannerServiceTest extends TestCase
             'https://sommeling.dev/page',
             'start',
             'a',
-            [\App\Enums\LinkFlag::INDIRECT_REFERENCE]
+            [\Scannr\Enums\LinkFlag::INDIRECT_REFERENCE]
         );
 
         $this->assertEquals('200', $result['status']);
@@ -833,7 +833,7 @@ class ScannerServiceTest extends TestCase
             'https://tree-demo.sommeling.dev',
             'https://sommeling.dev',
             'a',
-            [\App\Enums\LinkFlag::BOT_PROTECTION]
+            [\Scannr\Enums\LinkFlag::BOT_PROTECTION]
         );
 
         $this->assertEquals('403', $result['status']);

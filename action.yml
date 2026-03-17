@@ -1,0 +1,75 @@
+name: 'Scannr - Website Link Scanner'
+description: 'Scan your website for broken links, redirect chains, HTTPS downgrades, and more using BFS crawling with optional JavaScript rendering for SPAs.'
+author: 'JBSommeling'
+
+branding:
+  icon: 'search'
+  color: 'blue'
+
+inputs:
+  url:
+    description: 'The URL to scan. Must match a domain in your .scannr.yml (if present).'
+    required: true
+  depth:
+    description: 'Maximum crawl depth from the starting URL'
+    required: false
+    default: '3'
+  max:
+    description: 'Maximum number of URLs to scan'
+    required: false
+    default: '300'
+  timeout:
+    description: 'Request timeout in seconds'
+    required: false
+    default: '5'
+  format:
+    description: 'Output format: table, json, or csv'
+    required: false
+    default: 'table'
+  status:
+    description: 'Filter results: all, ok, or broken'
+    required: false
+    default: 'all'
+  filter:
+    description: 'Filter displayed results by element type: all, a, link, script, img, media, form'
+    required: false
+    default: 'all'
+  scan-elements:
+    description: 'Element types to scan: all, or comma-separated list (e.g., a,img)'
+    required: false
+    default: 'all'
+  sitemap:
+    description: 'Use sitemap.xml to discover URLs before crawling'
+    required: false
+    default: 'false'
+  js:
+    description: 'Enable JavaScript rendering for SPA/React sites'
+    required: false
+    default: 'false'
+  smart-js:
+    description: 'Automatically enable JS rendering when SPA signals are detected'
+    required: false
+    default: 'false'
+  no-robots:
+    description: 'Ignore robots.txt rules (Disallow/Crawl-delay)'
+    required: false
+    default: 'false'
+  advanced:
+    description: 'Show XML namespaces, CDN preconnect hints, and JS framework error docs in output'
+    required: false
+    default: 'false'
+  strip-params:
+    description: 'Additional tracking parameters to strip (comma-separated)'
+    required: false
+  fail-on-broken:
+    description: 'Fail the GitHub Action step if broken links are found'
+    required: false
+    default: 'true'
+
+outputs:
+  exit-code:
+    description: 'Exit code from the scan (0 = success, 1 = issues found)'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

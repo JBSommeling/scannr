@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Services\IntegrityScorer;
-use App\Services\ScanStatistics;
+use Scannr\Services\IntegrityScorer;
+use Scannr\Services\ScanStatistics;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 

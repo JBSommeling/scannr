@@ -1,0 +1,25 @@
+<?php
+
+namespace Scannr\Facades;
+
+use Illuminate\Support\Facades\Facade;
+
+/**
+ * Facade for the ScanStatistics service.
+ *
+ * Provides static access to scan result statistics and filtering.
+ *
+ * @method static array calculateStats(array $results) Calculate statistics from scan results.
+ * @method static array filterResults(array $results, string $filter) Filter scan results by status.
+ * @method static array filterByElement(array $results, string $element) Filter scan results by source element type.
+ * @method static array filterNoiseUrls(array $results, array $noisePatterns) Filter out noise URLs (XML namespaces, CDN root domains, JS framework docs).
+ *
+ * @see \Scannr\Services\ScanStatistics
+ */
+class ScanStats extends Facade
+{
+    protected static function getFacadeAccessor(): string
+    {
+        return 'scan-stats';
+    }
+}
