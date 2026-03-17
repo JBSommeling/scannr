@@ -68,6 +68,8 @@ CMD="$CMD $INPUT_URL"
 [ -n "$INPUT_FILTER" ]         && CMD="$CMD --filter=$INPUT_FILTER"
 [ -n "$INPUT_SCAN_ELEMENTS" ]  && CMD="$CMD --scan-elements=$INPUT_SCAN_ELEMENTS"
 [ -n "$INPUT_STRIP_PARAMS" ]   && CMD="$CMD --strip-params=$INPUT_STRIP_PARAMS"
+[ -n "$INPUT_DELAY_MIN" ]      && CMD="$CMD --delay-min=$INPUT_DELAY_MIN"
+[ -n "$INPUT_DELAY_MAX" ]      && CMD="$CMD --delay-max=$INPUT_DELAY_MAX"
 
 # Boolean flags
 [ "$INPUT_SITEMAP" = "true" ]   && CMD="$CMD --sitemap"

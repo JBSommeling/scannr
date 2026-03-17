@@ -66,9 +66,16 @@ readonly class ScanConfig
         // Parse scan elements
         $scanElements = $data['scanElements'] ?? ['a', 'link', 'script', 'img', 'media', 'form'];
 
-        // Get rate limiting config
-        $delayMin = config('scannr.request_delay_min', 300);
-        $delayMax = config('scannr.request_delay_max', 500);
+        // Get rate limiting config (user-provided values override config defaults)
+        $configDelayMin = config('scannr.request_delay_min', 300);
+        $configDelayMax = config('scannr.request_delay_max', 500);
+        $delayMin = ($data['delayMin'] ?? null) !== null ? (int) $data['delayMin'] : $configDelayMin;
+        $delayMax = ($data['delayMax'] ?? null) !== null ? (int) $data['delayMax'] : $configDelayMax;
+
+        // Ensure delayMax is at least delayMin
+        if ($delayMax < $delayMin) {
+            $delayMax = $delayMin;
+        }
 
         $useJsRendering = (bool) ($data['useJsRendering'] ?? false);
         // --js takes precedence: when full JS rendering is on, smart-js is unnecessary
@@ -126,6 +133,8 @@ readonly class ScanConfig
             'statusFilter' => $command->option('status'),
             'elementFilter' => $command->option('filter'),
             'outputFormat' => $command->option('format'),
+            'delayMin' => $command->option('delay-min') !== null ? (int) $command->option('delay-min') : null,
+            'delayMax' => $command->option('delay-max') !== null ? (int) $command->option('delay-max') : null,
             'useSitemap' => (bool) $command->option('sitemap'),
             'customTrackingParams' => $customTrackingParams,
             'useJsRendering' => (bool) $command->option('js'),
