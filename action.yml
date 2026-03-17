@@ -61,6 +61,12 @@ inputs:
   strip-params:
     description: 'Additional tracking parameters to strip (comma-separated)'
     required: false
+  delay-min:
+    description: 'Minimum delay between requests in milliseconds'
+    required: false
+  delay-max:
+    description: 'Maximum delay between requests in milliseconds'
+    required: false
   fail-on-broken:
     description: 'Fail the GitHub Action step if broken links are found'
     required: false
