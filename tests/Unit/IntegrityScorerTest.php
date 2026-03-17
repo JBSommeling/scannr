@@ -820,4 +820,30 @@ class IntegrityScorerTest extends TestCase
 
         $this->assertEquals(0, $result->summary['brokenLinks']);
     }
+
+    public function test_form_endpoint_419_is_not_penalized(): void
+    {
+        // 419 (CSRF token mismatch) on a form endpoint is expected behavior —
+        // the scanner can't provide a valid CSRF token, but the endpoint is alive.
+        $results = [
+            [
+                'url' => 'https://example.com/forgot-password',
+                'sourcePage' => 'https://example.com',
+                'status' => '419',
+                'type' => 'internal',
+                'sourceElement' => 'form',
+                'analysis' => [
+                    'flags' => ['form_endpoint', 'status_4xx'],
+                    'severity' => 'info',
+                    'confidence' => 'high',
+                    'verification' => 'none',
+                ],
+            ],
+        ];
+
+        $result = $this->scorer->calculate($results);
+
+        $this->assertEquals(100, $result->overallScore);
+        $this->assertEmpty($result->penalties);
+    }
 }
