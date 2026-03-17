@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Contracts\OutputInterface;
-use App\Services\Output\ConsoleOutput;
+use Scannr\Contracts\OutputInterface;
+use Scannr\Services\Output\ConsoleOutput;
 use Illuminate\Console\Command;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Output\OutputInterface as SymfonyOutputInterface;

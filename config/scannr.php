@@ -1,0 +1,430 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tracking Parameters
+    |--------------------------------------------------------------------------
+    |
+    | These query parameters will be stripped from URLs during normalization.
+    | Use '*' suffix for prefix matching (e.g., 'utm_*' matches 'utm_source',
+    | 'utm_medium', etc.). Matching is case-insensitive.
+    |
+    */
+
+    'tracking_params' => [
+        'utm_*',
+        'fbclid',
+        'gclid',
+        'ref',
+        'source',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Agent
+    |--------------------------------------------------------------------------
+    |
+    | The User-Agent header sent with all HTTP requests. This identifies the
+    | crawler to web servers. Using a transparent bot identifier is more
+    | ethical than impersonating a regular browser.
+    |
+    */
+
+    'user_agent' => 'ScannrBot/1.0 (+https://scannr.io)',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rate Limiting
+    |--------------------------------------------------------------------------
+    |
+    | Control the delay between HTTP requests to avoid overwhelming servers.
+    | Values are in milliseconds. A random delay between min and max will be
+    | applied between each request in the main crawl loop.
+    |
+    */
+
+    'request_delay_min' => 0,
+    'request_delay_max' => 0,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Request Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Maximum time in seconds to wait for a response from the server.
+    | This acts as a hard cap regardless of what is passed via command options.
+    |
+    */
+
+    'timeout' => 30,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hard Limits
+    |--------------------------------------------------------------------------
+    |
+    | These are absolute maximum values that cannot be exceeded regardless
+    | of what the user specifies via command line options. This protects
+    | against excessive resource usage and accidental abuse.
+    |
+    */
+
+    'hard_max_depth' => 10,
+    'hard_max_urls' => 2000,
+
+    /*
+    |--------------------------------------------------------------------------
+    | JavaScript Rendering
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for headless browser rendering (--js flag).
+    | This uses Puppeteer via spatie/browsershot to render JavaScript
+    | content, enabling scanning of SPAs (React, Vue, Angular, etc.).
+    |
+    | Requirements: Node.js + Puppeteer (npm install puppeteer)
+    |
+    */
+
+    'js_rendering' => [
+        // Path to node binary (null = auto-detect)
+        'node_binary' => env('NODE_PATH'),
+
+        // Path to npm binary (null = auto-detect)
+        'npm_binary' => env('NPM_PATH'),
+
+        // Path to Chrome/Chromium binary (null = use Puppeteer's bundled Chrome)
+        'chrome_path' => env('CHROME_PATH'),
+
+        // Timeout for browser rendering in seconds
+        'timeout' => 30,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Job Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Maximum execution time in seconds for queued scan jobs (--queue flag).
+    | Long-running scans with many URLs may need a higher value. The job
+    | will be marked as failed if it exceeds this timeout.
+    |
+    */
+
+    'job_timeout' => 600,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Downloadable File Extensions
+    |--------------------------------------------------------------------------
+    |
+    | File extensions considered "downloadable" when scanning inline <script>
+    | content for download URLs (requires --js flag). Only string literals
+    | ending in one of these extensions and starting with "/" or "http" will
+    | be extracted. This prevents false positives from random JS strings.
+    |
+    */
+
+    'download_extensions' => [
+        // Documents
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx',
+        'rtf', 'txt', 'odt', 'ods', 'odp', 'epub',
+        // Archives
+        'zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz',
+        // Media
+        'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'webm', 'ogg', 'mkv',
+        // Installers
+        'dmg', 'exe', 'msi', 'deb', 'rpm', 'apk', 'ipa',
+        // Images (download context)
+        'svg', 'psd', 'ai', 'eps',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Form Endpoint Keywords
+    |--------------------------------------------------------------------------
+    |
+    | Keywords used to identify form submission endpoints in JavaScript code
+    | (requires --js flag). When scanning fetch(), axios, $.ajax, or XHR calls,
+    | only URLs containing one of these keywords are treated as form endpoints.
+    | This prevents false positives from telemetry/analytics endpoints.
+    |
+    | Also used for API config objects (baseUrl + endpoint paths) to filter
+    | which endpoints are considered form-related.
+    |
+    */
+
+    'form_keywords' => [
+        // Contact & messaging
+        'contact', 'message', 'inquiry', 'inquiries', 'feedback',
+        // Form submission
+        'submit', 'form', 'send', 'mail', 'email',
+        // Subscriptions & newsletters
+        'subscribe', 'newsletter', 'signup', 'sign-up', 'register',
+        // Leads & sales
+        'lead', 'booking', 'book', 'reservation', 'appointment', 'quote',
+        // Support
+        'request', 'support', 'ticket', 'complaint',
+        // E-commerce & payments
+        'checkout', 'order', 'payment', 'donate', 'donation',
+        // Applications & enrollment
+        'apply', 'application', 'enroll', 'enrollment',
+        // Engagement
+        'survey', 'rsvp', 'review', 'comment', 'reply',
+        // Uploads & reports
+        'upload', 'report', 'claim',
+        // Authentication
+        'login', 'signin', 'sign-in', 'verify',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rate Limit Handling (HTTP 429)
+    |--------------------------------------------------------------------------
+    |
+    | When the scanner receives HTTP 429 (Too Many Requests) responses, it will
+    | automatically retry with exponential backoff. The delays are applied in
+    | sequence for each retry attempt.
+    |
+    | If the server sends a Retry-After header (in seconds), the scanner will
+    | use that value instead of the configured delay (when respect_retry_after
+    | is enabled).
+    |
+    | After max_429_before_abort total 429 responses during a scan, the scan
+    | will be aborted to prevent excessive waiting and server strain.
+    |
+    */
+
+    'rate_limit' => [
+        // Backoff delays in milliseconds for each retry attempt
+        // First 429: wait 2s, second: wait 5s, third: wait 10s
+        'backoff_delays' => [2000, 5000, 10000],
+
+        // Whether to respect the Retry-After header from the server (in seconds)
+        'respect_retry_after' => true,
+
+        // Maximum total 429 responses before aborting the scan
+        // Set to 0 to disable abort (will always retry with backoff)
+        'max_429_before_abort' => 5,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Noise URL Detection (hidden without --advanced)
+    |--------------------------------------------------------------------------
+    |
+    | URLs matching these rules are hidden from scan output by default.
+    | They are not real navigation links but namespace URIs, preconnect
+    | hints, or framework-internal references. Use --advanced to show them.
+    |
+    | Detection uses three dynamic strategies:
+    |
+    | 1. 'namespace_domains': Domains that host XML/RDF namespace URIs.
+    |    Any URL on these domains is treated as a namespace, not a page.
+    |
+    | 2. 'detect_preconnect': When enabled, bare external domain URLs
+    |    (no path) found in <link> elements are treated as preconnect/
+    |    dns-prefetch hints and hidden. e.g. https://fonts.googleapis.com
+    |
+    | 3. 'framework_error_patterns': Regex patterns matching error/debug
+    |    documentation URLs embedded by JS frameworks in bundled code.
+    |    These are not real links placed by the site author.
+    |
+    | You can also add extra 'exact' and 'prefix' entries for edge cases.
+    |
+    */
+
+    'noise_urls' => [
+
+        // Domains that host namespace URIs (W3C, Schema.org, etc.)
+        // Any URL on these domains is considered a namespace declaration.
+        'namespace_domains' => [
+            'www.w3.org',
+            'w3.org',
+            'schema.org',
+            'www.schema.org',
+        ],
+
+        // Auto-detect bare-domain <link> elements as preconnect/dns-prefetch hints.
+        // A bare domain is an external URL with no path (e.g., https://fonts.googleapis.com).
+        'detect_preconnect' => true,
+
+        // Regex patterns for JS framework error/debug documentation URLs.
+        // Matched against the full URL. Use # as delimiter.
+        'framework_error_patterns' => [
+            '#^https?://react\.dev/errors#',
+            '#^https?://reactjs\.org/docs/error#',
+            '#^https?://vuejs\.org/error-reference#',
+            '#^https?://angular\.(io|dev)/errors#',
+            '#^https?://svelte\.dev/e/#',
+            '#^https?://nextjs\.org/docs/messages/#',
+            '#^https?://nuxt\.com/docs/guide/concepts/error-handling#',
+        ],
+
+        // Additional exact-match URLs to hide (for edge cases not caught above).
+        'exact' => [],
+
+        // Additional prefix-match URLs to hide (for edge cases not caught above).
+        'prefix' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Integrity Scoring
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the weight-based integrity scoring model.
+    | Score starts at 100 and penalties are subtracted based on issue type,
+    | confidence level, and duplicate dampening.
+    |
+    */
+
+    'integrity_scoring' => [
+
+        // Base penalties per flag (absolute values, applied as subtraction)
+        'penalties' => [
+            'developer_leftover' => 12,
+            'status_4xx_internal' => 10,
+            'status_5xx' => 10,
+            'connection_error' => 10,
+            'form_endpoint_404' => 10,
+            'status_4xx_external_platform' => 5,
+            'malformed_url' => 8,
+            'excessive_redirects' => 5,
+            'http_on_https' => 4,
+            'redirect_chain' => 3,
+            'timeout' => 3,
+            'bot_protection' => 2,
+            'rate_limited' => 1,
+        ],
+
+        // Confidence multipliers — lower confidence = reduced penalty
+        'confidence_multipliers' => [
+            'high' => 1.0,
+            'medium' => 0.6,
+            'low' => 0.3,
+        ],
+
+        // Category penalty multiplier — amplifies penalties within category
+        // sub-scores so individual issues have meaningful impact.
+        // Does not affect the overall score.
+        'category_penalty_multiplier' => 2.5,
+
+        // Duplicate dampening — tiered reduction for repeated issue types
+        // First occurrence: 100%, 2nd–5th: 50%, 6th+: 25%
+        'dampening' => [
+            'tier_1_max' => 1,    // occurrences 1..tier_1_max → 100%
+            'tier_2_max' => 5,    // occurrences tier_1_max+1..tier_2_max → tier_2_factor
+            'tier_2_factor' => 0.5,
+            'tier_3_factor' => 0.25,
+        ],
+
+        // Category assignments — which penalty types belong to which category.
+        // The optional "weight" field expresses intended relative importance but
+        // is not currently applied by the IntegrityScorer when computing overallScore.
+        'categories' => [
+            'link_integrity' => [
+                'weight' => 0.45,
+                'types' => [
+                    'status_4xx_internal',
+                    'status_5xx',
+                    'connection_error',
+                    'form_endpoint_404',
+                    'timeout',
+                    'status_4xx_external_platform',
+                ],
+            ],
+            'security_hygiene' => [
+                'weight' => 0.20,
+                'types' => [
+                    'http_on_https',
+                ],
+            ],
+            'technical_hygiene' => [
+                'weight' => 0.15,
+                'types' => [
+                    'developer_leftover',
+                    'malformed_url',
+                ],
+            ],
+            'redirect_health' => [
+                'weight' => 0.10,
+                'types' => [
+                    'redirect_chain',
+                    'excessive_redirects',
+                ],
+            ],
+            'link_verifiability' => [
+                'weight' => 0.10,
+                'types' => [
+                    'bot_protection',
+                    'rate_limited',
+                ],
+            ],
+        ],
+
+        // Grade thresholds (score must be >= threshold for the grade)
+        'grades' => [
+            'excellent' => 90,
+            'good' => 75,
+            'needs_attention' => 50,
+            // Below needs_attention → Critical
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | External Platforms
+    |--------------------------------------------------------------------------
+    |
+    | Domains of external platforms known to have aggressive bot protection.
+    | When a link to one of these platforms returns a 403/405, it's flagged
+    | as EXTERNAL_PLATFORM + BOT_PROTECTION with low confidence, indicating
+    | a likely false positive rather than a truly broken link.
+    |
+    | Subdomains are automatically matched (e.g., www.linkedin.com matches
+    | linkedin.com).
+    |
+    */
+
+    'external_platforms' => [
+        // Professional networks
+        'linkedin.com',
+
+        // Code hosting
+        'github.com',
+        'gitlab.com',
+        'bitbucket.org',
+
+        // Social media
+        'twitter.com',
+        'x.com',
+        'facebook.com',
+        'instagram.com',
+        'tiktok.com',
+        'youtube.com',
+        'pinterest.com',
+        'tumblr.com',
+        'snapchat.com',
+        'reddit.com',
+        'medium.com',
+
+        // Messaging
+        'discord.com',
+        'slack.com',
+        'whatsapp.com',
+        'telegram.org',
+
+        // Creative & streaming
+        'twitch.tv',
+        'vimeo.com',
+        'dribbble.com',
+        'behance.net',
+        'codepen.io',
+
+        // Other
+        'stackoverflow.com',
+        'producthunt.com',
+    ],
+];

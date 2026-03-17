@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\BrowsershotFetcher;
+use Scannr\Services\BrowsershotFetcher;
 use Tests\TestCase;
 
 class BrowsershotFetcherTest extends TestCase

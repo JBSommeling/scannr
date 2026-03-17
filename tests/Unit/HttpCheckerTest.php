@@ -2,10 +2,10 @@
 
 namespace Tests\Unit;
 
-use App\Services\HttpChecker;
-use App\Services\LinkFlagService;
-use App\Services\SeverityEvaluator;
-use App\Services\UrlNormalizer;
+use Scannr\Services\HttpChecker;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;

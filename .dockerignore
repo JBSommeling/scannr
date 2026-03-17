@@ -1,0 +1,15 @@
+.git
+node_modules
+vendor
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+tests
+.env
+.env.example
+compose.yaml
+AGENTS.md
+CLAUDE.md
+.mcp.json
+phpunit.xml

@@ -2,17 +2,17 @@
 
 namespace Tests\Unit;
 
-use App\DTO\ScanConfig;
-use App\Services\BrowsershotFetcher;
-use App\Services\CrawlerService;
-use App\Services\HttpChecker;
-use App\Services\LinkExtractor;
-use App\Services\LinkFlagService;
-use App\Services\ScannerService;
-use App\Services\ScanStatistics;
-use App\Services\SeverityEvaluator;
-use App\Services\SitemapService;
-use App\Services\UrlNormalizer;
+use Scannr\DTO\ScanConfig;
+use Scannr\Services\BrowsershotFetcher;
+use Scannr\Services\CrawlerService;
+use Scannr\Services\HttpChecker;
+use Scannr\Services\LinkExtractor;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\ScannerService;
+use Scannr\Services\ScanStatistics;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\SitemapService;
+use Scannr\Services\UrlNormalizer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;
@@ -745,7 +745,7 @@ class CrawlerServiceTest extends TestCase
             'allow_redirects' => false,
             'http_errors' => false,
             'headers' => [
-                'User-Agent' => config('scanner.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
+                'User-Agent' => config('scannr.user_agent', 'ScannrBot/1.0 (+https://scannr.io)'),
             ],
         ]);
 
@@ -784,7 +784,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set low backoff for test speed
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -812,7 +812,7 @@ class CrawlerServiceTest extends TestCase
         // Set low backoff with enough retries to reach abort threshold
         // We have 1 URL, and with 5 backoff delays we get 6 requests (1 original + 5 retries)
         // Setting max_429_before_abort to 3 means we abort on the 3rd 429
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10, 10, 10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 3,
@@ -840,7 +840,7 @@ class CrawlerServiceTest extends TestCase
         $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10], // Very short default
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -873,7 +873,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set specific backoff delay
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [500], // 500ms
             'respect_retry_after' => true,
             'max_429_before_abort' => 10,
@@ -907,7 +907,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // Set escalating backoff delays: 200ms, then 400ms
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [200, 400],
             'respect_retry_after' => false,
             'max_429_before_abort' => 10,
@@ -945,7 +945,7 @@ class CrawlerServiceTest extends TestCase
         $crawler->setClient($client);
 
         // With 2 backoff delays, we can retry up to 2 times per URL
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 3,
@@ -1027,7 +1027,7 @@ class CrawlerServiceTest extends TestCase
         $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
         $crawler->setClient($client);
 
-        config(['scanner.rate_limit' => [
+        config(['scannr.rate_limit' => [
             'backoff_delays' => [10, 10, 10],
             'respect_retry_after' => true,
             'max_429_before_abort' => 0, // Disable abort

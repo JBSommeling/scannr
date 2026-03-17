@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\SitemapService;
+use Scannr\Services\SitemapService;
 use PHPUnit\Framework\TestCase;
 
 class SitemapLiveTest extends TestCase

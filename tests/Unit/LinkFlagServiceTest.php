@@ -2,10 +2,10 @@
 
 namespace Tests\Unit;
 
-use App\Enums\LinkFlag;
-use App\Services\LinkFlagService;
-use App\Services\SeverityEvaluator;
-use App\Services\UrlNormalizer;
+use Scannr\Enums\LinkFlag;
+use Scannr\Services\LinkFlagService;
+use Scannr\Services\SeverityEvaluator;
+use Scannr\Services\UrlNormalizer;
 use Tests\TestCase;
 
 class LinkFlagServiceTest extends TestCase

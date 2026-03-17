@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Services\IntegrityScorer;
-use App\Services\ResultFormatterService;
-use App\Services\ScanStatistics;
+use Scannr\Services\IntegrityScorer;
+use Scannr\Services\ResultFormatterService;
+use Scannr\Services\ScanStatistics;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 

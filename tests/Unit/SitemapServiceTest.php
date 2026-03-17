@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\SitemapService;
+use Scannr\Services\SitemapService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\MockHandler;

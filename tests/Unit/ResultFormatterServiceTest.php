@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Contracts\OutputInterface;
-use App\DTO\ScanConfig;
-use App\Services\IntegrityScorer;
-use App\Services\ResultFormatterService;
-use App\Services\ScanStatistics;
+use Scannr\Contracts\OutputInterface;
+use Scannr\DTO\ScanConfig;
+use Scannr\Services\IntegrityScorer;
+use Scannr\Services\ResultFormatterService;
+use Scannr\Services\ScanStatistics;
 use Tests\TestCase;
 
 class ResultFormatterServiceTest extends TestCase

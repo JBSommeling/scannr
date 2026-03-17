@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\SpaDetector;
+use Scannr\Services\SpaDetector;
 use Tests\TestCase;
 
 class SpaDetectorTest extends TestCase

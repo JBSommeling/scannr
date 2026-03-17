@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Enums\Confidence;
-use App\Enums\LinkFlag;
-use App\Services\SeverityEvaluator;
+use Scannr\Enums\Confidence;
+use Scannr\Enums\LinkFlag;
+use Scannr\Services\SeverityEvaluator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
