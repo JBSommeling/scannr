@@ -501,6 +501,7 @@ class HttpCheckerTest extends TestCase
         return [
             'bad request' => [400],
             'unauthorized' => [401],
+            'csrf token mismatch' => [419],
             'unprocessable entity' => [422],
             'too many requests' => [429],
         ];

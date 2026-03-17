@@ -49,9 +49,9 @@ class SeverityEvaluator
 
         // Form endpoints returning certain 4xx are expected behavior:
         // 400 (bad request / missing data), 401 (auth required), 403 (forbidden),
-        // 405 (method not allowed), 422 (validation error), 429 (rate limited).
+        // 405 (method not allowed), 419 (CSRF token mismatch), 422 (validation error), 429 (rate limited).
         // 404 is NOT healthy — it means the endpoint doesn't exist.
-        $healthyFormStatuses = [400, 401, 403, 405, 422, 429];
+        $healthyFormStatuses = [400, 401, 403, 405, 419, 422, 429];
         $statusInt = is_int($status) ? $status : 0;
 
         if ($hasFormEndpoint && $hasStatus4xx && in_array($statusInt, $healthyFormStatuses, true)) {

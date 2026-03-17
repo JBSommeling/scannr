@@ -1258,4 +1258,46 @@ class CrawlerServiceTest extends TestCase
         $this->assertTrue($restored->useSmartJs);
         $this->assertFalse($restored->useJsRendering);
     }
+
+    public function test_crawl_propagates_rel_attribute_to_result(): void
+    {
+        $html = '<html><head><link rel="preconnect" href="https://cdn.example.com"></head><body></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(400, [], ''), // cdn.example.com returns 400 (typical CDN root)
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $crawlResult = $crawler->crawl($config);
+
+        $cdnResult = collect($crawlResult['results'])->first(fn ($r) => str_contains($r['url'], 'cdn.example.com'));
+        $this->assertNotNull($cdnResult, 'cdn.example.com should appear in results');
+        $this->assertEquals('preconnect', $cdnResult['rel'], 'rel attribute must be propagated through the pipeline');
+    }
+
+    public function test_crawl_rel_is_null_for_anchor_links(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $client = $this->createMockClient([
+            new Response(200, ['Content-Type' => 'text/html'], $html),
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body>Page 1</body></html>'),
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['maxUrls' => 10]);
+        $crawlResult = $crawler->crawl($config);
+
+        $pageResult = collect($crawlResult['results'])->first(fn ($r) => str_contains($r['url'], 'page1'));
+        $this->assertNotNull($pageResult);
+        $this->assertNull($pageResult['rel'], 'rel must be null for non-link elements');
+    }
 }
