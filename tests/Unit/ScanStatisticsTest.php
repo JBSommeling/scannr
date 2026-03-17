@@ -317,17 +317,17 @@ class ScanStatisticsTest extends TestCase
     public function test_filter_noise_urls_detects_preconnect_bare_domains(): void
     {
         $results = [
-            // Bare domains in <link> — preconnect hints, should be filtered
-            ['url' => 'https://fonts.googleapis.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external'],
-            ['url' => 'https://fonts.gstatic.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external'],
-            ['url' => 'https://fonts.bunny.net', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
-            ['url' => 'https://cdn.example.com/', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // Bare domains in <link rel="preconnect"> — preconnect hints, should be filtered
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'preconnect'],
+            ['url' => 'https://fonts.gstatic.com', 'isOk' => false, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'dns-prefetch'],
+            ['url' => 'https://fonts.bunny.net', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'preconnect'],
+            ['url' => 'https://cdn.example.com/', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'preconnect'],
             // CDN with path — real resource, should NOT be filtered
-            ['url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
-            ['url' => 'https://fonts.bunny.net/css?family=inter', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            ['url' => 'https://fonts.googleapis.com/css2?family=JetBrains+Mono', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'stylesheet'],
+            ['url' => 'https://fonts.bunny.net/css?family=inter', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'stylesheet'],
             // Bare domain in <a> — not preconnect, should NOT be filtered
-            ['url' => 'https://some-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
-            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal'],
+            ['url' => 'https://some-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external', 'rel' => null],
+            ['url' => 'https://example.com/page1', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'internal', 'rel' => null],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
@@ -406,26 +406,32 @@ class ScanStatisticsTest extends TestCase
         $this->assertCount(3, $filtered);
     }
 
-    public function test_filter_noise_urls_preconnect_only_filters_external_link_elements(): void
+    public function test_filter_noise_urls_preconnect_filters_by_rel_not_by_type(): void
     {
         $results = [
-            // <link> bare external domain — filtered (preconnect hint)
-            ['url' => 'https://cdn.example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
+            // Internal <link rel="preconnect"> bare domain — filtered (resource hint regardless of type)
+            ['url' => 'https://cdn.example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'internal', 'rel' => 'preconnect'],
+            // Internal <link rel="canonical"> bare domain — NOT filtered (real subdomain link)
+            ['url' => 'https://app.example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'internal', 'rel' => 'canonical'],
+            // External <link rel="preconnect"> bare domain — still filtered
+            ['url' => 'https://fonts.googleapis.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'preconnect'],
+            // External <link rel="dns-prefetch"> bare domain — filtered
+            ['url' => 'https://fonts.gstatic.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'dns-prefetch'],
             // <a> bare external domain — NOT filtered (could be a real link)
-            ['url' => 'https://other-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external'],
+            ['url' => 'https://other-cdn.example.com', 'isOk' => true, 'sourceElement' => 'a', 'type' => 'external', 'rel' => null],
             // <link> with path — NOT filtered (real resource)
-            ['url' => 'https://cdn.example.com/style.css', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external'],
-            // internal <link> bare domain — NOT filtered (preconnect is only external)
-            ['url' => 'https://example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'internal'],
+            ['url' => 'https://cdn.example.com/style.css', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => 'stylesheet'],
+            // Legacy: bare external <link> without rel data — filtered via heuristic fallback
+            ['url' => 'https://legacy-cdn.example.com', 'isOk' => true, 'sourceElement' => 'link', 'type' => 'external', 'rel' => null],
         ];
 
         $filtered = $this->scanStatistics->filterNoiseUrls($results, $this->getNoisePatterns());
         $this->assertCount(3, $filtered);
 
         $filteredUrls = array_map(fn ($r) => $r['url'].'|'.$r['sourceElement'], array_values($filtered));
+        $this->assertContains('https://app.example.com|link', $filteredUrls);
         $this->assertContains('https://other-cdn.example.com|a', $filteredUrls);
         $this->assertContains('https://cdn.example.com/style.css|link', $filteredUrls);
-        $this->assertContains('https://example.com|link', $filteredUrls);
     }
 
     public function test_filter_noise_urls_exact_and_prefix_fallback(): void

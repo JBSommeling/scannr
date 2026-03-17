@@ -147,6 +147,7 @@ class CrawlerService
             $depth = $current['depth'];
             $source = $current['source'];
             $element = $current['element'] ?? 'a';
+            $rel = $current['rel'] ?? null;
 
             // Hydrate discovery flags from queue item
             $discoveryFlags = $this->hydrateFlagsFromArray($current['flags'] ?? []);
@@ -187,6 +188,7 @@ class CrawlerService
                 $max429BeforeAbort,
                 $onSitemapDiscovery,
                 $discoveryFlags,
+                $rel,
             );
 
             // Check if we should abort after processing
@@ -317,6 +319,7 @@ class CrawlerService
         int $max429BeforeAbort,
         ?Closure $onMessage,
         array $discoveryFlags = [],
+        ?string $rel = null,
     ): ?array {
         $maxRetries = count($backoffDelays);
         $retryCount = 0;
@@ -324,9 +327,9 @@ class CrawlerService
         while (true) {
             // Process the URL
             if ($isInternal) {
-                $result = $this->processInternalUrlAndGetResult($url, $depth, $source, $element, $scanElements, $discoveryFlags);
+                $result = $this->processInternalUrlAndGetResult($url, $depth, $source, $element, $scanElements, $discoveryFlags, $rel);
             } else {
-                $result = $this->processExternalUrlAndGetResult($url, $source, $element, $scanElements, $discoveryFlags);
+                $result = $this->processExternalUrlAndGetResult($url, $source, $element, $scanElements, $discoveryFlags, $rel);
             }
 
             // Check if we got a 429 response
@@ -387,7 +390,7 @@ class CrawlerService
      *
      * @throws GuzzleException
      */
-    protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
+    protected function processInternalUrlAndGetResult(string $url, int $depth, string $source, string $element, array $scanElements, array $discoveryFlags = [], ?string $rel = null): ?array
     {
         $shouldStoreResult = in_array($element, $scanElements);
 
@@ -396,7 +399,7 @@ class CrawlerService
             return null;
         }
 
-        $result = $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
+        $result = $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags, $rel);
 
         // Smart-JS: on the first internal page, check for SPA signals
         // and re-process with JS rendering if detected
@@ -405,7 +408,7 @@ class CrawlerService
             && $this->activeConfig->useSmartJs
         ) {
             $reprocessed = $this->tryActivateSmartJs(
-                $result, $url, $source, $element, $scanElements, $discoveryFlags, $depth
+                $result, $url, $source, $element, $scanElements, $discoveryFlags, $depth, $rel
             );
             if ($reprocessed !== null) {
                 $result = $reprocessed;
@@ -439,6 +442,7 @@ class CrawlerService
                         'depth' => $depth + 1,
                         'source' => $url,
                         'element' => $linkElement,
+                        'rel' => $link['rel'] ?? null,
                         'flags' => $link['flags'] ?? [],
                     ];
 
@@ -466,14 +470,14 @@ class CrawlerService
      *
      * @throws GuzzleException
      */
-    protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements, array $discoveryFlags = []): ?array
+    protected function processExternalUrlAndGetResult(string $url, string $source, string $element, array $scanElements, array $discoveryFlags = [], ?string $rel = null): ?array
     {
         // Skip if element type is not in scanElements
         if (! in_array($element, $scanElements)) {
             return null;
         }
 
-        $result = $this->scannerService->processExternalUrl($url, $source, $element, $discoveryFlags);
+        $result = $this->scannerService->processExternalUrl($url, $source, $element, $discoveryFlags, $rel);
         $this->results[] = $result;
 
         return $result;
@@ -566,6 +570,7 @@ class CrawlerService
         array $scanElements,
         array $discoveryFlags,
         int $depth,
+        ?string $rel = null,
     ): ?array {
         if ($this->activeConfig === null || ! $this->activeConfig->useSmartJs) {
             return null;
@@ -619,7 +624,7 @@ class CrawlerService
         // The caller (processInternalUrlAndGetResult) has not yet appended anything to
         // $this->results at this point, so no pop is needed — the local $result variable
         // in the caller is simply replaced with what we return here.
-        return $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags);
+        return $this->scannerService->processInternalUrl($url, $source, $element, $discoveryFlags, $rel);
     }
 
     /**

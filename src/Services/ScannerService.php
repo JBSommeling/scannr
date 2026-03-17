@@ -78,7 +78,7 @@ class ScannerService
      *
      * @throws GuzzleException
      */
-    public function processInternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
+    public function processInternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = [], ?string $rel = null): array
     {
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
@@ -154,6 +154,7 @@ class ScannerService
             'status' => $statusString,
             'type' => 'internal',
             'sourceElement' => $element,
+            'rel' => $rel,
             'extractedLinks' => $extractedLinks,
             'rawBody' => $rawBody,
             'analysis' => $analysis->toArray(),
@@ -182,7 +183,7 @@ class ScannerService
      *
      * @throws GuzzleException
      */
-    public function processExternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = []): array
+    public function processExternalUrl(string $url, string $source, string $element = 'a', array $discoveryFlags = [], ?string $rel = null): array
     {
         // Form endpoints only accept POST, so use POST with empty body.
         if ($element === 'form') {
@@ -218,6 +219,7 @@ class ScannerService
             'status' => $statusString,
             'type' => 'external',
             'sourceElement' => $element,
+            'rel' => $rel,
             'analysis' => $analysis->toArray(),
             'redirect' => [
                 'chain' => $firstRedirect,

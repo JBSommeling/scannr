@@ -232,9 +232,10 @@ class LinkExtractor
         }
 
         $links[] = [
-            'url' => $normalizedUrl,
-            'source' => $sourceUrl,
+            'url'     => $normalizedUrl,
+            'source'  => $sourceUrl,
             'element' => $element,
+            'rel'     => $element === 'link' ? ($node->attr('rel') ?? null) : null,
         ];
     }
 
