@@ -2,6 +2,15 @@
 set -e
 
 # ---------------------------------------------------------------------------
+# Helper: GitHub Actions passes inputs as INPUT_<NAME> env vars, but keeps
+# hyphens in the name (e.g. INPUT_SMART-JS). Bash doesn't allow hyphens in
+# variable names, so we use printenv to read them safely.
+# ---------------------------------------------------------------------------
+get_input() {
+    printenv "INPUT_${1}" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
 # Domain validation: if the repo contains a .scannr.yml, validate the URL
 # against the allowed domains listed in it.
 # ---------------------------------------------------------------------------
@@ -44,6 +53,27 @@ validate_domain() {
 }
 
 # ---------------------------------------------------------------------------
+# Read all inputs via printenv (handles hyphenated names like INPUT_SMART-JS)
+# ---------------------------------------------------------------------------
+INPUT_URL=$(get_input "URL")
+INPUT_DEPTH=$(get_input "DEPTH")
+INPUT_MAX=$(get_input "MAX")
+INPUT_TIMEOUT=$(get_input "TIMEOUT")
+INPUT_FORMAT=$(get_input "FORMAT")
+INPUT_STATUS=$(get_input "STATUS")
+INPUT_FILTER=$(get_input "FILTER")
+INPUT_SCAN_ELEMENTS=$(get_input "SCAN-ELEMENTS")
+INPUT_STRIP_PARAMS=$(get_input "STRIP-PARAMS")
+INPUT_DELAY_MIN=$(get_input "DELAY-MIN")
+INPUT_DELAY_MAX=$(get_input "DELAY-MAX")
+INPUT_SITEMAP=$(get_input "SITEMAP")
+INPUT_JS=$(get_input "JS")
+INPUT_SMART_JS=$(get_input "SMART-JS")
+INPUT_NO_ROBOTS=$(get_input "NO-ROBOTS")
+INPUT_ADVANCED=$(get_input "ADVANCED")
+INPUT_FAIL_ON_BROKEN=$(get_input "FAIL-ON-BROKEN")
+
+# ---------------------------------------------------------------------------
 # Build the artisan command
 # ---------------------------------------------------------------------------
 CMD="php /app/artisan site:scan"
@@ -68,6 +98,8 @@ CMD="$CMD $INPUT_URL"
 [ -n "$INPUT_FILTER" ]         && CMD="$CMD --filter=$INPUT_FILTER"
 [ -n "$INPUT_SCAN_ELEMENTS" ]  && CMD="$CMD --scan-elements=$INPUT_SCAN_ELEMENTS"
 [ -n "$INPUT_STRIP_PARAMS" ]   && CMD="$CMD --strip-params=$INPUT_STRIP_PARAMS"
+[ -n "$INPUT_DELAY_MIN" ]      && CMD="$CMD --delay-min=$INPUT_DELAY_MIN"
+[ -n "$INPUT_DELAY_MAX" ]      && CMD="$CMD --delay-max=$INPUT_DELAY_MAX"
 
 # Boolean flags
 [ "$INPUT_SITEMAP" = "true" ]   && CMD="$CMD --sitemap"
