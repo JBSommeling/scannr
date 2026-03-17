@@ -89,13 +89,16 @@ return [
 
     'js_rendering' => [
         // Path to node binary (null = auto-detect)
-        'node_binary' => env('NODE_PATH'),
+        'node_binary' => env('SCANNR_NODE_BINARY'),
 
         // Path to npm binary (null = auto-detect)
-        'npm_binary' => env('NPM_PATH'),
+        'npm_binary' => env('SCANNR_NPM_BINARY'),
 
         // Path to Chrome/Chromium binary (null = use Puppeteer's bundled Chrome)
         'chrome_path' => env('CHROME_PATH'),
+
+        // Path to node_modules directory (null = auto-detect via npm root)
+        'node_modules_path' => env('SCANNR_NODE_MODULES_PATH'),
 
         // Timeout for browser rendering in seconds
         'timeout' => 30,

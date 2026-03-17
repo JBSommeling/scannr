@@ -19,6 +19,8 @@ class BrowsershotFetcher
 
     protected ?string $chromePath = null;
 
+    protected ?string $nodeModulesPath = null;
+
     protected int $timeout = 30;
 
     /**
@@ -29,6 +31,7 @@ class BrowsershotFetcher
         $this->nodeBinary = $options['node_binary'] ?? null;
         $this->npmBinary = $options['npm_binary'] ?? null;
         $this->chromePath = $options['chrome_path'] ?? null;
+        $this->nodeModulesPath = $options['node_modules_path'] ?? null;
         $this->timeout = $options['timeout'] ?? 30;
 
         return $this;
@@ -78,6 +81,10 @@ class BrowsershotFetcher
 
             if ($this->chromePath) {
                 $browsershot->setChromePath($this->chromePath);
+            }
+
+            if ($this->nodeModulesPath) {
+                $browsershot->setNodeModulePath($this->nodeModulesPath);
             }
 
             $body = $browsershot->bodyHtml();

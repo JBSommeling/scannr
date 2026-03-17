@@ -73,9 +73,11 @@ RUN mkdir -p storage/logs \
 RUN cp .env.action .env \
     && php artisan key:generate --no-interaction
 
-# Tell Browsershot where to find Chromium and Node
+# Tell Browsershot where to find Chromium, Node, and modules
 ENV CHROME_PATH=/usr/bin/chromium
-ENV NODE_PATH=/usr/bin/node
+ENV SCANNR_NODE_BINARY=/usr/bin/node
+ENV SCANNR_NPM_BINARY=/usr/bin/npm
+ENV SCANNR_NODE_MODULES_PATH=/app/node_modules
 
 RUN chmod +x /entrypoint.sh
 
