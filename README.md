@@ -155,7 +155,7 @@ jobs:
 **Scan a SPA with JavaScript rendering:**
 
 ```yaml
-- uses: JBSommeling/scannr@github-action
+- uses: JBSommeling/scannr@v0.1.2
   with:
     url: https://my-react-app.com
     js: true
@@ -165,7 +165,7 @@ jobs:
 **Get JSON output for downstream processing:**
 
 ```yaml
-- uses: JBSommeling/scannr@github-action
+- uses: JBSommeling/scannr@v0.1.2
   id: scan
   with:
     url: https://example.com
@@ -180,7 +180,7 @@ jobs:
 **Deep weekly audit with sitemap:**
 
 ```yaml
-- uses: JBSommeling/scannr@github-action
+- uses: JBSommeling/scannr@v0.1.2
   with:
     url: https://example.com
     depth: 5
