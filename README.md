@@ -1,3 +1,9 @@
+![Latest Version](https://img.shields.io/packagist/v/jbsommeling/scannr)
+![Downloads](https://img.shields.io/packagist/dt/jbsommeling/scannr)
+![License](https://img.shields.io/packagist/l/jbsommeling/scannr)
+![PHP Version](https://img.shields.io/packagist/php-v/jbsommeling/scannr)
+![Tests](https://github.com/JBSommeling/scannr/actions/workflows/tests.yml/badge.svg)
+![Stars](https://img.shields.io/github/stars/JBSommeling/scannr)
 # Scannr
 
 A Laravel package that crawls websites to detect broken links, redirect chains, HTTPS downgrades, and more. Includes JavaScript rendering support for SPAs. Use it as a **dev dependency** in your Laravel project or as a **Docker-based GitHub Action** in your CI/CD pipeline.
@@ -19,6 +25,22 @@ A Laravel package that crawls websites to detect broken links, redirect chains, 
 - **Noise URL Filtering** — Hides XML namespaces, CDN preconnect hints, and JS framework error docs
 - **Multiple Output Formats** — Table, JSON, or CSV output
 - **Domain Validation** — Warns when the scanned URL doesn't match your `APP_URL`
+
+## Responsible Use
+
+Scannr is intended for scanning websites you own or have explicit permission to test.
+
+Users are responsible for ensuring their usage complies with:
+- Website terms of service
+- Applicable laws and regulations
+- robots.txt directives
+
+Do not use Scannr to:
+- Crawl websites without permission
+- Overload servers or bypass rate limits
+- Access protected or private content
+
+The authors are not responsible for misuse of this tool.
 
 ---
 
@@ -84,6 +106,8 @@ php artisan site:scan {url} [options]
 | `--no-robots` | false | Ignore robots.txt rules |
 | `--advanced` | false | Show noise URLs (XML namespaces, CDN hints, etc.) |
 | `--strip-params=PARAMS` | — | Additional tracking parameters to strip (comma-separated) |
+| `--delay-min=N` | config | Minimum delay between requests in milliseconds |
+| `--delay-max=N` | config | Maximum delay between requests in milliseconds |
 | `--queue` | false | Dispatch scan as a background job |
 
 ### Examples
@@ -100,6 +124,117 @@ php artisan site:scan https://my-spa.com --js --format=json
 
 # Only scan images and anchors
 php artisan site:scan https://example.com --scan-elements=a,img --status=broken
+
+# Throttle requests (200–500ms random delay between each request)
+php artisan site:scan https://example.com --delay-min=200 --delay-max=500
+```
+
+### Example Output
+
+#### Table (default)
+
+```
+Site Scan: https://www.example.com
+========================================
+
+  Robots.txt Crawl-delay: 1s (using 1000ms-1000ms delay)
+  Robots.txt: respecting 4 Disallow/Allow rule(s)
+ 11/30 [▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░]  36% 30/30 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+
+
+  🟢 Site Integrity Score: 100.0 / 100  —  Excellent
+
+    Link Integrity:        100.0 / 100
+    Security Hygiene:      100.0 / 100
+    Technical Hygiene:     100.0 / 100
+    Redirect Health:       100.0 / 100
+    Link Verifiability:    100.0 / 100
+
+  Critical Issues:       0
+  Broken Links:          0
+  Warnings:              0
+  Manual Verification:   0
+
+Summary:
+  Total scanned:     11
+  Pages scanned:     2
+  Internal links:    1
+  Assets scanned:    9
+  External links:    1
+  Working (2xx):     11
+  Redirects:         0
+  Broken:            0
+  Timeouts:          0
+
++----------------------------------------------+--------------------------+----------+--------+----------+
+| URL                                          | Source                   | Element  | Status | Type     |
++----------------------------------------------+--------------------------+----------+--------+----------+
+| https://www.example.com                      | start                    | <a>      | 200    | internal |
+| https://example.com/favicon.svg              | https://www.example.com  | <link>   | 200    | internal |
+| https://example.com/favicon.ico              | https://www.example.com  | <link>   | 200    | internal |
+| https://example.com/assets/app-Dk29a1xC.css  | https://www.example.com  | <link>   | 200    | internal |
+| https://example.com/assets/app-Bx7L3f2q.js   | https://www.example.com  | <script> | 200    | internal |
+| https://fonts.googleapis.com/css2?family=... | https://www.example.com  | <link>   | 200    | external |
++----------------------------------------------+--------------------------+----------+--------+----------+
+```
+
+#### JSON (`--format=json`)
+
+```json
+{
+    "summary": {
+        "totalScanned": 8,
+        "ok": 8,
+        "redirects": 0,
+        "broken": 0,
+        "timeouts": 0,
+        "redirectChainCount": 0,
+        "totalRedirectHops": 0,
+        "httpsDowngrades": 0,
+        "criticalCount": 0,
+        "warningCount": 0,
+        "lowConfidenceCount": 0,
+        "pagesScanned": 2,
+        "internalLinks": 1,
+        "assetsScanned": 6,
+        "externalLinks": 1
+    },
+    "integrityScore": {
+        "overallScore": 100,
+        "grade": "Excellent",
+        "components": {
+            "linkIntegrity": 100,
+            "securityHygiene": 100,
+            "technicalHygiene": 100,
+            "redirectHealth": 100,
+            "linkVerifiability": 100
+        }
+    },
+    "links": [
+        {
+            "url": "https://www.example.com",
+            "sourcePage": "start",
+            "status": "200",
+            "type": "internal",
+            "sourceElement": "a",
+            "analysis": {
+                "flags": [],
+                "severity": "info",
+                "confidence": "high",
+                "verification": "none"
+            },
+            "redirect": {
+                "chain": [],
+                "isLoop": false,
+                "hasHttpsDowngrade": false
+            },
+            "network": {
+                "retryAfter": null
+            }
+        }
+    ],
+    "brokenLinks": []
+}
 ```
 
 ---
@@ -147,6 +282,8 @@ jobs:
     no-robots: false                # Ignore robots.txt (default: false)
     advanced: false                 # Show noise URLs (default: false)
     strip-params: ref,tracker       # Extra tracking params to strip
+    delay-min: 200                  # Min delay between requests in ms
+    delay-max: 500                  # Max delay between requests in ms
     fail-on-broken: true            # Fail step on broken links (default: true)
 ```
 
@@ -254,3 +391,4 @@ composer test
 ## License
 
 MIT
+
