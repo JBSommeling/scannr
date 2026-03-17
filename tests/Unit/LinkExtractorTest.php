@@ -131,6 +131,37 @@ class LinkExtractorTest extends TestCase
         $this->assertCount(1, $links);
         $this->assertEquals('https://example.com/css/style.css', $links[0]['url']);
         $this->assertEquals('link', $links[0]['element']);
+        $this->assertEquals('stylesheet', $links[0]['rel']);
+    }
+
+    public function test_extract_links_stores_rel_for_preconnect(): void
+    {
+        $html = '<html><head><link rel="preconnect" href="https://cdn.example.com"></head><body></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('preconnect', $links[0]['rel']);
+    }
+
+    public function test_extract_links_stores_rel_for_dns_prefetch(): void
+    {
+        $html = '<html><head><link rel="dns-prefetch" href="https://cdn.example.com"></head><body></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('dns-prefetch', $links[0]['rel']);
+    }
+
+    public function test_extract_links_rel_is_null_for_non_link_elements(): void
+    {
+        $html = '<html><body><a href="/page">Link</a></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertNull($links[0]['rel']);
     }
 
     public function test_extract_links_finds_script_src(): void
