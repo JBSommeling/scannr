@@ -988,4 +988,170 @@ class ScanConfigTest extends TestCase
 
         return $command;
     }
+
+    // ==================
+    // Request delay CLI option tests
+    // ==================
+
+    public function test_from_command_options_delay_uses_config_defaults_when_not_provided(): void
+    {
+        config(['scannr.request_delay_min' => 100]);
+        config(['scannr.request_delay_max' => 500]);
+
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+            'smart-js' => false,
+            'no-robots' => false,
+            'advanced' => false,
+            'delay-min' => null,
+            'delay-max' => null,
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertEquals(100, $result['config']->delayMin);
+        $this->assertEquals(500, $result['config']->delayMax);
+    }
+
+    public function test_from_command_options_delay_overrides_config_when_provided(): void
+    {
+        config(['scannr.request_delay_min' => 100]);
+        config(['scannr.request_delay_max' => 500]);
+
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+            'smart-js' => false,
+            'no-robots' => false,
+            'advanced' => false,
+            'delay-min' => '200',
+            'delay-max' => '800',
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertEquals(200, $result['config']->delayMin);
+        $this->assertEquals(800, $result['config']->delayMax);
+    }
+
+    public function test_from_command_options_delay_zero_overrides_config(): void
+    {
+        config(['scannr.request_delay_min' => 100]);
+        config(['scannr.request_delay_max' => 500]);
+
+        $command = $this->createMockCommand([
+            'url' => 'https://example.com',
+            'depth' => '3',
+            'max' => '100',
+            'timeout' => '5',
+            'format' => 'table',
+            'status' => 'all',
+            'filter' => 'all',
+            'scan-elements' => 'all',
+            'sitemap' => false,
+            'strip-params' => null,
+            'js' => false,
+            'smart-js' => false,
+            'no-robots' => false,
+            'advanced' => false,
+            'delay-min' => '0',
+            'delay-max' => '0',
+        ]);
+
+        $result = ScanConfig::fromCommandOptions($command);
+
+        $this->assertEquals(0, $result['config']->delayMin);
+        $this->assertEquals(0, $result['config']->delayMax);
+    }
+
+    public function test_from_array_delay_overrides_config_when_provided(): void
+    {
+        config(['scannr.request_delay_min' => 100]);
+        config(['scannr.request_delay_max' => 500]);
+
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'delayMin' => 250,
+            'delayMax' => 750,
+        ]);
+
+        $this->assertEquals(250, $result['config']->delayMin);
+        $this->assertEquals(750, $result['config']->delayMax);
+    }
+
+    public function test_from_array_delay_max_adjusted_when_less_than_min(): void
+    {
+        config(['scannr.request_delay_min' => 0]);
+        config(['scannr.request_delay_max' => 0]);
+
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'delayMin' => 500,
+            'delayMax' => 100,
+        ]);
+
+        $this->assertEquals(500, $result['config']->delayMin);
+        $this->assertEquals(500, $result['config']->delayMax);
+    }
+
+    public function test_from_array_delay_zero_overrides_config(): void
+    {
+        config(['scannr.request_delay_min' => 300]);
+        config(['scannr.request_delay_max' => 500]);
+
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'delayMin' => 0,
+            'delayMax' => 0,
+        ]);
+
+        $this->assertEquals(0, $result['config']->delayMin);
+        $this->assertEquals(0, $result['config']->delayMax);
+    }
+
+    public function test_delay_round_trip_through_to_array_and_from_array(): void
+    {
+        config(['scannr.request_delay_min' => 0]);
+        config(['scannr.request_delay_max' => 0]);
+
+        $original = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 150,
+            delayMax: 350,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $array = $original->toArray();
+        $restored = ScanConfig::fromArray($array)['config'];
+
+        $this->assertEquals(150, $restored->delayMin);
+        $this->assertEquals(350, $restored->delayMax);
+    }
 }
