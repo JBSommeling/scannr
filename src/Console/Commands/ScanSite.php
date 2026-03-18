@@ -35,7 +35,9 @@ class ScanSite extends Command
         {--delay-max= : Maximum delay between requests in milliseconds (overrides config)}
         {--no-robots : Ignore robots.txt rules (Disallow/Crawl-delay)}
         {--advanced : Show XML namespaces, CDN root domains, and JS framework links}
-        {--queue : Dispatch scan as a background job}';
+        {--queue : Dispatch scan as a background job}
+        {--fail-on-critical : Fail with exit code 1 if critical issues are found}
+        {--min-rating=none : Minimum acceptable rating (excellent, good, needs_attention, none)}';
 
     /**
      * The console command description.
@@ -173,12 +175,41 @@ class ScanSite extends Command
         $results = $crawlResult['results'];
         $error = $crawlResult['error'] ?? null;
 
-        // Format and display results
-        $this->resultFormatter->format($results, $config, $output, $error);
+        // Format and display results, capturing the integrity score
+        $scoreResult = $this->resultFormatter->format($results, $config, $output, $error);
 
         // Return failure if scan was aborted
         if ($crawlResult['aborted'] ?? false) {
             return CommandAlias::FAILURE;
+        }
+
+        // Check quality gate: fail on critical issues
+        if ($config->failOnCritical && ($scoreResult->summary['criticalIssues'] ?? 0) > 0) {
+            $count = $scoreResult->summary['criticalIssues'];
+            $this->newLine();
+            $this->error("Quality gate failed: {$count} critical issue(s) found.");
+
+            return CommandAlias::FAILURE;
+        }
+
+        // Check quality gate: minimum rating threshold
+        if ($config->minRating !== 'none') {
+            $gradeThresholds = config('scannr.integrity_scoring.grades', [
+                'excellent' => 90,
+                'good' => 75,
+                'needs_attention' => 50,
+            ]);
+
+            $requiredScore = $gradeThresholds[$config->minRating] ?? null;
+
+            if ($requiredScore !== null && $scoreResult->overallScore < $requiredScore) {
+                $this->newLine();
+                $this->error(
+                    "Quality gate failed: score {$scoreResult->overallScore} ({$scoreResult->grade}) is below minimum rating '{$config->minRating}' (requires >= {$requiredScore})."
+                );
+
+                return CommandAlias::FAILURE;
+            }
         }
 
         return CommandAlias::SUCCESS;
