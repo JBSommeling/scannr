@@ -3,6 +3,7 @@
 namespace Scannr\Services;
 
 use Scannr\Contracts\OutputInterface;
+use Scannr\DTO\IntegrityScoreResult;
 use Scannr\DTO\ScanConfig;
 
 /**
@@ -25,7 +26,7 @@ class ResultFormatterService
      * @param  OutputInterface  $output  The output interface.
      * @param  string|null  $error  Optional error message (e.g., rate limit abort).
      */
-    public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): void
+    public function format(array $results, ScanConfig $config, OutputInterface $output, ?string $error = null): IntegrityScoreResult
     {
         // Remove noise URLs unless --advanced is used
         if (! $config->showAdvanced) {
@@ -50,6 +51,8 @@ class ResultFormatterService
             'csv' => $this->displayCsv($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
             default => $this->displayTable($filtered, $scoreResult, $stats, $totalScanned, $isFiltered, $output, $error),
         };
+
+        return $scoreResult;
     }
 
     /**

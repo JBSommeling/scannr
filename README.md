@@ -21,6 +21,7 @@ A Laravel package that crawls websites to detect broken links, redirect chains, 
 - **HTTPS Downgrade Detection** — Warns when redirects downgrade from HTTPS to HTTP
 - **Link Flag System** — Every link is tagged with observation flags (discovery method, platform traits, technical anomalies, validation outcome)
 - **Integrity Scoring** — Weight-based scoring model that rates your site's link health (A–F)
+- **Quality Gates** — Fail CI/CD when critical issues are found or the integrity score drops below a configurable threshold
 - **Rate Limit Backoff** — Automatic exponential backoff on HTTP 429 responses
 - **Noise URL Filtering** — Hides XML namespaces, CDN preconnect hints, and JS framework error docs
 - **Multiple Output Formats** — Table, JSON, or CSV output
@@ -109,6 +110,8 @@ php artisan site:scan {url} [options]
 | `--delay-min=N` | config | Minimum delay between requests in milliseconds |
 | `--delay-max=N` | config | Maximum delay between requests in milliseconds |
 | `--queue` | false | Dispatch scan as a background job |
+| `--fail-on-critical` | false | Fail with exit code 1 if critical issues are found |
+| `--min-rating=GRADE` | none | Minimum acceptable rating: `excellent`, `good`, `needs_attention`, `none` |
 
 ### Examples
 
@@ -127,6 +130,12 @@ php artisan site:scan https://example.com --scan-elements=a,img --status=broken
 
 # Throttle requests (200–500ms random delay between each request)
 php artisan site:scan https://example.com --delay-min=200 --delay-max=500
+
+# Fail if any critical issues found or rating drops below "Good"
+php artisan site:scan https://example.com --fail-on-critical --min-rating=good
+
+# Strict quality gate: require "Excellent" rating
+php artisan site:scan https://example.com --fail-on-critical --min-rating=excellent
 ```
 
 ### Example Output
@@ -285,6 +294,8 @@ jobs:
     delay-min: 200                  # Min delay between requests in ms
     delay-max: 500                  # Max delay between requests in ms
     fail-on-broken: true            # Fail step on broken links (default: true)
+    fail-on-critical: true          # Fail step on critical issues (default: true)
+    min-rating: good                # Minimum integrity rating (default: good)
 ```
 
 ### Examples
@@ -292,7 +303,7 @@ jobs:
 **Scan a SPA with JavaScript rendering:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.2
+- uses: JBSommeling/scannr@v0.1.7
   with:
     url: https://my-react-app.com
     js: true
@@ -302,7 +313,7 @@ jobs:
 **Get JSON output for downstream processing:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.2
+- uses: JBSommeling/scannr@v0.1.7
   id: scan
   with:
     url: https://example.com
@@ -317,13 +328,33 @@ jobs:
 **Deep weekly audit with sitemap:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.2
+- uses: JBSommeling/scannr@v0.1.7
   with:
     url: https://example.com
     depth: 5
     max: 1000
     sitemap: true
     smart-js: true
+```
+
+**Quality gate — require "Excellent" rating:**
+
+```yaml
+- uses: JBSommeling/scannr@v0.1.7
+  with:
+    url: https://example.com
+    fail-on-critical: true
+    min-rating: excellent
+```
+
+**Relaxed quality gate — only fail on critical issues:**
+
+```yaml
+- uses: JBSommeling/scannr@v0.1.7
+  with:
+    url: https://example.com
+    fail-on-critical: true
+    min-rating: none
 ```
 
 ---
