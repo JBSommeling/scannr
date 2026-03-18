@@ -72,6 +72,8 @@ INPUT_SMART_JS=$(get_input "SMART-JS")
 INPUT_NO_ROBOTS=$(get_input "NO-ROBOTS")
 INPUT_ADVANCED=$(get_input "ADVANCED")
 INPUT_FAIL_ON_BROKEN=$(get_input "FAIL-ON-BROKEN")
+INPUT_FAIL_ON_CRITICAL=$(get_input "FAIL-ON-CRITICAL")
+INPUT_MIN_RATING=$(get_input "MIN-RATING")
 
 # ---------------------------------------------------------------------------
 # Build the artisan command
@@ -107,6 +109,10 @@ CMD="$CMD $INPUT_URL"
 [ "$INPUT_SMART_JS" = "true" ] && CMD="$CMD --smart-js"
 [ "$INPUT_NO_ROBOTS" = "true" ] && CMD="$CMD --no-robots"
 [ "$INPUT_ADVANCED" = "true" ] && CMD="$CMD --advanced"
+[ "$INPUT_FAIL_ON_CRITICAL" = "true" ] && CMD="$CMD --fail-on-critical"
+
+# Quality gate: minimum rating
+[ -n "$INPUT_MIN_RATING" ] && CMD="$CMD --min-rating=$INPUT_MIN_RATING"
 
 echo "::group::Scannr Site Scan"
 echo "Running: $CMD"
