@@ -70,15 +70,14 @@ inputs:
   fail-on-broken:
     description: 'Fail the GitHub Action step if broken links are found'
     required: false
-    default: 'true'
+    default: 'false'
   fail-on-critical:
     description: 'Fail the GitHub Action step if critical issues are found'
     required: false
-    default: 'true'
+    default: 'false'
   min-rating:
-    description: 'Minimum acceptable integrity rating: excellent, good, needs_attention, none (default: good)'
+    description: 'Minimum acceptable integrity rating: excellent, good, needs_attention, none'
     required: false
-    default: 'good'
 
 outputs:
   exit-code:
