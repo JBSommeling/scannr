@@ -1,9 +1,10 @@
-![Latest Version](https://img.shields.io/packagist/v/jbsommeling/scannr)
-![Downloads](https://img.shields.io/packagist/dt/jbsommeling/scannr)
-![License](https://img.shields.io/packagist/l/jbsommeling/scannr)
-![PHP Version](https://img.shields.io/packagist/php-v/jbsommeling/scannr)
-![Tests](https://github.com/JBSommeling/scannr/actions/workflows/tests.yml/badge.svg)
-![Stars](https://img.shields.io/github/stars/JBSommeling/scannr)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/jbsommeling/scannr.svg?style=flat-square)](https://packagist.org/packages/jbsommeling/scannr)
+[![Total Downloads](https://img.shields.io/packagist/dt/jbsommeling/scannr.svg?style=flat-square)](https://packagist.org/packages/jbsommeling/scannr)
+[![License](https://img.shields.io/packagist/l/jbsommeling/scannr.svg?style=flat-square)](https://packagist.org/packages/jbsommeling/scannr)
+[![GitHub Tests](https://img.shields.io/github/actions/workflow/status/JBSommeling/scannr/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/JBSommeling/scannr/actions)
+[![PHP Version Require](https://img.shields.io/packagist/php-v/jbsommeling/scannr.svg?style=flat-square)](https://packagist.org/packages/jbsommeling/scannr)
+[![Stars](https://img.shields.io/github/stars/JBSommeling/scannr?style=flat-square)](https://github.com/JBSommeling/scannr/stargazers)
+
 # Scannr
 
 A Laravel package that crawls websites to detect broken links, redirect chains, HTTPS downgrades, and more. Includes JavaScript rendering support for SPAs. Use it as a **dev dependency** in your Laravel project or as a **Docker-based GitHub Action** in your CI/CD pipeline.
