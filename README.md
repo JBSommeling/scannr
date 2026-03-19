@@ -267,7 +267,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: JBSommeling/scannr@github-action
+      - uses: JBSommeling/scannr@v0.1.7
         with:
           url: https://example.com
 ```
@@ -275,7 +275,7 @@ jobs:
 ### All Options
 
 ```yaml
-- uses: JBSommeling/scannr@github-action
+- uses: JBSommeling/scannr@v0.1.7
   with:
     url: https://example.com       # Required
     depth: 5                        # Max crawl depth (default: 3)
