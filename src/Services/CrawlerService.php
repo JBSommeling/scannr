@@ -105,6 +105,7 @@ class CrawlerService
 
         // Configure services
         $this->scannerService->setClient($client);
+        $this->scannerService->setBrowsershotFetcher(null);
         $this->httpChecker->setClient($client);
         $this->urlNormalizer->setBaseUrl($config->baseUrl);
 
@@ -522,7 +523,7 @@ class CrawlerService
             return;
         }
 
-        $depCheck = BrowsershotFetcher::checkDependencies();
+        $depCheck = $this->checkBrowsershotDeps();
         if ($depCheck['available']) {
             $fetcher = new BrowsershotFetcher;
             $fetcher->setTimeout($config->timeout);

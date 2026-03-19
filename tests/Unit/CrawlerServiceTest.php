@@ -649,8 +649,6 @@ class CrawlerServiceTest extends TestCase
         ]);
 
         $services = $this->createServices();
-        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
-        $crawler->setClient($client);
 
         $renderedHtml = '<html><body><div id="root"><img src="https://cdn.example.com/hero.webp" /></div></body></html>';
         $mockFetcher = $this->createMock(BrowsershotFetcher::class);
@@ -659,9 +657,20 @@ class CrawlerServiceTest extends TestCase
             'body' => $renderedHtml,
             'finalUrl' => 'https://example.com',
         ]);
-        $services['scannerService']->setBrowsershotFetcher($mockFetcher);
 
-        $config = $this->createConfig(['maxUrls' => 5, 'scanElements' => ['a', 'img']]);
+        // Use a partial mock so configureJsRendering injects the mock fetcher
+        // instead of relying on stale singleton state
+        $crawler = $this->getMockBuilder(CrawlerService::class)
+            ->setConstructorArgs([$services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']])
+            ->onlyMethods(['configureJsRendering'])
+            ->getMock();
+        $crawler->method('configureJsRendering')
+            ->willReturnCallback(function () use ($mockFetcher, $services) {
+                $services['scannerService']->setBrowsershotFetcher($mockFetcher);
+            });
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['useJsRendering' => true, 'maxUrls' => 5, 'scanElements' => ['a', 'img']]);
         $crawlResult = $crawler->crawl($config);
 
         // Should find the image from JS-rendered content
@@ -701,8 +710,6 @@ class CrawlerServiceTest extends TestCase
         ]);
 
         $services = $this->createServices();
-        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
-        $crawler->setClient($client);
 
         $mockFetcher = $this->createMock(BrowsershotFetcher::class);
         $mockFetcher->method('fetch')->willReturn([
@@ -711,9 +718,20 @@ class CrawlerServiceTest extends TestCase
             'finalUrl' => 'https://example.com',
             'error' => 'Chrome crashed',
         ]);
-        $services['scannerService']->setBrowsershotFetcher($mockFetcher);
 
-        $config = $this->createConfig(['maxUrls' => 5]);
+        // Use a partial mock so configureJsRendering injects the mock fetcher
+        // instead of relying on stale singleton state
+        $crawler = $this->getMockBuilder(CrawlerService::class)
+            ->setConstructorArgs([$services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']])
+            ->onlyMethods(['configureJsRendering'])
+            ->getMock();
+        $crawler->method('configureJsRendering')
+            ->willReturnCallback(function () use ($mockFetcher, $services) {
+                $services['scannerService']->setBrowsershotFetcher($mockFetcher);
+            });
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['useJsRendering' => true, 'maxUrls' => 5]);
         $crawlResult = $crawler->crawl($config);
 
         // Should still find the static link from Guzzle response
