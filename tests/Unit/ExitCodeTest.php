@@ -529,4 +529,80 @@ class ExitCodeTest extends TestCase
             '--format' => 'json',
         ])->assertExitCode(0);
     }
+
+    // ==================================
+    // Quality gate: fail-on-broken
+    // ==================================
+
+    public function test_command_returns_failure_when_fail_on_broken_with_broken_links(): void
+    {
+        $this->mock(\Scannr\Services\CrawlerService::class, function ($mock) {
+            $mock->shouldReceive('crawl')->once()->andReturn([
+                'results' => [
+                    $this->makeResult(['status_4xx'], 'critical', 'high', 'internal', 404),
+                ],
+                'aborted' => false,
+            ]);
+        });
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--fail-on-broken' => true,
+            '--format' => 'json',
+        ])->assertExitCode(1);
+    }
+
+    public function test_command_returns_success_when_fail_on_broken_with_no_broken_links(): void
+    {
+        $this->mock(\Scannr\Services\CrawlerService::class, function ($mock) {
+            $mock->shouldReceive('crawl')->once()->andReturn([
+                'results' => [
+                    $this->makeResult([], 'info', 'high', 'internal', 200),
+                ],
+                'aborted' => false,
+            ]);
+        });
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--fail-on-broken' => true,
+            '--format' => 'json',
+        ])->assertExitCode(0);
+    }
+
+    public function test_command_returns_success_without_fail_on_broken_even_with_broken_links(): void
+    {
+        $this->mock(\Scannr\Services\CrawlerService::class, function ($mock) {
+            $mock->shouldReceive('crawl')->once()->andReturn([
+                'results' => [
+                    $this->makeResult(['status_4xx'], 'critical', 'high', 'internal', 404),
+                ],
+                'aborted' => false,
+            ]);
+        });
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--format' => 'json',
+        ])->assertExitCode(0);
+    }
+
+    public function test_command_returns_failure_when_fail_on_broken_and_fail_on_critical_both_set(): void
+    {
+        $this->mock(\Scannr\Services\CrawlerService::class, function ($mock) {
+            $mock->shouldReceive('crawl')->once()->andReturn([
+                'results' => [
+                    $this->makeResult(['status_4xx'], 'critical', 'high', 'internal', 404),
+                ],
+                'aborted' => false,
+            ]);
+        });
+
+        $this->artisan('site:scan', [
+            'url' => 'https://example.com',
+            '--fail-on-broken' => true,
+            '--fail-on-critical' => true,
+            '--format' => 'json',
+        ])->assertExitCode(1);
+    }
 }
