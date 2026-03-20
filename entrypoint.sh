@@ -109,6 +109,7 @@ CMD="$CMD $INPUT_URL"
 [ "$INPUT_SMART_JS" = "true" ] && CMD="$CMD --smart-js"
 [ "$INPUT_NO_ROBOTS" = "true" ] && CMD="$CMD --no-robots"
 [ "$INPUT_ADVANCED" = "true" ] && CMD="$CMD --advanced"
+[ "$INPUT_FAIL_ON_BROKEN" = "true" ]   && CMD="$CMD --fail-on-broken"
 [ "$INPUT_FAIL_ON_CRITICAL" = "true" ] && CMD="$CMD --fail-on-critical"
 
 # Quality gate: minimum rating
@@ -126,13 +127,22 @@ set -e
 
 echo "::endgroup::"
 
-# Set output
+# Set outputs
 echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-# Fail the step if scan found broken links (non-zero exit)
-if [ "$INPUT_FAIL_ON_BROKEN" = "true" ] && [ $EXIT_CODE -ne 0 ]; then
-    echo "::error::Scannr detected issues (exit code: $EXIT_CODE)"
-    exit $EXIT_CODE
+# Parse CI summary written by artisan (score, grade, counts)
+SUMMARY_FILE="/tmp/scannr-ci-summary.json"
+if [ -f "$SUMMARY_FILE" ]; then
+    SCORE=$(php -r "echo json_decode(file_get_contents('$SUMMARY_FILE'), true)['score'] ?? '';" 2>/dev/null || true)
+    GRADE=$(php -r "echo json_decode(file_get_contents('$SUMMARY_FILE'), true)['grade'] ?? '';" 2>/dev/null || true)
+    BROKEN_COUNT=$(php -r "echo json_decode(file_get_contents('$SUMMARY_FILE'), true)['broken_count'] ?? '';" 2>/dev/null || true)
+    CRITICAL_COUNT=$(php -r "echo json_decode(file_get_contents('$SUMMARY_FILE'), true)['critical_count'] ?? '';" 2>/dev/null || true)
+    [ -n "$SCORE" ]          && echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+    [ -n "$GRADE" ]          && echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
+    [ -n "$BROKEN_COUNT" ]   && echo "broken-count=$BROKEN_COUNT" >> "$GITHUB_OUTPUT"
+    [ -n "$CRITICAL_COUNT" ] && echo "critical-count=$CRITICAL_COUNT" >> "$GITHUB_OUTPUT"
 fi
 
-exit 0
+# Propagate artisan's exit code — quality gates (--fail-on-broken, --fail-on-critical,
+# --min-rating) are all handled inside artisan and reflected in its exit code.
+exit $EXIT_CODE
