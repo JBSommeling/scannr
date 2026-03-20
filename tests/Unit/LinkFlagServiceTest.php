@@ -429,7 +429,7 @@ class LinkFlagServiceTest extends TestCase
 
     public function test_linkedin_url_is_not_flagged_as_malformed(): void
     {
-        $url = 'https://www.linkedin.com/in/jesse-sommeling';
+        $url = 'https://www.linkedin.com/in/john-doe';
         $flags = $this->linkFlagService->detectFromUrl($url, true);
 
         $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
@@ -440,7 +440,7 @@ class LinkFlagServiceTest extends TestCase
 
     public function test_linkedin_url_with_trailing_slash_is_not_flagged_as_malformed(): void
     {
-        $url = 'https://www.linkedin.com/in/jesse-sommeling/';
+        $url = 'https://www.linkedin.com/in/john-doe/';
         $flags = $this->linkFlagService->detectFromUrl($url, true);
 
         $this->assertNotContains(LinkFlag::MALFORMED_URL, $flags);
