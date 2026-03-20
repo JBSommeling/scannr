@@ -1,5 +1,6 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/jbsommeling/scannr.svg)](https://packagist.org/packages/jbsommeling/scannr)
 [![Total Downloads](https://img.shields.io/packagist/dt/jbsommeling/scannr.svg)](https://packagist.org/packages/jbsommeling/scannr)
+[![Tests](https://img.shields.io/github/actions/workflow/status/JBSommeling/scannr/tests.yml?label=tests)](https://github.com/JBSommeling/scannr/actions)
 [![License](https://img.shields.io/packagist/l/jbsommeling/scannr.svg)](https://packagist.org/packages/jbsommeling/scannr)
 [![PHP Version Require](https://img.shields.io/packagist/dependency-v/jbsommeling/scannr/php)](https://packagist.org/packages/jbsommeling/scannr)
 [![Code Size](https://img.shields.io/github/languages/code-size/JBSommeling/scannr)](https://github.com/JBSommeling/scannr)
