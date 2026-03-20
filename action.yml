@@ -4,7 +4,7 @@ author: 'JBSommeling'
 
 branding:
   icon: 'search'
-  color: 'blue'
+  color: 'orange'
 
 inputs:
   url:
