@@ -269,7 +269,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: JBSommeling/scannr@v0.1.7
+      - uses: JBSommeling/scannr@v0.1.9
         with:
           url: https://example.com
 ```
@@ -277,7 +277,7 @@ jobs:
 ### All Options
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   with:
     url: https://example.com       # Required
     depth: 5                        # Max crawl depth (default: 3)
@@ -305,7 +305,7 @@ jobs:
 **Scan a SPA with JavaScript rendering:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   with:
     url: https://my-react-app.com
     js: true
@@ -315,7 +315,7 @@ jobs:
 **Get JSON output for downstream processing:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   id: scan
   with:
     url: https://example.com
@@ -330,7 +330,7 @@ jobs:
 **Deep weekly audit with sitemap:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   with:
     url: https://example.com
     depth: 5
@@ -342,7 +342,7 @@ jobs:
 **Quality gate — require "Excellent" rating:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   with:
     url: https://example.com
     fail-on-critical: true
@@ -352,7 +352,7 @@ jobs:
 **Relaxed quality gate — only fail on critical issues:**
 
 ```yaml
-- uses: JBSommeling/scannr@v0.1.7
+- uses: JBSommeling/scannr@v0.1.9
   with:
     url: https://example.com
     fail-on-critical: true
