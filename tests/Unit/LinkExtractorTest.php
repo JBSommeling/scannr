@@ -1301,7 +1301,7 @@ class LinkExtractorTest extends TestCase
     public function test_extract_links_js_bundle_linkedin_url_in_array_not_flagged_as_malformed(): void
     {
         // URLs in arrays should NOT be flagged as malformed - the comma after the quote is normal array syntax
-        $html = '<html><body><script>const socials=["https://www.linkedin.com/in/jesse-sommeling","https://github.com/user"];</script></body></html>';
+        $html = '<html><body><script>const socials=["https://www.linkedin.com/in/john-doe","https://github.com/user"];</script></body></html>';
 
         $links = $this->linkExtractor->extractLinks($html, 'https://example.com', true);
 

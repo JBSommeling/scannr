@@ -28,6 +28,7 @@ readonly class ScanConfig
         public bool $useSmartJs = false,
         public bool $respectRobots = true,
         public bool $showAdvanced = false,
+        public bool $failOnBroken = false,
         public bool $failOnCritical = false,
         public string $minRating = 'none',
     ) {}
@@ -100,6 +101,7 @@ readonly class ScanConfig
             useSmartJs: $useSmartJs,
             respectRobots: (bool) ($data['respectRobots'] ?? true),
             showAdvanced: (bool) ($data['showAdvanced'] ?? false),
+            failOnBroken: (bool) ($data['failOnBroken'] ?? false),
             failOnCritical: (bool) ($data['failOnCritical'] ?? false),
             minRating: $data['minRating'] ?? 'none',
         );
@@ -145,6 +147,7 @@ readonly class ScanConfig
             'useSmartJs' => (bool) $command->option('smart-js'),
             'respectRobots' => ! $command->option('no-robots'),
             'showAdvanced' => (bool) $command->option('advanced'),
+            'failOnBroken' => (bool) $command->option('fail-on-broken'),
             'failOnCritical' => (bool) $command->option('fail-on-critical'),
             'minRating' => $command->option('min-rating'),
         ]);
@@ -174,6 +177,7 @@ readonly class ScanConfig
             'useSmartJs' => $this->useSmartJs,
             'respectRobots' => $this->respectRobots,
             'showAdvanced' => $this->showAdvanced,
+            'failOnBroken' => $this->failOnBroken,
             'failOnCritical' => $this->failOnCritical,
             'minRating' => $this->minRating,
         ];

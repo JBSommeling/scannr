@@ -36,6 +36,7 @@ class ScanSite extends Command
         {--no-robots : Ignore robots.txt rules (Disallow/Crawl-delay)}
         {--advanced : Show XML namespaces, CDN root domains, and JS framework links}
         {--queue : Dispatch scan as a background job}
+        {--fail-on-broken : Fail with exit code 1 if any broken links are found}
         {--fail-on-critical : Fail with exit code 1 if critical issues are found}
         {--min-rating=none : Minimum acceptable rating (excellent, good, needs_attention, none)}';
 
@@ -178,8 +179,20 @@ class ScanSite extends Command
         // Format and display results, capturing the integrity score
         $scoreResult = $this->resultFormatter->format($results, $config, $output, $error);
 
+        // Write a machine-readable CI summary (grade, score, counts) for entrypoint.sh
+        $this->writeCiSummary($scoreResult);
+
         // Return failure if scan was aborted
         if ($crawlResult['aborted'] ?? false) {
+            return CommandAlias::FAILURE;
+        }
+
+        // Check quality gate: fail on broken links
+        if ($config->failOnBroken && ($scoreResult->summary['brokenLinks'] ?? 0) > 0) {
+            $count = $scoreResult->summary['brokenLinks'];
+            $this->newLine();
+            $this->error("Quality gate failed: {$count} broken link(s) found.");
+
             return CommandAlias::FAILURE;
         }
 
@@ -213,5 +226,23 @@ class ScanSite extends Command
         }
 
         return CommandAlias::SUCCESS;
+    }
+
+    /**
+     * Write a machine-readable CI summary to /tmp/scannr-ci-summary.json.
+     *
+     * Consumed by entrypoint.sh to populate GitHub Actions step outputs
+     * (score, grade, broken-count, critical-count).
+     */
+    protected function writeCiSummary(\Scannr\DTO\IntegrityScoreResult $scoreResult): void
+    {
+        $summary = [
+            'score' => $scoreResult->overallScore,
+            'grade' => $scoreResult->grade,
+            'broken_count' => $scoreResult->summary['brokenLinks'] ?? 0,
+            'critical_count' => $scoreResult->summary['criticalIssues'] ?? 0,
+        ];
+
+        file_put_contents('/tmp/scannr-ci-summary.json', json_encode($summary));
     }
 }
