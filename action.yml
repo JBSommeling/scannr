@@ -1,5 +1,5 @@
 name: 'Scannr - Website Link Scanner'
-description: 'Scan your website for broken links, redirect chains, HTTPS downgrades, and more using BFS crawling with optional JavaScript rendering for SPAs.'
+description: 'Scan your website for broken links, redirect chains, and HTTPS downgrades. Supports BFS crawling and JavaScript rendering.'
 author: 'JBSommeling'
 
 branding:
@@ -68,20 +68,28 @@ inputs:
     description: 'Maximum delay between requests in milliseconds'
     required: false
   fail-on-broken:
-    description: 'Fail the GitHub Action step if broken links are found'
+    description: 'Fail the GitHub Action step if any broken links are found'
     required: false
     default: 'false'
   fail-on-critical:
-    description: 'Fail the GitHub Action step if critical issues are found'
+    description: 'Fail the GitHub Action step if critical integrity issues are found'
     required: false
     default: 'false'
   min-rating:
-    description: 'Minimum acceptable integrity rating: excellent, good, needs_attention, none'
+    description: 'Minimum acceptable integrity rating (excellent, good, needs_attention). Fails the step if the site scores below this threshold.'
     required: false
 
 outputs:
   exit-code:
-    description: 'Exit code from the scan (0 = success, 1 = issues found)'
+    description: 'Exit code from the scan (0 = success, 1 = quality gate failed)'
+  score:
+    description: 'Integrity score of the scanned site (0–100)'
+  grade:
+    description: 'Integrity grade of the scanned site (Excellent, Good, Needs Attention, Critical)'
+  broken-count:
+    description: 'Number of broken links found'
+  critical-count:
+    description: 'Number of critical integrity issues found'
 
 runs:
   using: 'docker'
