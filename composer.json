@@ -13,6 +13,18 @@
         "github-action"
     ],
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Jesse Sommeling",
+            "homepage": "https://sommeling.dev",
+            "role": "Developer"
+        }
+    ],
+    "homepage": "https://github.com/JBSommeling/scannr",
+    "support": {
+        "issues": "https://github.com/JBSommeling/scannr/issues",
+        "source": "https://github.com/JBSommeling/scannr"
+    },
     "require": {
         "php": "^8.4",
         "ext-libxml": "*",

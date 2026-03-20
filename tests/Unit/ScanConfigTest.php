@@ -1154,4 +1154,89 @@ class ScanConfigTest extends TestCase
         $this->assertEquals(150, $restored->delayMin);
         $this->assertEquals(350, $restored->delayMax);
     }
+
+    // ==================
+    // failOnBroken tests
+    // ==================
+
+    public function test_scan_config_defaults_fail_on_broken_to_false(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+        );
+
+        $this->assertFalse($config->failOnBroken);
+    }
+
+    public function test_scan_config_accepts_fail_on_broken_true(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            failOnBroken: true,
+        );
+
+        $this->assertTrue($config->failOnBroken);
+    }
+
+    public function test_scan_config_from_array_includes_fail_on_broken(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+            'failOnBroken' => true,
+        ]);
+
+        $this->assertTrue($result['config']->failOnBroken);
+    }
+
+    public function test_scan_config_from_array_defaults_fail_on_broken_to_false(): void
+    {
+        $result = ScanConfig::fromArray([
+            'baseUrl' => 'https://example.com',
+        ]);
+
+        $this->assertFalse($result['config']->failOnBroken);
+    }
+
+    public function test_scan_config_to_array_includes_fail_on_broken(): void
+    {
+        $config = new ScanConfig(
+            baseUrl: 'https://example.com',
+            maxDepth: 3,
+            maxUrls: 100,
+            timeout: 5,
+            scanElements: ['a'],
+            statusFilter: 'all',
+            elementFilter: 'all',
+            outputFormat: 'table',
+            delayMin: 300,
+            delayMax: 500,
+            useSitemap: false,
+            customTrackingParams: [],
+            failOnBroken: true,
+        );
+
+        $this->assertTrue($config->toArray()['failOnBroken']);
+    }
 }
