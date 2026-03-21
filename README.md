@@ -51,10 +51,25 @@ The authors are not responsible for misuse of this tool.
 
 ### As a Laravel Dev Dependency
 
-```bash
-composer require jbsommeling/scannr
-```
+`GITHUB_TOKEN` is built-in and works if both repos are in the same org. If not, create a PAT with repo scope (content, read only) and add it as a secret (Settings → Secrets → Actions), then use ${{ secrets.YOUR_SECRET_NAME }}
+instead.
 
+```bash
+ "repositories": [
+       {
+           "type": "vcs",
+           "url": "git@github.com:YOUR_USERNAME/scannr.git"
+       }
+   ],
+```
+Then require it:
+```bash
+  composer require jbsommeling/scannr:^1.0.0 (or most recent version)
+```
+Create and set token
+```bash
+composer config github-oauth.github.com YOUR_PERSONAL_ACCESS_TOKEN
+```
 The package auto-discovers its service provider. To publish the configuration:
 
 ```bash
@@ -252,7 +267,8 @@ Summary:
 
 ## GitHub Action
 
-Use Scannr in your CI/CD pipeline to catch broken links on every deploy.
+Use Scannr in your CI/CD pipeline to catch broken links on every deploy. 
+ONLY for the customers I want to do this, as I an 'sharing' my project that way. When API is implemented, lets use that one instead.
 
 ### Basic Usage
 
@@ -418,10 +434,3 @@ This creates `config/scannr.php` with settings for:
 ```bash
 composer test
 ```
-
----
-
-## License
-
-This package is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-
