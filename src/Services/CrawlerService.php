@@ -775,7 +775,7 @@ class CrawlerService
                         'url' => $urlData['url'],
                         'depth' => 0,
                         'source' => $urlData['source'],
-                        'element' => 'a',
+                        'element' => $urlData['element'] ?? 'a',
                     ]);
                 }
             }
