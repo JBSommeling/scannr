@@ -387,9 +387,13 @@ class SitemapService
             }
         }
 
-        // Extract image URLs from <image:image><image:loc> tags
-        $imageNodes = $xml->xpath('//image:image/image:loc')
-            ?: $xml->xpath('//*[local-name()="image"]/*[local-name()="loc"]');
+        // Extract image URLs — only use the prefixed query when the namespace was registered
+        $imageNodes = isset($namespaces['image'])
+            ? $xml->xpath('//image:image/image:loc')
+            : null;
+        if (empty($imageNodes)) {
+            $imageNodes = $xml->xpath('//*[local-name()="image"]/*[local-name()="loc"]');
+        }
         if (! empty($imageNodes)) {
             foreach ($imageNodes as $node) {
                 $urls[] = ['url' => (string) $node, 'element' => 'img'];
