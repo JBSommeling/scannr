@@ -112,7 +112,7 @@ class SitemapService
      * 2. Trying common sitemap locations (sitemap.xml, sitemap_index.xml, sitemap/)
      *
      * @param  string  $baseUrl  The base URL of the website to scan.
-     * @return array{urls: array<array{url: string, source: string}>, count: int} An array containing discovered URLs and total count.
+     * @return array{urls: array<array{url: string, source: string, element: string}>, count: int} An array containing discovered URLs and total count.
      *
      * @throws GuzzleException
      */
@@ -156,7 +156,9 @@ class SitemapService
         // Filter to internal URLs only and remove duplicates
         $filteredUrls = [];
         $seen = [];
-        foreach ($discoveredUrls as $url) {
+        foreach ($discoveredUrls as $urlData) {
+            $url = $urlData['url'];
+            $element = $urlData['element'] ?? 'a';
             $normalizedUrl = $this->urlNormalizer->normalizeUrl($url, $this->baseUrl) ?? rtrim($url, '/');
             $urlKey = $this->urlNormalizer->canonicalUrlKey($normalizedUrl);
             if (! isset($seen[$urlKey]) && $this->isInternalUrl($normalizedUrl)) {
@@ -164,6 +166,7 @@ class SitemapService
                 $filteredUrls[] = [
                     'url' => $normalizedUrl,
                     'source' => 'sitemap',
+                    'element' => $element,
                 ];
             }
         }
@@ -322,10 +325,11 @@ class SitemapService
      *
      * Handles both standard sitemaps (<urlset>) and sitemap index files (<sitemapindex>).
      * Supports both namespaced and non-namespaced XML formats.
+     * Extracts image URLs from the Google Image Sitemap extension namespace.
      *
      * @param  string  $content  The XML sitemap content.
      * @param  int  $depth  Current recursion depth for sitemap index processing.
-     * @return array<string> Array of discovered page URLs.
+     * @return array<array{url: string, element: string}> Array of discovered URLs with element type.
      *
      * @throws GuzzleException
      */
@@ -359,6 +363,9 @@ class SitemapService
         if (isset($namespaces[''])) {
             $xml->registerXPathNamespace('sm', $namespaces['']);
         }
+        if (isset($namespaces['image'])) {
+            $xml->registerXPathNamespace('image', $namespaces['image']);
+        }
 
         // Check if it's a sitemap index
         $sitemapNodes = $xml->xpath('//sm:sitemap/sm:loc') ?: $xml->xpath('//sitemap/loc');
@@ -376,7 +383,16 @@ class SitemapService
         $urlNodes = $xml->xpath('//sm:url/sm:loc') ?: $xml->xpath('//url/loc');
         if (! empty($urlNodes)) {
             foreach ($urlNodes as $node) {
-                $urls[] = (string) $node;
+                $urls[] = ['url' => (string) $node, 'element' => 'a'];
+            }
+        }
+
+        // Extract image URLs from <image:image><image:loc> tags
+        $imageNodes = $xml->xpath('//image:image/image:loc')
+            ?: $xml->xpath('//*[local-name()="image"]/*[local-name()="loc"]');
+        if (! empty($imageNodes)) {
+            foreach ($imageNodes as $node) {
+                $urls[] = ['url' => (string) $node, 'element' => 'img'];
             }
         }
 
@@ -386,7 +402,7 @@ class SitemapService
             foreach ($locNodes as $node) {
                 $url = (string) $node;
                 if (filter_var($url, FILTER_VALIDATE_URL)) {
-                    $urls[] = $url;
+                    $urls[] = ['url' => $url, 'element' => 'a'];
                 }
             }
         }
@@ -402,7 +418,7 @@ class SitemapService
      *
      * @param  string  $content  The HTML content.
      * @param  string  $baseUrl  The base URL for resolving relative links.
-     * @return array<string> Array of discovered page URLs.
+     * @return array<array{url: string, element: string}> Array of discovered URLs with element type.
      */
     public function parseHtmlSitemap(string $content, string $baseUrl): array
     {
@@ -427,7 +443,7 @@ class SitemapService
                 $normalizedUrl = $this->urlNormalizer->normalizeUrl($href, $baseUrl);
 
                 if ($normalizedUrl !== null) {
-                    $urls[] = $normalizedUrl;
+                    $urls[] = ['url' => $normalizedUrl, 'element' => 'a'];
                 }
             });
         } catch (\Exception $e) {
@@ -444,7 +460,7 @@ class SitemapService
      * and lines starting with # (comments).
      *
      * @param  string  $content  The plain text content.
-     * @return array<string> Array of discovered page URLs.
+     * @return array<array{url: string, element: string}> Array of discovered URLs with element type.
      */
     public function parseTextSitemap(string $content): array
     {
@@ -461,7 +477,7 @@ class SitemapService
 
             // Check if it looks like a URL
             if (filter_var($line, FILTER_VALIDATE_URL)) {
-                $urls[] = $line;
+                $urls[] = ['url' => $line, 'element' => 'a'];
             }
         }
 
