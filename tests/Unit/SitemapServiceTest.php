@@ -107,9 +107,10 @@ class SitemapServiceTest extends TestCase
         $result = $this->service->parseSitemap('https://example.com/sitemap.xml');
 
         $this->assertCount(3, $result);
-        $this->assertContains('https://example.com/page1', $result);
-        $this->assertContains('https://example.com/page2', $result);
-        $this->assertContains('https://example.com/page3', $result);
+        $resultUrls = array_column($result, 'url');
+        $this->assertContains('https://example.com/page1', $resultUrls);
+        $this->assertContains('https://example.com/page2', $resultUrls);
+        $this->assertContains('https://example.com/page3', $resultUrls);
     }
 
     public function test_parse_sitemap_respects_max_recursion_depth(): void
@@ -281,7 +282,8 @@ class SitemapServiceTest extends TestCase
         $result = $this->service->parseXmlSitemap($sitemapXml, 0);
 
         $this->assertCount(1, $result);
-        $this->assertEquals('https://example.com/page1', $result[0]);
+        $this->assertEquals('https://example.com/page1', $result[0]['url']);
+        $this->assertEquals('a', $result[0]['element']);
     }
 
     public function test_parse_xml_sitemap_without_urlset_wrapper(): void
@@ -296,8 +298,9 @@ class SitemapServiceTest extends TestCase
         $result = $this->service->parseXmlSitemap($sitemapXml, 0);
 
         $this->assertCount(2, $result);
-        $this->assertContains('https://example.com/page1', $result);
-        $this->assertContains('https://example.com/page2', $result);
+        $resultUrls = array_column($result, 'url');
+        $this->assertContains('https://example.com/page1', $resultUrls);
+        $this->assertContains('https://example.com/page2', $resultUrls);
     }
 
     public function test_parse_xml_sitemap_with_direct_loc_elements(): void
@@ -314,6 +317,175 @@ class SitemapServiceTest extends TestCase
         $result = $this->service->parseXmlSitemap($sitemapXml, 0);
 
         $this->assertCount(2, $result);
+    }
+
+    // ===================
+    // XML sitemap image extraction tests
+    // ===================
+
+    public function test_parse_xml_sitemap_extracts_image_urls(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+                <url>
+                    <loc>https://example.com/</loc>
+                    <image:image>
+                        <image:loc>https://example.com/images/photo.webp</image:loc>
+                    </image:image>
+                </url>
+            </urlset>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $this->assertCount(2, $result);
+
+        $pageUrls = array_filter($result, fn ($item) => $item['element'] === 'a');
+        $imageUrls = array_filter($result, fn ($item) => $item['element'] === 'img');
+
+        $this->assertCount(1, $pageUrls);
+        $this->assertCount(1, $imageUrls);
+        $this->assertEquals('https://example.com/', array_values($pageUrls)[0]['url']);
+        $this->assertEquals('https://example.com/images/photo.webp', array_values($imageUrls)[0]['url']);
+    }
+
+    public function test_parse_xml_sitemap_extracts_multiple_images_per_url(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+                <url>
+                    <loc>https://example.com/</loc>
+                    <image:image>
+                        <image:loc>https://example.com/images/one.webp</image:loc>
+                    </image:image>
+                    <image:image>
+                        <image:loc>https://example.com/images/two.webp</image:loc>
+                    </image:image>
+                    <image:image>
+                        <image:loc>https://example.com/images/three.webp</image:loc>
+                    </image:image>
+                </url>
+            </urlset>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $imageUrls = array_filter($result, fn ($item) => $item['element'] === 'img');
+        $this->assertCount(3, $imageUrls);
+
+        $imageUrlValues = array_column(array_values($imageUrls), 'url');
+        $this->assertContains('https://example.com/images/one.webp', $imageUrlValues);
+        $this->assertContains('https://example.com/images/two.webp', $imageUrlValues);
+        $this->assertContains('https://example.com/images/three.webp', $imageUrlValues);
+    }
+
+    public function test_parse_xml_sitemap_without_image_namespace_returns_pages_only(): void
+    {
+        $this->service->setBaseUrl('https://example.com');
+
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url><loc>https://example.com/page1</loc></url>
+                <url><loc>https://example.com/page2</loc></url>
+            </urlset>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $this->assertCount(2, $result);
+        foreach ($result as $item) {
+            $this->assertEquals('a', $item['element']);
+        }
+    }
+
+    public function test_parse_xml_sitemap_with_real_world_image_sitemap(): void
+    {
+        $this->service->setBaseUrl('https://sommeling.dev');
+
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+                <url>
+                    <loc>https://sommeling.dev/</loc>
+                    <lastmod>2026-03-22</lastmod>
+                    <changefreq>weekly</changefreq>
+                    <priority>1.0</priority>
+                    <image:image>
+                        <image:loc>https://sommeling.dev/assets/images/scannr.webp</image:loc>
+                        <image:title>Scannr - Saas</image:title>
+                        <image:caption>SaaS landing page</image:caption>
+                    </image:image>
+                    <image:image>
+                        <image:loc>https://sommeling.dev/assets/images/headshot.webp</image:loc>
+                        <image:title>Headshot</image:title>
+                    </image:image>
+                </url>
+            </urlset>';
+
+        $result = $this->service->parseXmlSitemap($sitemapXml, 0);
+
+        $this->assertCount(3, $result);
+
+        $pageUrls = array_filter($result, fn ($item) => $item['element'] === 'a');
+        $imageUrls = array_filter($result, fn ($item) => $item['element'] === 'img');
+
+        $this->assertCount(1, $pageUrls);
+        $this->assertCount(2, $imageUrls);
+
+        $imageUrlValues = array_column(array_values($imageUrls), 'url');
+        $this->assertContains('https://sommeling.dev/assets/images/scannr.webp', $imageUrlValues);
+        $this->assertContains('https://sommeling.dev/assets/images/headshot.webp', $imageUrlValues);
+    }
+
+    public function test_discover_urls_includes_image_urls_with_element_type(): void
+    {
+        $sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+                <url>
+                    <loc>https://example.com/</loc>
+                    <image:image>
+                        <image:loc>https://example.com/images/photo.webp</image:loc>
+                    </image:image>
+                </url>
+            </urlset>';
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnCallback(function ($method, $url) use ($sitemapXml) {
+                $mockStream = $this->createMock(StreamInterface::class);
+                $mockResponse = $this->createMock(ResponseInterface::class);
+
+                if (str_contains($url, 'robots.txt')) {
+                    $mockResponse->method('getStatusCode')->willReturn(404);
+
+                    return $mockResponse;
+                }
+
+                $mockStream->method('__toString')->willReturn($sitemapXml);
+                $mockResponse->method('getStatusCode')->willReturn(200);
+                $mockResponse->method('getBody')->willReturn($mockStream);
+                $mockResponse->method('getHeaderLine')->willReturn('application/xml');
+
+                return $mockResponse;
+            });
+
+        $this->service->setClient($mockClient);
+
+        $result = $this->service->discoverUrls('https://example.com');
+
+        $this->assertEquals(2, $result['count']);
+        $this->assertCount(2, $result['urls']);
+
+        $pageUrls = array_filter($result['urls'], fn ($item) => $item['element'] === 'a');
+        $imageUrls = array_filter($result['urls'], fn ($item) => $item['element'] === 'img');
+
+        $this->assertCount(1, $pageUrls);
+        $this->assertCount(1, $imageUrls);
+        $this->assertEquals('sitemap', array_values($imageUrls)[0]['source']);
     }
 
     // ===================
@@ -517,7 +689,9 @@ class SitemapServiceTest extends TestCase
         foreach ($result['urls'] as $urlData) {
             $this->assertArrayHasKey('url', $urlData);
             $this->assertArrayHasKey('source', $urlData);
+            $this->assertArrayHasKey('element', $urlData);
             $this->assertEquals('sitemap', $urlData['source']);
+            $this->assertEquals('a', $urlData['element']);
         }
     }
 
