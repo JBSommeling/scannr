@@ -22,10 +22,10 @@ class SitemapLiveTest extends TestCase
         $this->assertNotEmpty($urls, 'Should parse URLs from sitemap');
 
         // Test that sommeling.dev URLs are considered internal for www.sommeling.dev
-        foreach (array_slice($urls, 0, 3) as $url) {
+        foreach (array_slice($urls, 0, 3) as $urlData) {
             $this->assertTrue(
-                $service->isInternalUrl($url),
-                "URL $url should be considered internal for www.sommeling.dev"
+                $service->isInternalUrl($urlData['url']),
+                "URL {$urlData['url']} should be considered internal for www.sommeling.dev"
             );
         }
 

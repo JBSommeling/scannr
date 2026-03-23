@@ -430,6 +430,47 @@ class CrawlerServiceTest extends TestCase
         $this->assertStringContainsString('sitemap', strtolower($sitemapMessages[0]));
     }
 
+    public function test_crawl_with_sitemap_image_urls_uses_img_element(): void
+    {
+        $sitemap = '<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+                <url>
+                    <loc>https://example.com/</loc>
+                    <image:image>
+                        <image:loc>https://example.com/images/photo.webp</image:loc>
+                    </image:image>
+                </url>
+            </urlset>';
+
+        $client = $this->createMockClient([
+            // Robots.txt check
+            new Response(404, [], ''),
+            // Sitemap.xml check
+            new Response(200, ['Content-Type' => 'application/xml'], $sitemap),
+            // Base URL crawl
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body></body></html>'),
+            // Page from sitemap (homepage)
+            new Response(200, ['Content-Type' => 'text/html'], '<html><body></body></html>'),
+            // Image from sitemap
+            new Response(200, ['Content-Type' => 'image/webp'], ''),
+        ]);
+
+        $services = $this->createServices();
+        $crawler = new CrawlerService($services['scannerService'], $services['urlNormalizer'], $services['httpChecker'], $services['sitemapService']);
+        $crawler->setClient($client);
+
+        $config = $this->createConfig(['useSitemap' => true, 'maxUrls' => 20]);
+        $crawlResult = $crawler->crawl($config);
+
+        $imageResult = collect($crawlResult['results'])->first(
+            fn ($r) => str_contains($r['url'], 'photo.webp')
+        );
+
+        $this->assertNotNull($imageResult, 'Image URL from sitemap should appear in results');
+        $this->assertEquals('img', $imageResult['sourceElement'], 'Sitemap image URLs should have sourceElement=img');
+    }
+
     // ==================
     // State management tests
     // ==================
