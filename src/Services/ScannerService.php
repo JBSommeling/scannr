@@ -117,7 +117,7 @@ class ScannerService
             if ($htmlForExtraction !== null) {
                 $extractedLinks = $this->linkExtractor->extractLinks(
                     $htmlForExtraction,
-                    $url,
+                    $result['finalUrl'] ?? $url,
                     $this->browsershotFetcher !== null,
                 );
             }
