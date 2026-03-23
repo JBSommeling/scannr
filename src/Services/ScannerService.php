@@ -87,6 +87,17 @@ class ScannerService
 
         $result = $this->httpChecker->followRedirects($url, 'GET');
 
+        // Retry with browser headers if the status suggests bot protection.
+        // CDNs may block bot UAs (returning 404/timeout) while serving browsers.
+        $browserVerified = false;
+        if ($this->isBotBlockCandidate($result['finalStatus'])) {
+            $verification = $this->httpChecker->verifyWithBrowserHeaders($url);
+            if ($verification !== null && is_int($verification['finalStatus']) && $verification['finalStatus'] >= 200 && $verification['finalStatus'] < 400) {
+                $result = $verification;
+                $browserVerified = true;
+            }
+        }
+
         $extractedLinks = [];
         $rawBody = null;
         if ($result['finalStatus'] === 200) {
@@ -119,6 +130,11 @@ class ScannerService
 
         // Add HTTP response flags
         $flags = array_merge($flags, $this->linkFlagService->detectFromHttpResponse($status));
+
+        // Add bot protection flag if browser verification succeeded
+        if ($browserVerified) {
+            $flags[] = LinkFlag::BOT_PROTECTION;
+        }
 
         // Add URL-based flags
         $flags = array_merge($flags, $this->linkFlagService->detectFromUrl($url, false));
@@ -192,6 +208,16 @@ class ScannerService
 
         $result = $this->httpChecker->followRedirects($url, 'HEAD');
 
+        // Retry with browser headers if the status suggests bot protection.
+        $browserVerified = false;
+        if ($this->isBotBlockCandidate($result['finalStatus'])) {
+            $verification = $this->httpChecker->verifyWithBrowserHeaders($url);
+            if ($verification !== null && is_int($verification['finalStatus']) && $verification['finalStatus'] >= 200 && $verification['finalStatus'] < 400) {
+                $result = $verification;
+                $browserVerified = true;
+            }
+        }
+
         // For external URLs, only keep the first redirect destination.
         // We don't care about external redirect chains, only whether the link works.
         $firstRedirect = ! empty($result['chain']) ? [$result['chain'][0]] : [];
@@ -206,6 +232,11 @@ class ScannerService
 
         // Add HTTP response flags
         $flags = array_merge($flags, $this->linkFlagService->detectFromHttpResponse($status));
+
+        // Add bot protection flag if browser verification succeeded
+        if ($browserVerified) {
+            $flags[] = LinkFlag::BOT_PROTECTION;
+        }
 
         // Build analysis from flags
         $analysis = $this->linkFlagService->buildAnalysis($flags, $status, true);
@@ -230,6 +261,21 @@ class ScannerService
                 'retryAfter' => $result['retryAfter'],
             ],
         ];
+    }
+
+    /**
+     * Check if an HTTP status suggests potential bot protection blocking.
+     *
+     * CDNs and WAFs may return 403/404/405 or silently drop connections
+     * for requests with bot User-Agents while serving content to browsers.
+     */
+    protected function isBotBlockCandidate(int|string $status): bool
+    {
+        if ($status === 'Timeout') {
+            return true;
+        }
+
+        return is_int($status) && in_array($status, [403, 404, 405], true);
     }
 
     /**

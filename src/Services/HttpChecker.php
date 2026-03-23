@@ -116,6 +116,7 @@ class HttpChecker
      *
      * @param  string  $url  The URL to request.
      * @param  string  $method  HTTP method ('GET' or 'HEAD').
+     * @param  array  $requestOptions  Optional per-request Guzzle options (e.g., headers override).
      * @return array{
      *     finalStatus: int|string,
      *     finalUrl: string,
@@ -128,7 +129,7 @@ class HttpChecker
      *
      * @throws GuzzleException
      */
-    public function followRedirects(string $url, string $method = 'GET'): array
+    public function followRedirects(string $url, string $method = 'GET', array $requestOptions = []): array
     {
         $chain = [];
         $currentUrl = $url;
@@ -145,7 +146,7 @@ class HttpChecker
 
         while ($hops < $this->maxRedirects) {
             try {
-                $response = $this->client->request($method, $currentUrl);
+                $response = $this->client->request($method, $currentUrl, $requestOptions);
                 $finalStatus = $response->getStatusCode();
 
                 // If 3xx redirect
@@ -264,6 +265,42 @@ class HttpChecker
 
         // Same scheme, path, and query = www-only redirect
         return $fromWithoutHost === $toWithoutHost;
+    }
+
+    /**
+     * Verify a URL using browser-like headers to detect bot protection.
+     *
+     * When a URL returns 403/404/405/timeout with the bot User-Agent,
+     * this retries with browser-like headers using the same redirect-following
+     * logic. Returns the full result including finalUrl, redirect chain, and
+     * HTTPS downgrade info so metadata stays consistent with the verified response.
+     *
+     * @param  string  $url  The URL to verify.
+     * @return array{
+     *     finalStatus: int|string,
+     *     finalUrl: string,
+     *     chain: array<string>,
+     *     loop: bool,
+     *     body: string|null,
+     *     hasHttpsDowngrade: bool,
+     *     retryAfter: int|null
+     * }|null Full redirect result, or null on failure.
+     */
+    public function verifyWithBrowserHeaders(string $url): ?array
+    {
+        try {
+            return $this->followRedirects($url, 'GET', [
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                    'Accept-Encoding' => 'gzip, deflate',
+                    'Cache-Control' => 'no-cache',
+                ],
+            ]);
+        } catch (\Exception) {
+            return null;
+        }
     }
 
     /**
