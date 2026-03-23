@@ -671,4 +671,56 @@ class HttpCheckerTest extends TestCase
         $this->assertFalse($result['redirect']['isLoop']);
         $this->assertFalse($result['redirect']['hasHttpsDowngrade']);
     }
+
+    // ============================================
+    // verifyWithBrowserHeaders tests
+    // ============================================
+
+    public function test_verify_with_browser_headers_returns_status_and_body_on_200(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html>OK</html>');
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
+
+        $this->assertNotNull($result);
+        $this->assertEquals(200, $result['status']);
+        $this->assertEquals('<html>OK</html>', $result['body']);
+    }
+
+    public function test_verify_with_browser_headers_returns_null_body_on_non_200(): void
+    {
+        $mockClient = $this->createMockClient(301);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
+
+        $this->assertNotNull($result);
+        $this->assertEquals(301, $result['status']);
+        $this->assertNull($result['body']);
+    }
+
+    public function test_verify_with_browser_headers_returns_null_on_exception(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willThrowException(new ConnectException('Connection timed out', new Request('GET', 'https://cdn.example.com')));
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
+
+        $this->assertNull($result);
+    }
+
+    public function test_verify_with_browser_headers_returns_status_on_404(): void
+    {
+        $mockClient = $this->createMockClient(404);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
+
+        $this->assertNotNull($result);
+        $this->assertEquals(404, $result['status']);
+        $this->assertNull($result['body']);
+    }
 }

@@ -267,6 +267,42 @@ class HttpChecker
     }
 
     /**
+     * Verify a URL using browser-like headers to detect bot protection.
+     *
+     * When a URL returns 403/404/405/timeout with the bot User-Agent,
+     * this retries with browser-like headers. If the URL responds
+     * successfully, the original failure was due to bot blocking.
+     *
+     * @param  string  $url  The URL to verify.
+     * @return array{status: int, body: string|null}|null Response data, or null on failure.
+     */
+    public function verifyWithBrowserHeaders(string $url): ?array
+    {
+        try {
+            $response = $this->client->request('GET', $url, [
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                    'Accept-Encoding' => 'gzip, deflate, br',
+                    'Cache-Control' => 'no-cache',
+                ],
+                'allow_redirects' => true,
+            ]);
+
+            $status = $response->getStatusCode();
+            $body = ($status === 200) ? (string) $response->getBody() : null;
+
+            return [
+                'status' => $status,
+                'body' => $body,
+            ];
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    /**
      * Fetch the content of an external script file.
      *
      * Makes a GET request to retrieve the JavaScript bundle content.

@@ -839,4 +839,178 @@ class ScannerServiceTest extends TestCase
         $this->assertEquals('403', $result['status']);
         $this->assertContains('bot_protection', $result['analysis']['flags']);
     }
+
+    // =============================================
+    // Browser-UA retry (bot protection detection)
+    // =============================================
+
+    public function test_internal_url_404_retries_with_browser_headers_and_succeeds(): void
+    {
+        // First call (followRedirects) returns 404, second call (browser retry) returns 200
+        $response404 = $this->createMockResponse(404);
+        $response200 = $this->createMockResponse(200, '<html>OK</html>');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response404, $response200);
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://zenrows.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://cdn.zenrows.com/css/public.css',
+            'https://www.zenrows.com/legal',
+            'link'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+    }
+
+    public function test_internal_url_timeout_retries_with_browser_headers_and_succeeds(): void
+    {
+        $response200 = $this->createMockResponse(200, '<html>OK</html>');
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls(
+                $this->throwException(new \GuzzleHttp\Exception\ConnectException(
+                    'Connection timed out',
+                    new \GuzzleHttp\Psr7\Request('GET', 'https://app.zenrows.com')
+                )),
+                $response200,
+            );
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://zenrows.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://app.zenrows.com/livewire/livewire.min.js',
+            'https://app.zenrows.com/forgot-password',
+            'script'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+    }
+
+    public function test_internal_url_404_with_browser_retry_also_404_stays_broken(): void
+    {
+        // Both calls return 404 — genuinely broken
+        $mockClient = $this->createMockClient(404);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com/missing-page',
+            'https://example.com',
+            'a'
+        );
+
+        $this->assertEquals('404', $result['status']);
+        $this->assertContains('status_4xx', $result['analysis']['flags']);
+    }
+
+    public function test_external_url_404_retries_with_browser_headers_and_succeeds(): void
+    {
+        $response404 = $this->createMockResponse(404);
+        $response200 = $this->createMockResponse(200);
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response404, $response200);
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://cdn.external.com/style.css',
+            'https://example.com',
+            'link'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+    }
+
+    public function test_external_url_403_retries_with_browser_headers_and_succeeds(): void
+    {
+        $response403 = $this->createMockResponse(403);
+        $response200 = $this->createMockResponse(200);
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response403, $response200);
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processExternalUrl(
+            'https://cdn.external.com/app.js',
+            'https://example.com',
+            'script'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+    }
+
+    public function test_internal_url_200_does_not_trigger_browser_retry(): void
+    {
+        // 200 response should NOT trigger any retry
+        $html = '<html><body><a href="/page">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com/page',
+            'https://example.com',
+            'a'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertNotContains('bot_protection', $result['analysis']['flags']);
+    }
+
+    public function test_browser_retry_does_not_trigger_for_form_endpoints(): void
+    {
+        $mockClient = $this->createMockClient(404);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com/api/contact',
+            'https://example.com',
+            'form'
+        );
+
+        // Form endpoints use POST, not the browser retry flow
+        $this->assertEquals('404', $result['status']);
+    }
+
+    public function test_internal_url_browser_retry_extracts_links_from_verified_body(): void
+    {
+        // Browser retry returns HTML with links — they should be extracted
+        $html = '<html><body><a href="/about">About</a></body></html>';
+        $response404 = $this->createMockResponse(404);
+        $response200 = $this->createMockResponse(200, $html);
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response404, $response200);
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com/page',
+            'https://example.com',
+            'a'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+        $this->assertNotEmpty($result['extractedLinks']);
+    }
 }
