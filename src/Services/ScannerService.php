@@ -92,9 +92,8 @@ class ScannerService
         $browserVerified = false;
         if ($this->isBotBlockCandidate($result['finalStatus'])) {
             $verification = $this->httpChecker->verifyWithBrowserHeaders($url);
-            if ($verification !== null && $verification['status'] >= 200 && $verification['status'] < 400) {
-                $result['finalStatus'] = $verification['status'];
-                $result['body'] = $verification['body'];
+            if ($verification !== null && is_int($verification['finalStatus']) && $verification['finalStatus'] >= 200 && $verification['finalStatus'] < 400) {
+                $result = $verification;
                 $browserVerified = true;
             }
         }
@@ -213,8 +212,8 @@ class ScannerService
         $browserVerified = false;
         if ($this->isBotBlockCandidate($result['finalStatus'])) {
             $verification = $this->httpChecker->verifyWithBrowserHeaders($url);
-            if ($verification !== null && $verification['status'] >= 200 && $verification['status'] < 400) {
-                $result['finalStatus'] = $verification['status'];
+            if ($verification !== null && is_int($verification['finalStatus']) && $verification['finalStatus'] >= 200 && $verification['finalStatus'] < 400) {
+                $result = $verification;
                 $browserVerified = true;
             }
         }

@@ -676,7 +676,7 @@ class HttpCheckerTest extends TestCase
     // verifyWithBrowserHeaders tests
     // ============================================
 
-    public function test_verify_with_browser_headers_returns_status_and_body_on_200(): void
+    public function test_verify_with_browser_headers_returns_full_result_on_200(): void
     {
         $mockClient = $this->createMockClient(200, '<html>OK</html>');
         $this->httpChecker->setClient($mockClient);
@@ -684,8 +684,11 @@ class HttpCheckerTest extends TestCase
         $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
 
         $this->assertNotNull($result);
-        $this->assertEquals(200, $result['status']);
+        $this->assertEquals(200, $result['finalStatus']);
         $this->assertEquals('<html>OK</html>', $result['body']);
+        $this->assertArrayHasKey('finalUrl', $result);
+        $this->assertArrayHasKey('chain', $result);
+        $this->assertArrayHasKey('hasHttpsDowngrade', $result);
     }
 
     public function test_verify_with_browser_headers_returns_null_body_on_non_200(): void
@@ -696,11 +699,12 @@ class HttpCheckerTest extends TestCase
         $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
 
         $this->assertNotNull($result);
-        $this->assertEquals(301, $result['status']);
+        // 301 without Location header ends the loop, so finalStatus is 301
+        $this->assertEquals(301, $result['finalStatus']);
         $this->assertNull($result['body']);
     }
 
-    public function test_verify_with_browser_headers_returns_null_on_exception(): void
+    public function test_verify_with_browser_headers_returns_timeout_on_connect_exception(): void
     {
         $mockClient = $this->createMock(Client::class);
         $mockClient->method('request')
@@ -709,10 +713,12 @@ class HttpCheckerTest extends TestCase
 
         $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
 
-        $this->assertNull($result);
+        // followRedirects catches ConnectException internally and returns Timeout status
+        $this->assertNotNull($result);
+        $this->assertEquals('Timeout', $result['finalStatus']);
     }
 
-    public function test_verify_with_browser_headers_returns_status_on_404(): void
+    public function test_verify_with_browser_headers_returns_404_result(): void
     {
         $mockClient = $this->createMockClient(404);
         $this->httpChecker->setClient($mockClient);
@@ -720,7 +726,7 @@ class HttpCheckerTest extends TestCase
         $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
 
         $this->assertNotNull($result);
-        $this->assertEquals(404, $result['status']);
+        $this->assertEquals(404, $result['finalStatus']);
         $this->assertNull($result['body']);
     }
 }
