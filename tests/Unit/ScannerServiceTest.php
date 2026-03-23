@@ -1013,4 +1013,44 @@ class ScannerServiceTest extends TestCase
         $this->assertContains('bot_protection', $result['analysis']['flags']);
         $this->assertNotEmpty($result['extractedLinks']);
     }
+
+    public function test_browser_retry_with_redirect_uses_final_url_for_link_extraction(): void
+    {
+        // Bot UA gets 404, browser retry redirects to a different URL with relative links.
+        // Extracted links should resolve against the final URL, not the original.
+        $response404 = $this->createMockResponse(404);
+
+        // Browser retry: redirect from /old to /new
+        $redirect301 = $this->createMock(ResponseInterface::class);
+        $redirect301->method('getStatusCode')->willReturn(301);
+        $redirect301->method('getHeaderLine')->willReturnCallback(function ($name) {
+            return $name === 'Location' ? 'https://example.com/new-section/' : '';
+        });
+
+        $html = '<html><body><a href="child-page">Child</a></body></html>';
+        $response200 = $this->createMockResponse(200, $html);
+
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willReturnOnConsecutiveCalls($response404, $redirect301, $response200);
+
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl(
+            'https://example.com/old-section/',
+            'https://example.com',
+            'a'
+        );
+
+        $this->assertEquals('200', $result['status']);
+        $this->assertEquals('https://example.com/new-section/', $result['finalUrl']);
+        $this->assertContains('bot_protection', $result['analysis']['flags']);
+        $this->assertNotEmpty($result['extractedLinks']);
+
+        // The relative link "child-page" should resolve against /new-section/, not /old-section/
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/new-section/child-page', $extractedUrls);
+        $this->assertNotContains('https://example.com/old-section/child-page', $extractedUrls);
+    }
 }
