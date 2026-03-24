@@ -796,4 +796,45 @@ class LinkFlagServiceTest extends TestCase
 
         $this->assertNotContains(LinkFlag::DEVELOPER_LEFTOVER, $flags);
     }
+
+    // ===================
+    // detectFromUrl tests - CDN subdomain detection
+    // ===================
+
+    public function test_cdn_subdomain_is_flagged_as_cdn_asset(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://www.zenrows.com');
+        $flags = $this->linkFlagService->detectFromUrl('https://cdn.zenrows.com/css/app.css', false);
+
+        $this->assertContains(LinkFlag::CDN_ASSET, $flags);
+    }
+
+    public function test_static_subdomain_is_flagged_as_cdn_asset(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $flags = $this->linkFlagService->detectFromUrl('https://static.example.com/bundle.js', false);
+
+        $this->assertContains(LinkFlag::CDN_ASSET, $flags);
+    }
+
+    public function test_non_cdn_subdomain_is_not_flagged_as_cdn_asset(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('https://blog.sommeling.dev/post', false);
+
+        $this->assertNotContains(LinkFlag::CDN_ASSET, $flags);
+    }
+
+    public function test_base_host_is_not_flagged_as_cdn_asset(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('https://sommeling.dev/page', false);
+
+        $this->assertNotContains(LinkFlag::CDN_ASSET, $flags);
+    }
+
+    public function test_external_url_is_not_flagged_as_cdn_asset(): void
+    {
+        $flags = $this->linkFlagService->detectFromUrl('https://cdn.other.com/asset.js', true);
+
+        $this->assertNotContains(LinkFlag::CDN_ASSET, $flags);
+    }
 }

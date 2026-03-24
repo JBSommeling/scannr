@@ -134,6 +134,11 @@ class LinkFlagService
             $flags[] = LinkFlag::EXTERNAL_PLATFORM;
         }
 
+        // Check for CDN subdomain (internal URLs only)
+        if (! $isExternal && $this->urlNormalizer->isCdnSubdomain($url)) {
+            $flags[] = LinkFlag::CDN_ASSET;
+        }
+
         // Check for localhost/development URLs
         if ($this->isLocalhostUrl($url)) {
             $flags[] = LinkFlag::DEVELOPER_LEFTOVER;

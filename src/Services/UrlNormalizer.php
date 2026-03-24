@@ -372,6 +372,71 @@ class UrlNormalizer
     }
 
     /**
+     * Check if a URL is on a CDN subdomain of the base host.
+     *
+     * Matches common CDN/asset subdomain prefixes (cdn.*, static.*, assets.*, etc.)
+     * that are subdomains of the scanned domain. Configurable via scannr.cdn_prefixes.
+     *
+     * @param  string  $url  The URL to check.
+     * @return bool True if the URL is on a CDN subdomain.
+     */
+    public function isCdnSubdomain(string $url): bool
+    {
+        if (! $this->isSubdomainUrl($url)) {
+            return false;
+        }
+
+        $parsed = parse_url($url);
+        if (! isset($parsed['host'])) {
+            return false;
+        }
+
+        $host = strtolower($parsed['host']);
+
+        // Extract the subdomain prefix (e.g. "cdn" from "cdn.example.com")
+        $suffix = '.'.$this->baseHost;
+        if (! str_ends_with($host, $suffix)) {
+            return false;
+        }
+
+        $prefix = substr($host, 0, -strlen($suffix));
+
+        // Remove www. from prefix if present (e.g. "www.cdn" → "cdn")
+        $prefix = preg_replace('/^www\./i', '', $prefix);
+
+        return in_array($prefix, $this->getCdnPrefixes(), true);
+    }
+
+    /**
+     * Get the list of CDN subdomain prefixes.
+     *
+     * @return array<string>
+     */
+    protected function getCdnPrefixes(): array
+    {
+        $defaults = [
+            'cdn',
+            'static',
+            'assets',
+            'media',
+            'img',
+            'images',
+            'files',
+            'content',
+            'resources',
+            'dist',
+            'dl',
+            'downloads',
+        ];
+
+        try {
+            return config('scannr.cdn_prefixes', $defaults) ?? $defaults;
+        } catch (\Throwable) {
+            return $defaults;
+        }
+    }
+
+    /**
      * Check if a URL is internal to the base host.
      *
      * A URL is considered internal if its host matches the base host

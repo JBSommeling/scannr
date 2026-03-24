@@ -271,6 +271,70 @@ class UrlNormalizerTest extends TestCase
     }
 
     // ======================
+    // isCdnSubdomain tests
+    // ======================
+
+    public function test_cdn_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://www.zenrows.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://cdn.zenrows.com/css/app.css'));
+    }
+
+    public function test_static_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://static.example.com/js/bundle.js'));
+    }
+
+    public function test_assets_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://assets.example.com/logo.png'));
+    }
+
+    public function test_media_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://media.example.com/video.mp4'));
+    }
+
+    public function test_images_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://images.example.com/hero.jpg'));
+    }
+
+    public function test_non_cdn_subdomain_is_not_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('https://blog.example.com/post'));
+    }
+
+    public function test_base_host_is_not_cdn_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('https://example.com/page'));
+    }
+
+    public function test_www_base_host_is_not_cdn_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('https://www.example.com/page'));
+    }
+
+    public function test_external_domain_with_cdn_prefix_is_not_cdn_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('https://cdn.other.com/asset.js'));
+    }
+
+    public function test_relative_url_is_not_cdn_subdomain(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('/assets/app.css'));
+    }
+
+    // ======================
     // Setter/Getter tests
     // ======================
 
