@@ -334,6 +334,18 @@ class UrlNormalizerTest extends TestCase
         $this->assertFalse($this->urlNormalizer->isCdnSubdomain('/assets/app.css'));
     }
 
+    public function test_nested_cdn_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://cdn.static.example.com/file.js'));
+    }
+
+    public function test_cdn_prefix_in_deeper_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://my.cdn.example.com/file.js'));
+    }
+
     // ======================
     // Setter/Getter tests
     // ======================
