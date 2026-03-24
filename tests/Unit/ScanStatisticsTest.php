@@ -696,6 +696,13 @@ class ScanStatisticsTest extends TestCase
         ));
     }
 
+    public function test_is_broken_result_cdn_asset_is_not_broken(): void
+    {
+        $this->assertFalse($this->scanStatistics->isBrokenResult(
+            $this->makeSimpleResult('404', ['cdn_asset', 'status_4xx'])
+        ));
+    }
+
     // ======================
     // filterResults('broken') consistency
     // ======================
