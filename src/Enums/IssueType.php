@@ -48,6 +48,9 @@ enum IssueType: string
     /** Response indicates bot protection (403/405 from known platform). */
     case BOT_PROTECTION = 'bot_protection';
 
+    /** CDN subdomain returned an error (likely bot blocking). */
+    case CDN_ASSET = 'cdn_asset';
+
     /** 429 Too Many Requests received. */
     case RATE_LIMITED = 'rate_limited';
 }

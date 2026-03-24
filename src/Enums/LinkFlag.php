@@ -36,6 +36,9 @@ enum LinkFlag: string
     /** 403/405 or similar response indicating bot protection. */
     case BOT_PROTECTION = 'bot_protection';
 
+    /** URL is on a CDN subdomain (cdn.*, static.*, assets.*, etc.) that likely blocks bots. */
+    case CDN_ASSET = 'cdn_asset';
+
     /** 429 Too Many Requests received. */
     case RATE_LIMITED = 'rate_limited';
 

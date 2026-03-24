@@ -274,6 +274,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | CDN Subdomain Prefixes
+    |--------------------------------------------------------------------------
+    |
+    | Subdomain prefixes that indicate a CDN or static asset server.
+    | When a scanned domain's subdomain matches one of these prefixes
+    | (e.g. cdn.example.com when scanning example.com), 4xx responses
+    | are treated as likely bot blocking rather than broken links.
+    |
+    */
+
+    'cdn_prefixes' => [
+        'cdn',
+        'static',
+        'assets',
+        'media',
+        'img',
+        'images',
+        'files',
+        'content',
+        'resources',
+        'dist',
+        'dl',
+        'downloads',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Integrity Scoring
     |--------------------------------------------------------------------------
     |
@@ -299,6 +326,7 @@ return [
             'redirect_chain' => 3,
             'timeout' => 3,
             'bot_protection' => 2,
+            'cdn_asset' => 2,
             'rate_limited' => 1,
         ],
 
@@ -362,6 +390,7 @@ return [
                 'weight' => 0.10,
                 'types' => [
                     'bot_protection',
+                    'cdn_asset',
                     'rate_limited',
                 ],
             ],
