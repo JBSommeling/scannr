@@ -404,14 +404,27 @@ class UrlNormalizer
         // Remove www. from prefix if present (e.g. "www.cdn" → "cdn")
         $prefix = preg_replace('/^www\./i', '', $prefix);
 
-        // Check if any part of the prefix matches a CDN keyword
-        // This handles nested subdomains like "cdn.static.example.com"
+        // Check if any part of the prefix starts with a CDN keyword.
+        // Handles numbered/versioned variants (cdn1, static-v2, assets-prod)
+        // and nested subdomains (cdn.static.example.com).
         $parts = explode('.', $prefix);
         $cdnPrefixes = $this->getCdnPrefixes();
 
         foreach ($parts as $part) {
-            if (in_array($part, $cdnPrefixes, true)) {
-                return true;
+            foreach ($cdnPrefixes as $keyword) {
+                if ($part === $keyword) {
+                    return true;
+                }
+
+                // Numbered variants: cdn1, cdn2, static01
+                if (str_starts_with($part, $keyword) && ctype_digit(substr($part, strlen($keyword)))) {
+                    return true;
+                }
+
+                // Hyphenated variants: cdn-v2, static-prod, assets-new
+                if (str_starts_with($part, $keyword.'-')) {
+                    return true;
+                }
             }
         }
 

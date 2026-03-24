@@ -346,6 +346,30 @@ class UrlNormalizerTest extends TestCase
         $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://my.cdn.example.com/file.js'));
     }
 
+    public function test_numbered_cdn_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://cdn1.example.com/file.js'));
+    }
+
+    public function test_hyphenated_cdn_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://static-v2.example.com/bundle.js'));
+    }
+
+    public function test_hyphenated_assets_subdomain_is_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertTrue($this->urlNormalizer->isCdnSubdomain('https://assets-prod.example.com/logo.png'));
+    }
+
+    public function test_unrelated_subdomain_starting_with_cdn_letters_not_detected(): void
+    {
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+        $this->assertFalse($this->urlNormalizer->isCdnSubdomain('https://cdnetwork.example.com/page'));
+    }
+
     // ======================
     // Setter/Getter tests
     // ======================
