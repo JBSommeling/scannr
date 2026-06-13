@@ -1,0 +1,17 @@
+name: MergeMetrics Dashboard
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jbsommeling/merge-metrics@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update MergeMetrics dashboard"
+          file_pattern: "docs/* README.md"
