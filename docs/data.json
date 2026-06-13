@@ -1,10 +1,10 @@
 {
   "repo_name": "scannr",
   "repo_full_name": "JBSommeling/scannr",
-  "generated_at": "2026-06-13T23:21:31.94976089Z",
+  "generated_at": "2026-06-13T23:26:10.245880422Z",
   "health_score": {
-    "total_score": 86,
-    "band": "Healthy",
+    "total_score": 73,
+    "band": "Needs Attention",
     "categories": [
       {
         "name": "Review Speed",
@@ -15,10 +15,10 @@
       },
       {
         "name": "Bus Factor",
-        "score": 50,
+        "score": 20,
         "weight": 0.2,
-        "contribution": 10,
-        "detail": "Bus factor: 2"
+        "contribution": 4,
+        "detail": "Bus factor: 1"
       },
       {
         "name": "PR Hygiene",
@@ -50,14 +50,15 @@
       },
       {
         "name": "Contributor Diversity",
-        "score": 81,
+        "score": 12,
         "weight": 0.1,
-        "contribution": 8.1,
-        "detail": "HHI: 0.31"
+        "contribution": 1.2000000000000002,
+        "detail": "HHI: 0.90"
       }
     ],
     "recommendations": [
-      "Increase bus factor - encourage broader code ownership"
+      "Increase bus factor - encourage broader code ownership",
+      "Encourage contributions from more team members"
     ]
   },
   "pr_bottleneck": {
@@ -72,29 +73,24 @@
   "bus_factor": {
     "Contributors": [
       {
-        "Login": "jbsommeling",
-        "Commits": 70,
-        "SharePct": 35.175879396984925
+        "Login": "JBSommeling",
+        "Commits": 189,
+        "SharePct": 94.5
       },
       {
-        "Login": "Jesse",
-        "Commits": 69,
-        "SharePct": 34.67336683417086
-      },
-      {
-        "Login": "Jesse Sommeling",
-        "Commits": 50,
-        "SharePct": 25.125628140703515
-      },
-      {
-        "Login": "copilot-swe-agent[bot]",
+        "Login": "Copilot",
         "Commits": 10,
-        "SharePct": 5.025125628140704
+        "SharePct": 5
+      },
+      {
+        "Login": "github-actions[bot]",
+        "Commits": 1,
+        "SharePct": 0.5
       }
     ],
-    "BusFactor": 2,
-    "HHI": 0.3096133936011717,
-    "TotalCommits": 199,
+    "BusFactor": 1,
+    "HHI": 0.89555,
+    "TotalCommits": 200,
     "AnalysisPeriodDays": 180
   },
   "reviews": {

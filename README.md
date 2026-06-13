@@ -427,7 +427,7 @@ This package is open-sourced software licensed under the [MIT license](https://o
 
 
 <!-- mergemetrics-start -->
-![Repository Health](https://img.shields.io/badge/Health-86%2F100-green)
+![Repository Health](https://img.shields.io/badge/Health-73%2F100-yellow)
 
 Last updated: 2026-06-13
 <!-- mergemetrics-end -->
