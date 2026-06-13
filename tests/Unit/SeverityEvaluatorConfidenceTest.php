@@ -255,4 +255,30 @@ class SeverityEvaluatorConfidenceTest extends TestCase
 
         $this->assertEquals(Confidence::HIGH, $confidence);
     }
+
+    // ===================
+    // CDN Asset confidence
+    // ===================
+
+    public function test_cdn_asset_with_4xx_gets_low_confidence(): void
+    {
+        $confidence = $this->evaluator->evaluateConfidence(
+            [LinkFlag::CDN_ASSET, LinkFlag::STATUS_4XX],
+            404,
+            false
+        );
+
+        $this->assertEquals(Confidence::LOW, $confidence);
+    }
+
+    public function test_cdn_asset_without_4xx_gets_high_confidence(): void
+    {
+        $confidence = $this->evaluator->evaluateConfidence(
+            [LinkFlag::CDN_ASSET],
+            200,
+            false
+        );
+
+        $this->assertEquals(Confidence::HIGH, $confidence);
+    }
 }

@@ -163,6 +163,7 @@ class IntegrityScorer
         $hasStatus4xx = in_array(LinkFlag::STATUS_4XX->value, $flags, true);
         $hasBotProtection = in_array(LinkFlag::BOT_PROTECTION->value, $flags, true);
         $hasExternalPlatform = in_array(LinkFlag::EXTERNAL_PLATFORM->value, $flags, true);
+        $hasCdnAsset = in_array(LinkFlag::CDN_ASSET->value, $flags, true);
 
         // Skip healthy form endpoints (non-404 4xx)
         if ($hasFormEndpoint && $hasStatus4xx) {
@@ -187,9 +188,14 @@ class IntegrityScorer
             return IssueType::STATUS_5XX;
         }
 
-        // Internal 4xx without bot protection
-        if ($hasStatus4xx && $type === 'internal' && ! $hasBotProtection) {
+        // Internal 4xx without bot protection or CDN asset flag
+        if ($hasStatus4xx && $type === 'internal' && ! $hasBotProtection && ! $hasCdnAsset) {
             return IssueType::STATUS_4XX_INTERNAL;
+        }
+
+        // CDN subdomain 4xx — low-penalty, likely bot blocking
+        if ($hasStatus4xx && $hasCdnAsset) {
+            return IssueType::CDN_ASSET;
         }
 
         if (in_array(LinkFlag::MALFORMED_URL->value, $flags, true)) {

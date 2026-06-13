@@ -20,16 +20,17 @@ class SeverityEvaluator
      *
      * Priority:
      * 1. FORM_ENDPOINT with healthy 4xx (400,401,403,405,422,429) → INFO (expected POST rejections)
-     * 2. STATUS_4XX on internal (non-platform) URL → CRITICAL (including form 404)
+     * 2. STATUS_4XX on internal (non-platform, non-CDN) URL → CRITICAL (including form 404)
      * 3. STATUS_5XX → CRITICAL
      * 4. CONNECTION_ERROR → CRITICAL
      * 5. MALFORMED_URL → WARNING
      * 6. BOT_PROTECTION → WARNING
-     * 7. STATUS_4XX on external platform → WARNING
-     * 8. TIMEOUT → WARNING
-     * 9. HTTP_ON_HTTPS → WARNING
-     * 10. EXCESSIVE_REDIRECTS → WARNING
-     * 11. Everything else → INFO
+     * 7. CDN_ASSET + STATUS_4XX → WARNING (CDN subdomains often block bots)
+     * 8. STATUS_4XX on external platform → WARNING
+     * 9. TIMEOUT → WARNING
+     * 10. HTTP_ON_HTTPS → WARNING
+     * 11. EXCESSIVE_REDIRECTS → WARNING
+     * 12. Everything else → INFO
      *
      * @param  array<LinkFlag>  $flags
      * @param  int|string  $status  HTTP status code or error string
@@ -46,6 +47,7 @@ class SeverityEvaluator
         $hasHttpOnHttps = in_array(LinkFlag::HTTP_ON_HTTPS, $flags, true);
         $hasExcessiveRedirects = in_array(LinkFlag::EXCESSIVE_REDIRECTS, $flags, true);
         $hasFormEndpoint = in_array(LinkFlag::FORM_ENDPOINT, $flags, true);
+        $hasCdnAsset = in_array(LinkFlag::CDN_ASSET, $flags, true);
 
         // Form endpoints returning certain 4xx are expected behavior:
         // 400 (bad request / missing data), 401 (auth required), 403 (forbidden),
@@ -65,7 +67,7 @@ class SeverityEvaluator
         }
 
         // Critical: Internal 4xx, 5xx, or connection errors
-        if ($hasStatus4xx && ! $hasExternalPlatform && ! $hasBotProtection) {
+        if ($hasStatus4xx && ! $hasExternalPlatform && ! $hasBotProtection && ! $hasCdnAsset) {
             return Severity::CRITICAL;
         }
 
@@ -83,6 +85,10 @@ class SeverityEvaluator
         }
 
         if ($hasBotProtection) {
+            return Severity::WARNING;
+        }
+
+        if ($hasCdnAsset && $hasStatus4xx) {
             return Severity::WARNING;
         }
 
@@ -132,6 +138,7 @@ class SeverityEvaluator
     {
         $hasExternalPlatform = in_array(LinkFlag::EXTERNAL_PLATFORM, $flags, true);
         $hasBotProtection = in_array(LinkFlag::BOT_PROTECTION, $flags, true);
+        $hasCdnAsset = in_array(LinkFlag::CDN_ASSET, $flags, true);
         $hasJsBundleExtracted = in_array(LinkFlag::DETECTED_IN_JS_BUNDLE, $flags, true);
         $hasMalformedUrl = in_array(LinkFlag::MALFORMED_URL, $flags, true);
         $hasIndirectReference = in_array(LinkFlag::INDIRECT_REFERENCE, $flags, true);
@@ -167,6 +174,11 @@ class SeverityEvaluator
 
         // Low confidence: likely false positives
         if ($hasExternalPlatform && $hasBotProtection) {
+            return Confidence::LOW;
+        }
+
+        // CDN subdomains often block direct bot requests — likely false positive
+        if ($hasCdnAsset && $hasStatus4xx) {
             return Confidence::LOW;
         }
 

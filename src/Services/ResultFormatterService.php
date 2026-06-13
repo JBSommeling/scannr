@@ -462,7 +462,7 @@ class ResultFormatterService
         // Check for specific flags in priority order (matching SeverityEvaluator logic)
 
         // Internal 4xx (most common critical issue)
-        if (in_array('status_4xx', $flags, true) && $type === 'internal' && ! in_array('bot_protection', $flags, true)) {
+        if (in_array('status_4xx', $flags, true) && $type === 'internal' && ! in_array('bot_protection', $flags, true) && ! in_array('cdn_asset', $flags, true)) {
             return 'Broken internal link (4xx)';
         }
 
@@ -503,6 +503,10 @@ class ResultFormatterService
 
         if (in_array('bot_protection', $flags, true)) {
             return 'Bot protection detected';
+        }
+
+        if (in_array('cdn_asset', $flags, true)) {
+            return 'CDN asset (likely bot blocked)';
         }
 
         if (in_array('malformed_url', $flags, true)) {

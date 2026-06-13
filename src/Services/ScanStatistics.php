@@ -137,11 +137,16 @@ class ScanStatistics
         return in_array('bot_protection', $result['analysis']['flags'] ?? [], true);
     }
 
+    protected function isCdnAsset(array $result): bool
+    {
+        return in_array('cdn_asset', $result['analysis']['flags'] ?? [], true);
+    }
+
     /**
      * Check if a result represents a broken link.
      *
      * A result is broken when it has a non-2xx status and is not a healthy
-     * form endpoint, not bot-protected, and has a non-empty status.
+     * form endpoint, not bot-protected, not a CDN asset, and has a non-empty status.
      */
     public function isBrokenResult(array $result): bool
     {
@@ -160,6 +165,10 @@ class ScanStatistics
         }
 
         if ($this->isBotProtected($result)) {
+            return false;
+        }
+
+        if ($this->isCdnAsset($result)) {
             return false;
         }
 
