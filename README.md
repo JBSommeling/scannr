@@ -425,3 +425,9 @@ composer test
 
 This package is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
 
+
+<!-- mergemetrics-start -->
+![Repository Health](https://img.shields.io/badge/Health-86%2F100-green)
+
+Last updated: 2026-06-13
+<!-- mergemetrics-end -->

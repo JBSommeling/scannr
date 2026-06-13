@@ -1,0 +1,168 @@
+:root {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-green: #22c55e;
+  --color-yellow: #eab308;
+  --color-orange: #f97316;
+  --color-red: #ef4444;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --radius: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-border: #334155;
+    --color-text: #f1f5f9;
+    --color-text-muted: #94a3b8;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  padding: 24px 16px;
+}
+
+header {
+  max-width: 1200px;
+  margin: 0 auto 32px;
+}
+
+header h1 { font-size: 1.75rem; font-weight: 700; }
+header p  { color: var(--color-text-muted); font-size: 0.9rem; margin-top: 4px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.card-full { grid-column: 1 / -1; }
+
+.card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+}
+
+/* Health circle */
+.health-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  border: 6px solid currentColor;
+}
+
+.health-circle .score-num  { font-size: 2.5rem; font-weight: 800; line-height: 1; }
+.health-circle .score-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: .08em; }
+
+.score-excellent { color: var(--color-green); }
+.score-healthy   { color: var(--color-yellow); }
+.score-attention { color: var(--color-orange); }
+.score-risk      { color: var(--color-red); }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+th { font-weight: 600; color: var(--color-text-muted); }
+
+tr:last-child td { border-bottom: none; }
+
+/* Bar chart */
+.bar-row { margin-bottom: 10px; }
+.bar-label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 3px; }
+.bar-track { background: var(--color-border); border-radius: 4px; height: 10px; }
+.bar-fill  { height: 10px; border-radius: 4px; background: var(--color-green); min-width: 2px; }
+.bar-fill.bottleneck { background: var(--color-red); }
+
+/* Warnings */
+.warning {
+  background: #fff7ed;
+  border-left: 4px solid var(--color-orange);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  margin-top: 12px;
+  color: #9a3412;
+}
+
+@media (prefers-color-scheme: dark) {
+  .warning { background: #431407; color: #fdba74; }
+}
+
+/* Recommendations */
+.rec-list { list-style: none; }
+.rec-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  padding-left: 20px;
+  position: relative;
+}
+.rec-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--color-text-muted);
+}
+.rec-list li:last-child { border-bottom: none; }
+
+/* Trend badge */
+.trend { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+.trend-increasing { background: #dcfce7; color: #166534; }
+.trend-decreasing { background: #fee2e2; color: #991b1b; }
+.trend-stable     { background: #f1f5f9; color: #475569; }
+
+@media (prefers-color-scheme: dark) {
+  .trend-increasing { background: #14532d; color: #86efac; }
+  .trend-decreasing { background: #450a0a; color: #fca5a5; }
+  .trend-stable     { background: #1e293b; color: #94a3b8; }
+}
+
+.stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat { flex: 1; min-width: 100px; }
+.stat-value { font-size: 1.5rem; font-weight: 700; }
+.stat-desc  { font-size: 0.75rem; color: var(--color-text-muted); }
