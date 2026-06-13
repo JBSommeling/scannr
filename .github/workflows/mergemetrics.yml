@@ -3,6 +3,7 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: write
+  pull-requests: write
 jobs:
   update-dashboard:
     runs-on: ubuntu-latest
@@ -11,7 +12,13 @@ jobs:
       - uses: jbsommeling/merge-metrics@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: peter-evans/create-pull-request@v7
         with:
-          commit_message: "chore: update MergeMetrics dashboard"
-          file_pattern: "docs/* README.md"
+          commit-message: "chore: update MergeMetrics dashboard"
+          title: "chore: update MergeMetrics dashboard"
+          body: "Automated dashboard update by MergeMetrics."
+          branch: mergemetrics/update-dashboard
+          delete-branch: true
+          add-paths: |
+            docs/*
+            README.md
