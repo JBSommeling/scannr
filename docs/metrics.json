@@ -1,0 +1,15 @@
+{
+  "health_score": 86,
+  "health_band": "Healthy",
+  "open_prs": 0,
+  "stale_prs": 0,
+  "avg_pr_age_days": 0,
+  "bus_factor": 2,
+  "hhi": 0.3096133936011717,
+  "avg_review_time_hours": 0.1287962962961111,
+  "median_review_time_hours": 0.06666666666666667,
+  "p90_review_time_hours": 0.25583333333333336,
+  "releases_last_month": 0,
+  "deploy_frequency_score": 80,
+  "generated_at": "2026-06-13T23:21:31.94976089Z"
+}

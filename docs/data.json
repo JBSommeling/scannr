@@ -1,0 +1,123 @@
+{
+  "repo_name": "scannr",
+  "repo_full_name": "JBSommeling/scannr",
+  "generated_at": "2026-06-13T23:21:31.94976089Z",
+  "health_score": {
+    "total_score": 86,
+    "band": "Healthy",
+    "categories": [
+      {
+        "name": "Review Speed",
+        "score": 100,
+        "weight": 0.2,
+        "contribution": 20,
+        "detail": "Median review time: 4 minutes"
+      },
+      {
+        "name": "Bus Factor",
+        "score": 50,
+        "weight": 0.2,
+        "contribution": 10,
+        "detail": "Bus factor: 2"
+      },
+      {
+        "name": "PR Hygiene",
+        "score": 100,
+        "weight": 0.15,
+        "contribution": 15,
+        "detail": "0 stale PRs"
+      },
+      {
+        "name": "PR Size",
+        "score": 100,
+        "weight": 0.15,
+        "contribution": 15,
+        "detail": "Median PR size: 0 lines"
+      },
+      {
+        "name": "Issue Health",
+        "score": 100,
+        "weight": 0.1,
+        "contribution": 10,
+        "detail": "0 open issues"
+      },
+      {
+        "name": "Deploy Frequency",
+        "score": 80,
+        "weight": 0.1,
+        "contribution": 8,
+        "detail": "Deploy frequency score: 80"
+      },
+      {
+        "name": "Contributor Diversity",
+        "score": 81,
+        "weight": 0.1,
+        "contribution": 8.1,
+        "detail": "HHI: 0.31"
+      }
+    ],
+    "recommendations": [
+      "Increase bus factor - encourage broader code ownership"
+    ]
+  },
+  "pr_bottleneck": {
+    "OpenPRCount": 0,
+    "AveragePRAgeDays": 0,
+    "StalePRs": null,
+    "WaitingForReview": 0,
+    "WaitingForAuthor": 0,
+    "ReviewerWorkload": null,
+    "Bottlenecks": null
+  },
+  "bus_factor": {
+    "Contributors": [
+      {
+        "Login": "jbsommeling",
+        "Commits": 70,
+        "SharePct": 35.175879396984925
+      },
+      {
+        "Login": "Jesse",
+        "Commits": 69,
+        "SharePct": 34.67336683417086
+      },
+      {
+        "Login": "Jesse Sommeling",
+        "Commits": 50,
+        "SharePct": 25.125628140703515
+      },
+      {
+        "Login": "copilot-swe-agent[bot]",
+        "Commits": 10,
+        "SharePct": 5.025125628140704
+      }
+    ],
+    "BusFactor": 2,
+    "HHI": 0.3096133936011717,
+    "TotalCommits": 199,
+    "AnalysisPeriodDays": 180
+  },
+  "reviews": {
+    "AverageReviewTime": 463666666666,
+    "MedianReviewTime": 240000000000,
+    "P90ReviewTime": 921000000000,
+    "ReviewerStats": [
+      {
+        "Login": "copilot-pull-request-reviewer[bot]",
+        "AvgResponseTime": 463666666666,
+        "ReviewCount": 3,
+        "ReviewsPerWeek": 0.23333333333333334
+      }
+    ],
+    "TotalReviews": 3,
+    "ReviewThroughput": 0.23333333333333334
+  },
+  "releases": {
+    "ReleasesLastMonth": 0,
+    "ReleasesLastWeek": 0,
+    "AvgTimeBetweenReleases": 315733250000000,
+    "Trend": "decreasing",
+    "DeployFrequencyScore": 80,
+    "TotalReleases": 17
+  }
+}
