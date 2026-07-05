@@ -3,6 +3,7 @@
 namespace Scannr\Services;
 
 use Scannr\Enums\LinkFlag;
+use Scannr\Services\Concerns\DetectsHtmlContentType;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 
@@ -14,6 +15,8 @@ use GuzzleHttp\Exception\GuzzleException;
  */
 class ScannerService
 {
+    use DetectsHtmlContentType;
+
     /**
      * Optional BrowsershotFetcher for JavaScript rendering.
      */
@@ -270,28 +273,6 @@ class ScannerService
                 'retryAfter' => $result['retryAfter'],
             ],
         ];
-    }
-
-    /**
-     * Determine whether a Content-Type header is plausibly HTML, or absent.
-     *
-     * A missing/empty Content-Type is treated permissively (returns true) so
-     * genuine HTML served without the header still gets parsed; LinkExtractor's
-     * own binary sniff is the fallback safety net in that case. A declared,
-     * non-HTML content type (e.g. image/gif, image/svg+xml) returns false so
-     * extraction is skipped entirely for that response.
-     *
-     * @param  string|null  $contentType  The raw Content-Type header value, or null if absent.
-     */
-    protected function isHtmlOrUnknownContentType(?string $contentType): bool
-    {
-        if ($contentType === null || $contentType === '') {
-            return true;
-        }
-
-        $mimeType = strtolower(trim(explode(';', $contentType)[0]));
-
-        return $mimeType === 'text/html' || $mimeType === 'application/xhtml+xml';
     }
 
     /**

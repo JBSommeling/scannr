@@ -228,6 +228,55 @@ class ResultFormatterServiceTest extends TestCase
         $this->assertStringContainsString('HTTPS downgrade', $warningText);
     }
 
+    public function test_format_table_shows_warnings_label_without_filter_suffix_when_no_filter_active(): void
+    {
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table']);
+        $results = [
+            [
+                'url' => 'https://example.com/warn',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['redirect_chain'], 'confidence' => 'high', 'verification' => 'none', 'severity' => 'warning'],
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $this->formatter->format($results, $config, $output);
+
+        $warningText = implode("\n", $output->warnings);
+        $this->assertStringContainsString('Warnings:', $warningText);
+        $this->assertStringNotContainsString('Warnings (in filter):', $warningText);
+    }
+
+    public function test_format_table_shows_warnings_in_filter_label_when_display_filter_active(): void
+    {
+        $output = $this->createMockOutput();
+        $config = $this->createConfig(['outputFormat' => 'table', 'elementFilter' => 'a']);
+        $results = [
+            [
+                'url' => 'https://example.com/warn',
+                'sourcePage' => 'https://example.com',
+                'status' => 200,
+                'type' => 'internal',
+                'redirect' => ['chain' => [], 'isLoop' => false, 'hasHttpsDowngrade' => false],
+                'analysis' => ['flags' => ['redirect_chain'], 'confidence' => 'high', 'verification' => 'none', 'severity' => 'warning'],
+                'isLoop' => false,
+                'hasHttpsDowngrade' => false,
+                'sourceElement' => 'a',
+            ],
+        ];
+
+        $this->formatter->format($results, $config, $output);
+
+        $warningText = implode("\n", $output->warnings);
+        $this->assertStringContainsString('Warnings (in filter):', $warningText);
+    }
+
     public function test_format_table_shows_no_links_message_when_filtered_empty(): void
     {
         $output = $this->createMockOutput();

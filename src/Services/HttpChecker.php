@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use Scannr\Services\Concerns\DetectsHtmlContentType;
 
 /**
  * Service for checking URL health via HTTP requests.
@@ -15,6 +16,8 @@ use GuzzleHttp\Exception\RequestException;
  */
 class HttpChecker
 {
+    use DetectsHtmlContentType;
+
     /**
      * Maximum number of redirects to follow.
      */
@@ -239,29 +242,6 @@ class HttpChecker
             'retryAfter' => $retryAfter,
             'contentType' => $contentType,
         ];
-    }
-
-    /**
-     * Determine whether a Content-Type header is plausibly HTML, or absent.
-     *
-     * A missing/empty Content-Type is treated permissively (returns true) so
-     * that genuine HTML served without the header is still read; the
-     * LinkExtractor binary sniff is the belt-and-suspenders layer that
-     * catches non-HTML bodies in that case. A declared, non-HTML content
-     * type (e.g. image/gif) returns false so binary bodies are never
-     * materialized in memory.
-     *
-     * @param  string|null  $contentType  The raw Content-Type header value, or null if absent.
-     */
-    protected function isHtmlOrUnknownContentType(?string $contentType): bool
-    {
-        if ($contentType === null || $contentType === '') {
-            return true;
-        }
-
-        $mimeType = strtolower(trim(explode(';', $contentType)[0]));
-
-        return $mimeType === 'text/html' || $mimeType === 'application/xhtml+xml';
     }
 
     /**

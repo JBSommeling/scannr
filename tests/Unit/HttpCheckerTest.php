@@ -398,6 +398,21 @@ class HttpCheckerTest extends TestCase
         $this->assertEquals('<html>Legacy page</html>', $result['body']);
     }
 
+    public function test_follow_redirects_reads_body_for_duplicated_html_content_type_header(): void
+    {
+        // Guzzle's getHeaderLine() joins duplicate response headers with a
+        // comma (e.g. a server that sends "Content-Type: text/html" twice
+        // yields "text/html, text/html"). An exact-match comparison against
+        // "text/html" would fail here and incorrectly drop the body.
+        $mockClient = $this->createMockClient(200, '<html><body>Hi</body></html>', ['Content-Type' => 'text/html, text/html']);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com', 'GET');
+
+        $this->assertEquals('text/html, text/html', $result['contentType']);
+        $this->assertEquals('<html><body>Hi</body></html>', $result['body']);
+    }
+
     // ===================
     // User-Agent tests
     // ===================

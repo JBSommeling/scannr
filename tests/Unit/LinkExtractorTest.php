@@ -1580,6 +1580,58 @@ class LinkExtractorTest extends TestCase
         $this->assertSame([], $links);
     }
 
+    public function test_looks_like_html_does_not_reject_utf16_le_bom_content_despite_nul_bytes(): void
+    {
+        // UTF-16 LE encodes ASCII characters as "<char>\0", so genuine
+        // UTF-16-encoded HTML is riddled with NUL bytes. A leading BOM is a
+        // strong signal that this is text, not binary, so the NUL check
+        // must be bypassed for BOM-prefixed content.
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $utf16Le = "\xFF\xFE".mb_convert_encoding($html, 'UTF-16LE', 'UTF-8');
+
+        $method = new \ReflectionMethod($this->linkExtractor, 'looksLikeHtml');
+
+        $this->assertTrue($method->invoke($this->linkExtractor, $utf16Le, 'https://example.com'));
+    }
+
+    public function test_looks_like_html_does_not_reject_utf16_be_bom_content(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $utf16Be = "\xFE\xFF".mb_convert_encoding($html, 'UTF-16BE', 'UTF-8');
+
+        $method = new \ReflectionMethod($this->linkExtractor, 'looksLikeHtml');
+
+        $this->assertTrue($method->invoke($this->linkExtractor, $utf16Be, 'https://example.com'));
+    }
+
+    public function test_looks_like_html_does_not_reject_utf32_le_bom_content(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $utf32Le = "\xFF\xFE\x00\x00".mb_convert_encoding($html, 'UTF-32LE', 'UTF-8');
+
+        $method = new \ReflectionMethod($this->linkExtractor, 'looksLikeHtml');
+
+        $this->assertTrue($method->invoke($this->linkExtractor, $utf32Le, 'https://example.com'));
+    }
+
+    public function test_extract_links_does_not_return_empty_array_by_rejecting_utf16_bom_content(): void
+    {
+        // End-to-end: extractLinks() must not short-circuit on the sniff for
+        // BOM-prefixed content. (Full UTF-16 decoding into the HTML5 parser
+        // is out of scope here — this only proves the sniff itself lets the
+        // content through to the parser instead of silently dropping it.)
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $utf16Le = "\xFF\xFE".mb_convert_encoding($html, 'UTF-16LE', 'UTF-8');
+
+        $method = new \ReflectionMethod($this->linkExtractor, 'looksLikeHtml');
+        $this->assertTrue($method->invoke($this->linkExtractor, $utf16Le, 'https://example.com'));
+
+        // extractLinks() itself must not throw or otherwise fail while
+        // attempting to parse the BOM-prefixed content.
+        $links = $this->linkExtractor->extractLinks($utf16Le, 'https://example.com');
+        $this->assertIsArray($links);
+    }
+
     public function test_extract_links_still_parses_normal_html_after_sniff(): void
     {
         $html = '<html><body><a href="/page1">Link</a></body></html>';
