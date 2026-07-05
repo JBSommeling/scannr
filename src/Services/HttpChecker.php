@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use Scannr\Services\Concerns\DetectsHtmlContentType;
 
 /**
  * Service for checking URL health via HTTP requests.
@@ -15,6 +16,8 @@ use GuzzleHttp\Exception\RequestException;
  */
 class HttpChecker
 {
+    use DetectsHtmlContentType;
+
     /**
      * Maximum number of redirects to follow.
      */
@@ -124,7 +127,8 @@ class HttpChecker
      *     loop: bool,
      *     body: string|null,
      *     hasHttpsDowngrade: bool,
-     *     retryAfter: int|null
+     *     retryAfter: int|null,
+     *     contentType: string|null
      * }
      *
      * @throws GuzzleException
@@ -139,6 +143,7 @@ class HttpChecker
         $loop = false;
         $hasHttpsDowngrade = false;
         $retryAfter = null;
+        $contentType = null;
 
         // Keep track of visited URLs to detect loops
         $visitedUrls = [];
@@ -200,7 +205,15 @@ class HttpChecker
                 }
 
                 // Got final response (200, 404, 5xx, etc.)
-                if ($method === 'GET' && $finalStatus === 200) {
+                $rawContentType = $response->getHeaderLine('Content-Type');
+                $contentType = $rawContentType !== '' ? $rawContentType : null;
+
+                // Only materialize the body when it's plausibly HTML: a
+                // declared HTML content type, or no content type at all
+                // (in which case LinkExtractor's binary sniff is the
+                // fallback safety net). A declared non-HTML content type
+                // (e.g. image/gif) is never read into memory here.
+                if ($method === 'GET' && $finalStatus === 200 && $this->isHtmlOrUnknownContentType($contentType)) {
                     $body = (string) $response->getBody();
                 }
                 break;
@@ -227,6 +240,7 @@ class HttpChecker
             'body' => $body,
             'hasHttpsDowngrade' => $hasHttpsDowngrade,
             'retryAfter' => $retryAfter,
+            'contentType' => $contentType,
         ];
     }
 
@@ -283,7 +297,8 @@ class HttpChecker
      *     loop: bool,
      *     body: string|null,
      *     hasHttpsDowngrade: bool,
-     *     retryAfter: int|null
+     *     retryAfter: int|null,
+     *     contentType: string|null
      * }|null Full redirect result, or null on failure.
      */
     public function verifyWithBrowserHeaders(string $url): ?array
@@ -420,6 +435,7 @@ class HttpChecker
             'network' => [
                 'retryAfter' => $retryAfter,
             ],
+            'contentType' => null,
         ];
     }
 }

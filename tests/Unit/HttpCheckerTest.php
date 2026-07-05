@@ -351,6 +351,68 @@ class HttpCheckerTest extends TestCase
         $this->assertSame($this->httpChecker, $result); // Fluent interface
     }
 
+    // ============================
+    // contentType gating tests
+    // ============================
+
+    public function test_follow_redirects_includes_content_type_for_html_200(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html></html>', ['Content-Type' => 'text/html; charset=utf-8']);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com', 'GET');
+
+        $this->assertEquals('text/html; charset=utf-8', $result['contentType']);
+        $this->assertEquals('<html></html>', $result['body']);
+    }
+
+    public function test_follow_redirects_includes_content_type_for_non_html_200(): void
+    {
+        $mockClient = $this->createMockClient(200, 'GIF89a', ['Content-Type' => 'image/gif']);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com/logo.gif', 'GET');
+
+        $this->assertEquals('image/gif', $result['contentType']);
+    }
+
+    public function test_follow_redirects_does_not_read_body_for_declared_non_html_content_type(): void
+    {
+        $binaryBody = "GIF89a".str_repeat("\x00\x01\xA2\x02\xF7\x48\x22\xFF\x7F\x04", 10);
+        $mockClient = $this->createMockClient(200, $binaryBody, ['Content-Type' => 'image/gif']);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com/logo.gif', 'GET');
+
+        $this->assertNull($result['body']);
+    }
+
+    public function test_follow_redirects_reads_body_when_content_type_missing(): void
+    {
+        $mockClient = $this->createMockClient(200, '<html>Legacy page</html>');
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com', 'GET');
+
+        $this->assertNull($result['contentType']);
+        $this->assertEquals('<html>Legacy page</html>', $result['body']);
+    }
+
+    public function test_follow_redirects_reads_body_for_duplicated_html_content_type_header(): void
+    {
+        // Guzzle's getHeaderLine() joins duplicate response headers with a
+        // comma (e.g. a server that sends "Content-Type: text/html" twice
+        // yields "text/html, text/html"). An exact-match comparison against
+        // "text/html" would fail here and incorrectly drop the body.
+        $mockClient = $this->createMockClient(200, '<html><body>Hi</body></html>', ['Content-Type' => 'text/html, text/html']);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->followRedirects('https://example.com', 'GET');
+
+        $this->assertEquals('text/html, text/html', $result['contentType']);
+        $this->assertEquals('<html><body>Hi</body></html>', $result['body']);
+    }
+
     // ===================
     // User-Agent tests
     // ===================
@@ -464,6 +526,17 @@ class HttpCheckerTest extends TestCase
         $this->assertArrayHasKey('network', $result);
         // needsVerification is now in analysis object
         // verificationReasons replaced by analysis.flags
+    }
+
+    public function test_process_form_endpoint_includes_null_content_type_for_shape_consistency(): void
+    {
+        $mockClient = $this->createMockClient(200);
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertArrayHasKey('contentType', $result);
+        $this->assertNull($result['contentType']);
     }
 
     public function test_process_form_endpoint_200_is_ok_no_verification(): void

@@ -55,6 +55,10 @@ class LinkExtractor
      */
     public function extractLinks(string $html, string $sourceUrl, bool $scanScriptContent = false): array
     {
+        if (! $this->looksLikeHtml($html, $sourceUrl)) {
+            return [];
+        }
+
         $links = [];
 
         try {
@@ -201,6 +205,83 @@ class LinkExtractor
         }
 
         return $links;
+    }
+
+    /**
+     * Cheaply sniff whether content is plausibly HTML before attempting a
+     * full parse.
+     *
+     * Belt-and-suspenders defense against non-HTML (e.g. binary/image)
+     * bodies reaching the HTML5 parser: PHP's Dom\HTMLDocument tokenizes
+     * arbitrary binary bytes as HTML at a large memory amplification, which
+     * can exhaust memory_limit as a fatal (uncatchable) error. This check
+     * only inspects a small leading window, so it never itself risks the
+     * amplification it's guarding against.
+     *
+     * @param  string  $content  The content to sniff.
+     * @param  string  $sourceUrl  The URL the content was fetched from, for diagnostic logging.
+     * @return bool True if the content is plausibly HTML and safe to parse.
+     */
+    protected function looksLikeHtml(string $content, string $sourceUrl): bool
+    {
+        $window = substr($content, 0, 1024);
+
+        if ($window === '') {
+            return false;
+        }
+
+        // UTF-16/UTF-32-encoded HTML is legitimate text, but it starts with a
+        // byte order mark and is riddled with NUL bytes as an artifact of the
+        // wide-character encoding — not a binary signal. Treat any
+        // BOM-prefixed content as text before the NUL check below. UTF-32
+        // BOMs must be checked first: the UTF-16 LE BOM is a byte-for-byte
+        // prefix of the UTF-32 LE BOM.
+        $hasBom = str_starts_with($content, "\xFF\xFE\x00\x00") // UTF-32 LE
+            || str_starts_with($content, "\x00\x00\xFE\xFF") // UTF-32 BE
+            || str_starts_with($content, "\xFF\xFE") // UTF-16 LE
+            || str_starts_with($content, "\xFE\xFF"); // UTF-16 BE
+
+        if ($hasBom) {
+            return true;
+        }
+
+        // NUL bytes are a strong binary signal (rarely, if ever, present in
+        // legitimate HTML).
+        if (str_contains($window, "\0")) {
+            $this->logSkippedExtraction($sourceUrl, $content);
+
+            return false;
+        }
+
+        // Plausible HTML must contain markup within the leading window.
+        if (! str_contains($window, '<')) {
+            $this->logSkippedExtraction($sourceUrl, $content);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Log that link extraction was skipped for non-HTML/binary content.
+     *
+     * Guarded so a missing/misconfigured logger (e.g. outside a Laravel
+     * container) can never turn a defensive skip into a fatal error.
+     *
+     * @param  string  $sourceUrl  The URL the content was fetched from.
+     * @param  string  $content  The rejected content, used only for its length.
+     */
+    protected function logSkippedExtraction(string $sourceUrl, string $content): void
+    {
+        try {
+            logger()?->debug('Scannr: skipped link extraction for non-HTML/binary content', [
+                'sourceUrl' => $sourceUrl,
+                'bytes' => strlen($content),
+            ]);
+        } catch (\Throwable) {
+            // Logging must never break extraction.
+        }
     }
 
     /**

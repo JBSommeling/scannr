@@ -3,6 +3,7 @@
 namespace Scannr\Services;
 
 use Scannr\Enums\LinkFlag;
+use Scannr\Services\Concerns\DetectsHtmlContentType;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 
@@ -14,6 +15,8 @@ use GuzzleHttp\Exception\GuzzleException;
  */
 class ScannerService
 {
+    use DetectsHtmlContentType;
+
     /**
      * Optional BrowsershotFetcher for JavaScript rendering.
      */
@@ -106,15 +109,24 @@ class ScannerService
             // Fall back to the Guzzle response body if Browsershot fails.
             $htmlForExtraction = $result['body'];
             $rawBody = $result['body'];
+            $usedBrowsershot = false;
 
             if ($this->browsershotFetcher !== null) {
                 $renderedResult = $this->browsershotFetcher->fetch($result['finalUrl'] ?? $url);
                 if ($renderedResult['status'] === 200 && ! empty($renderedResult['body'])) {
                     $htmlForExtraction = $renderedResult['body'];
+                    $usedBrowsershot = true;
                 }
             }
 
-            if ($htmlForExtraction !== null) {
+            // Only parse for links when the content is plausibly HTML. The
+            // Browsershot-rendered DOM is always HTML, so it bypasses this
+            // gate; the raw Guzzle response is gated on its Content-Type
+            // (missing/empty is treated conservatively — LinkExtractor's own
+            // binary sniff is the fallback safety net for that case).
+            $shouldExtract = $usedBrowsershot || $this->isHtmlOrUnknownContentType($result['contentType'] ?? null);
+
+            if ($htmlForExtraction !== null && $shouldExtract) {
                 $extractedLinks = $this->linkExtractor->extractLinks(
                     $htmlForExtraction,
                     $result['finalUrl'] ?? $url,
