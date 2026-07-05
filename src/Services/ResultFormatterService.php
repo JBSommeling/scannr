@@ -110,7 +110,8 @@ class ResultFormatterService
 
         // Warning issues alert
         if ($stats['warningCount'] > 0) {
-            $output->warn("  ⚠ Warnings: {$stats['warningCount']}");
+            $label = $isFiltered ? 'Warnings (in filter)' : 'Warnings';
+            $output->warn("  ⚠ {$label}: {$stats['warningCount']}");
         }
 
         // Low confidence issues
