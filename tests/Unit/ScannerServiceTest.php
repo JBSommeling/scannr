@@ -1053,4 +1053,136 @@ class ScannerServiceTest extends TestCase
         $this->assertContains('https://example.com/new-section/child-page', $extractedUrls);
         $this->assertNotContains('https://example.com/old-section/child-page', $extractedUrls);
     }
+
+    // ======================================
+    // Content-Type gating tests (regression)
+    // ======================================
+
+    public function test_process_internal_url_skips_extraction_for_non_html_content_type_but_stays_healthy(): void
+    {
+        // Simulate an <img> asset returning a binary body with a declared
+        // non-HTML Content-Type. This previously fed straight into the HTML
+        // parser and caused an OOM at scale; it must now be skipped while
+        // still being recorded as a healthy 200.
+        $binaryBody = 'GIF89a'.str_repeat("\x00\x01\xA2\x02\xF7\x48\x22\xFF\x7F\x04", 200);
+        $mockClient = $this->createMockClient(200, $binaryBody, ['Content-Type' => 'image/gif']);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/logo.gif', 'https://example.com');
+
+        $this->assertSame([], $result['extractedLinks']);
+        $this->assertEquals('200', $result['status']);
+        $this->assertNotContains('status_4xx', $result['analysis']['flags']);
+        $this->assertNotContains('status_5xx', $result['analysis']['flags']);
+    }
+
+    public function test_process_internal_url_parses_html_when_content_type_header_missing(): void
+    {
+        // A missing Content-Type header is treated conservatively: extraction
+        // is still attempted, and LinkExtractor's own binary sniff decides
+        // whether the body is really HTML.
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+        $mockClient = $this->createMockClient(200, $html);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com', 'https://example.com');
+
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/page1', $extractedUrls);
+        $this->assertEquals('200', $result['status']);
+    }
+
+    public function test_process_internal_url_skips_binary_body_when_content_type_missing(): void
+    {
+        // Binary body with NO Content-Type header at all: HttpChecker still
+        // reads the body (permissive for missing headers), but LinkExtractor's
+        // sniff (Task 2) must reject it before a Crawler is ever built.
+        $binaryBody = 'GIF89a'.str_repeat("\x00\x01\xA2\x02\xF7\x48\x22\xFF\x7F\x04", 200);
+        $mockClient = $this->createMockClient(200, $binaryBody);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com/logo.gif', 'https://example.com');
+
+        $this->assertSame([], $result['extractedLinks']);
+        $this->assertEquals('200', $result['status']);
+    }
+
+    public function test_process_internal_url_still_extracts_from_html_content_type(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a><img src="/logo.png"></body></html>';
+        $mockClient = $this->createMockClient(200, $html, ['Content-Type' => 'text/html; charset=UTF-8']);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $this->service->processInternalUrl('https://example.com', 'https://example.com');
+
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/page1', $extractedUrls);
+        $this->assertContains('https://example.com/logo.png', $extractedUrls);
+    }
+
+    public function test_process_internal_url_gates_extraction_on_result_content_type_independent_of_http_checker(): void
+    {
+        // Isolate ScannerService's OWN Content-Type gate from HttpChecker's
+        // body-read optimization by stubbing followRedirects() directly: the
+        // body is present and *would* parse as HTML-shaped markup (an SVG
+        // containing an <a href>), but the declared Content-Type is
+        // image/svg+xml, not text/html. ScannerService must still skip
+        // extraction based on that Content-Type, not just rely on the body
+        // being null.
+        $svgBody = '<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/should-not-be-extracted">Link</a></svg>';
+
+        $mockHttpChecker = $this->createMock(HttpChecker::class);
+        $mockHttpChecker->method('followRedirects')->willReturn([
+            'finalStatus' => 200,
+            'finalUrl' => 'https://example.com/logo.svg',
+            'chain' => [],
+            'loop' => false,
+            'body' => $svgBody,
+            'hasHttpsDowngrade' => false,
+            'retryAfter' => null,
+            'contentType' => 'image/svg+xml',
+        ]);
+
+        $service = new ScannerService(
+            $mockHttpChecker,
+            $this->linkExtractor,
+            $this->urlNormalizer,
+            $this->scanStatistics,
+            $this->linkFlagService,
+        );
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $result = $service->processInternalUrl('https://example.com/logo.svg', 'https://example.com');
+
+        $this->assertSame([], $result['extractedLinks']);
+        $this->assertEquals('200', $result['status']);
+    }
+
+    public function test_process_internal_url_browsershot_still_extracts_when_original_content_type_is_non_html(): void
+    {
+        // Defensive: even if the raw Guzzle response somehow had a non-HTML
+        // Content-Type, a successful Browsershot render (always HTML) must
+        // not be suppressed by the gate.
+        $mockClient = $this->createMockClient(200, 'irrelevant', ['Content-Type' => 'image/gif']);
+        $this->httpChecker->setClient($mockClient);
+        $this->urlNormalizer->setBaseUrl('https://example.com');
+
+        $renderedHtml = '<html><body><a href="/rendered">Rendered</a></body></html>';
+        $mockFetcher = $this->createMock(BrowsershotFetcher::class);
+        $mockFetcher->method('fetch')->willReturn([
+            'status' => 200,
+            'body' => $renderedHtml,
+            'finalUrl' => 'https://example.com',
+        ]);
+        $this->service->setBrowsershotFetcher($mockFetcher);
+
+        $result = $this->service->processInternalUrl('https://example.com', 'https://example.com');
+
+        $extractedUrls = array_column($result['extractedLinks'], 'url');
+        $this->assertContains('https://example.com/rendered', $extractedUrls);
+    }
 }

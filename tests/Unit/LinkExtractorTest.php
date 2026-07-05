@@ -1528,4 +1528,86 @@ class LinkExtractorTest extends TestCase
         $this->assertNotNull($link, 'Production URL should be extracted');
         $this->assertNotContains('developer_leftover', $link['flags'] ?? []);
     }
+
+    // ==========================================
+    // Binary content sniff (belt-and-suspenders)
+    // ==========================================
+
+    public function test_extract_links_returns_empty_for_binary_content_with_nul_bytes(): void
+    {
+        // GIF magic bytes followed by NUL-laden binary chunks, no '<' anywhere.
+        $binary = 'GIF89a'.str_repeat("\x00\x01\xA2\x02\xF7\x48\x22\xFF\x7F\x04", 200);
+
+        $links = $this->linkExtractor->extractLinks($binary, 'https://static.example.com/logo.gif');
+
+        $this->assertSame([], $links);
+    }
+
+    public function test_extract_links_returns_empty_for_content_without_markup(): void
+    {
+        // Plausible-looking text but no HTML markup at all in the leading window.
+        $notHtml = str_repeat('lorem ipsum dolor sit amet ', 50);
+
+        $links = $this->linkExtractor->extractLinks($notHtml, 'https://example.com/plain.txt');
+
+        $this->assertSame([], $links);
+    }
+
+    public function test_extract_links_rejects_content_with_nul_bytes_in_leading_window_even_if_valid_markup_follows(): void
+    {
+        // NUL bytes in the leading window are a strong binary signal; the sniff
+        // must reject on that basis alone, even though a genuine <a> tag
+        // technically appears later in the string. (Without the sniff, the
+        // HTML5 parser would tokenize past the NUL bytes and find the link —
+        // proving this test actually exercises the early-return path.)
+        $content = str_repeat("\x00", 50).'<html><body><a href="/page">Link</a></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($content, 'https://example.com/logo.gif');
+
+        $this->assertSame([], $links);
+    }
+
+    public function test_extract_links_rejects_content_with_no_markup_in_leading_window_even_if_valid_markup_follows(): void
+    {
+        // No '<' in the first ~1KB is a strong non-HTML signal; the sniff only
+        // inspects the leading window, so it must reject here even though a
+        // genuine <a> tag appears just past that window. (Without the sniff,
+        // the parser would still find the link further down the string.)
+        $content = str_repeat('x', 1100).'<html><body><a href="/page">Link</a></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($content, 'https://example.com/plain.txt');
+
+        $this->assertSame([], $links);
+    }
+
+    public function test_extract_links_still_parses_normal_html_after_sniff(): void
+    {
+        $html = '<html><body><a href="/page1">Link</a></body></html>';
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
+
+        $this->assertCount(1, $links);
+        $this->assertEquals('https://example.com/page1', $links[0]['url']);
+    }
+
+    public function test_extract_links_finds_all_mixed_content_element_types(): void
+    {
+        $html = <<<'HTML'
+            <html>
+            <head><script src="/app.js"></script></head>
+            <body>
+                <a href="/about">About</a>
+                <img src="/logo.png" alt="Logo">
+                <script>console.log('inline');</script>
+            </body>
+            </html>
+            HTML;
+
+        $links = $this->linkExtractor->extractLinks($html, 'https://example.com');
+
+        $urls = array_column($links, 'url');
+        $this->assertContains('https://example.com/about', $urls);
+        $this->assertContains('https://example.com/logo.png', $urls);
+        $this->assertContains('https://example.com/app.js', $urls);
+    }
 }

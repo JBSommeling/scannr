@@ -55,6 +55,10 @@ class LinkExtractor
      */
     public function extractLinks(string $html, string $sourceUrl, bool $scanScriptContent = false): array
     {
+        if (! $this->looksLikeHtml($html)) {
+            return [];
+        }
+
         $links = [];
 
         try {
@@ -201,6 +205,38 @@ class LinkExtractor
         }
 
         return $links;
+    }
+
+    /**
+     * Cheaply sniff whether content is plausibly HTML before attempting a
+     * full parse.
+     *
+     * Belt-and-suspenders defense against non-HTML (e.g. binary/image)
+     * bodies reaching the HTML5 parser: PHP's Dom\HTMLDocument tokenizes
+     * arbitrary binary bytes as HTML at a large memory amplification, which
+     * can exhaust memory_limit as a fatal (uncatchable) error. This check
+     * only inspects a small leading window, so it never itself risks the
+     * amplification it's guarding against.
+     *
+     * @param  string  $content  The content to sniff.
+     * @return bool True if the content is plausibly HTML and safe to parse.
+     */
+    protected function looksLikeHtml(string $content): bool
+    {
+        $window = substr($content, 0, 1024);
+
+        if ($window === '') {
+            return false;
+        }
+
+        // NUL bytes are a strong binary signal (rarely, if ever, present in
+        // legitimate HTML).
+        if (str_contains($window, "\0")) {
+            return false;
+        }
+
+        // Plausible HTML must contain markup within the leading window.
+        return str_contains($window, '<');
     }
 
     /**

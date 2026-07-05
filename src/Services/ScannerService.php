@@ -106,15 +106,24 @@ class ScannerService
             // Fall back to the Guzzle response body if Browsershot fails.
             $htmlForExtraction = $result['body'];
             $rawBody = $result['body'];
+            $usedBrowsershot = false;
 
             if ($this->browsershotFetcher !== null) {
                 $renderedResult = $this->browsershotFetcher->fetch($result['finalUrl'] ?? $url);
                 if ($renderedResult['status'] === 200 && ! empty($renderedResult['body'])) {
                     $htmlForExtraction = $renderedResult['body'];
+                    $usedBrowsershot = true;
                 }
             }
 
-            if ($htmlForExtraction !== null) {
+            // Only parse for links when the content is plausibly HTML. The
+            // Browsershot-rendered DOM is always HTML, so it bypasses this
+            // gate; the raw Guzzle response is gated on its Content-Type
+            // (missing/empty is treated conservatively — LinkExtractor's own
+            // binary sniff is the fallback safety net for that case).
+            $shouldExtract = $usedBrowsershot || $this->isHtmlOrUnknownContentType($result['contentType'] ?? null);
+
+            if ($htmlForExtraction !== null && $shouldExtract) {
                 $extractedLinks = $this->linkExtractor->extractLinks(
                     $htmlForExtraction,
                     $result['finalUrl'] ?? $url,
@@ -261,6 +270,28 @@ class ScannerService
                 'retryAfter' => $result['retryAfter'],
             ],
         ];
+    }
+
+    /**
+     * Determine whether a Content-Type header is plausibly HTML, or absent.
+     *
+     * A missing/empty Content-Type is treated permissively (returns true) so
+     * genuine HTML served without the header still gets parsed; LinkExtractor's
+     * own binary sniff is the fallback safety net in that case. A declared,
+     * non-HTML content type (e.g. image/gif, image/svg+xml) returns false so
+     * extraction is skipped entirely for that response.
+     *
+     * @param  string|null  $contentType  The raw Content-Type header value, or null if absent.
+     */
+    protected function isHtmlOrUnknownContentType(?string $contentType): bool
+    {
+        if ($contentType === null || $contentType === '') {
+            return true;
+        }
+
+        $mimeType = strtolower(trim(explode(';', $contentType)[0]));
+
+        return $mimeType === 'text/html' || $mimeType === 'application/xhtml+xml';
     }
 
     /**
