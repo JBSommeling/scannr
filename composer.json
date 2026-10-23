@@ -29,15 +29,16 @@
         "php": "^8.4",
         "ext-libxml": "*",
         "ext-simplexml": "*",
-        "illuminate/console": "^12.0",
-        "illuminate/support": "^12.0",
+        "guzzlehttp/guzzle": "^7.15.2|^8.0.1",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0",
         "spatie/browsershot": "^5.2",
         "symfony/css-selector": "^7.0|^8.0",
         "symfony/dom-crawler": "^7.0|^8.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^10.0",
         "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^10.0|^11.0",
         "phpunit/phpunit": "^11.5.3"
     },
     "autoload": {

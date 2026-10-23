@@ -9,6 +9,16 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    name: tests (Laravel ${{ matrix.laravel }})
+
+    strategy:
+      matrix:
+        laravel: ['12.*', '13.*']
+        include:
+          - laravel: '12.*'
+            testbench: '10.*'
+          - laravel: '13.*'
+            testbench: '11.*'
 
     steps:
       - name: Checkout code
@@ -29,11 +39,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+          key: ${{ runner.os }}-composer-${{ matrix.laravel }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-${{ matrix.laravel }}-
+
+      - name: Require Laravel ${{ matrix.laravel }}
+        run: composer require "illuminate/console:${{ matrix.laravel }}" "illuminate/support:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        run: composer update --prefer-dist --no-interaction --no-progress --with-all-dependencies
 
       - name: Run tests
         run: composer test
