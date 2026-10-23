@@ -3,9 +3,10 @@
 namespace Scannr\Services;
 
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use Psr\Http\Client\NetworkExceptionInterface;
+use Psr\Http\Message\ResponseInterface;
 use Scannr\Services\Concerns\DetectsHtmlContentType;
 
 /**
@@ -218,13 +219,12 @@ class HttpChecker
                 }
                 break;
 
-            } catch (ConnectException $e) {
+            } catch (NetworkExceptionInterface $e) {
                 $finalStatus = 'Timeout';
                 break;
             } catch (RequestException $e) {
-                $finalStatus = $e->hasResponse()
-                    ? $e->getResponse()->getStatusCode()
-                    : 'Error';
+                $response = $this->responseFromException($e);
+                $finalStatus = $response?->getStatusCode() ?? 'Error';
                 break;
             } catch (\Exception $e) {
                 $finalStatus = 'Error';
@@ -380,17 +380,18 @@ class HttpChecker
                 'body' => '{}',
             ]);
             $status = $response->getStatusCode();
-        } catch (ConnectException $e) {
+        } catch (NetworkExceptionInterface $e) {
             if (str_contains($e->getMessage(), 'timed out') || str_contains($e->getMessage(), 'timeout')) {
                 $status = 'Timeout';
             } else {
                 $status = 'Error';
             }
         } catch (RequestException $e) {
-            if ($e->hasResponse()) {
-                $status = $e->getResponse()->getStatusCode();
+            $response = $this->responseFromException($e);
+            if ($response !== null) {
+                $status = $response->getStatusCode();
                 if ($status === 429) {
-                    $retryAfterHeader = $e->getResponse()->getHeaderLine('Retry-After');
+                    $retryAfterHeader = $response->getHeaderLine('Retry-After');
                     if (! empty($retryAfterHeader) && is_numeric($retryAfterHeader)) {
                         $retryAfter = (int) $retryAfterHeader;
                     }
@@ -437,5 +438,19 @@ class HttpChecker
             ],
             'contentType' => null,
         ];
+    }
+
+    /**
+     * Extract the PSR-7 response from a Guzzle request exception, if any.
+     *
+     * Guzzle 7 exposes getResponse() directly on RequestException, while
+     * Guzzle 8 only exposes it on the ResponseException subclass.
+     *
+     * @param  RequestException  $exception  The exception to inspect.
+     * @return ResponseInterface|null The response, if one was received.
+     */
+    private function responseFromException(RequestException $exception): ?ResponseInterface
+    {
+        return method_exists($exception, 'getResponse') ? $exception->getResponse() : null;
     }
 }

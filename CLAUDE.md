@@ -1,6 +1,6 @@
 # Scannr — Claude Code Guide
 
-Scannr is a Laravel 12 / PHP 8.4 package (`jbsommeling/scannr`) that crawls
+Scannr is a Laravel 12–13 / PHP 8.4 package (`jbsommeling/scannr`) that crawls
 websites to detect broken links, redirect chains, HTTPS downgrades, and similar
 link-health issues. It also ships as a Docker-based GitHub Action for CI/CD
 quality gates. JS-rendered SPAs are supported via spatie/browsershot.
@@ -49,8 +49,11 @@ Read only what the current task needs.
 
 ## Hard rules
 
-- **PHP 8.4 / Laravel 12 only.** `composer.json` constrains both — don't add
+- **PHP 8.4 / Laravel 12–13 only.** `composer.json` constrains both — don't add
   syntax or APIs older PHP can run but newer Laravel can't.
+- **Guzzle 7 and 8 are both supported.** Catch
+  `Psr\Http\Client\NetworkExceptionInterface` for no-response failures and
+  never call `getResponse()` on a bare `RequestException`.
 - **No new dependencies without a stated reason.** This is a library; every
   `require` becomes the user's problem too.
 - **Don't bypass the service provider.** All services are registered as

@@ -11,7 +11,10 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Client\NetworkExceptionInterface;
+use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 
@@ -490,19 +493,35 @@ class HttpCheckerTest extends TestCase
     // ============================
 
     /**
-     * Build a RequestException whose getResponse() returns a mock with the given status.
+     * Build a RequestException carrying a response with the given status, using the real
+     * Guzzle factory so behavior matches both the Guzzle 7 and Guzzle 8 exception classes.
      */
     private function createRequestException(int $statusCode, array $headers = []): RequestException
     {
-        $mockResponse = $this->createMock(ResponseInterface::class);
-        $mockResponse->method('getStatusCode')->willReturn($statusCode);
-        $mockResponse->method('getHeaderLine')->willReturnCallback(fn ($name) => $headers[$name] ?? '');
+        return RequestException::create(
+            new Request('POST', 'https://example.com/submit'),
+            new Response($statusCode, $headers)
+        );
+    }
 
-        $exception = $this->createMock(RequestException::class);
-        $exception->method('hasResponse')->willReturn(true);
-        $exception->method('getResponse')->willReturn($mockResponse);
+    /**
+     * Build a NetworkExceptionInterface that is not a ConnectException, mirroring
+     * Guzzle 8's NetworkTimeoutException without depending on a specific Guzzle version.
+     */
+    private function createNetworkException(string $message, RequestInterface $request): NetworkExceptionInterface
+    {
+        return new class($message, $request) extends \RuntimeException implements NetworkExceptionInterface
+        {
+            public function __construct(string $message, private RequestInterface $request)
+            {
+                parent::__construct($message);
+            }
 
-        return $exception;
+            public function getRequest(): RequestInterface
+            {
+                return $this->request;
+            }
+        };
     }
 
     public function test_process_form_endpoint_returns_correct_shape(): void
@@ -654,6 +673,20 @@ class HttpCheckerTest extends TestCase
         $this->assertContains('timeout', $result['analysis']['flags']);
     }
 
+    public function test_process_form_endpoint_network_exception_without_connect_exception_is_timeout(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')->willThrowException(
+            $this->createNetworkException('Operation timed out', new Request('POST', 'https://example.com/submit'))
+        );
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->processFormEndpoint('https://example.com/submit', 'https://example.com');
+
+        $this->assertEquals('timeout', $result['status']);
+        $this->assertContains('timeout', $result['analysis']['flags']);
+    }
+
     public function test_process_form_endpoint_connection_error_needs_verification(): void
     {
         $mockClient = $this->createMock(Client::class);
@@ -670,8 +703,7 @@ class HttpCheckerTest extends TestCase
 
     public function test_process_form_endpoint_request_exception_without_response_is_error(): void
     {
-        $exception = $this->createMock(RequestException::class);
-        $exception->method('hasResponse')->willReturn(false);
+        $exception = RequestException::create(new Request('POST', 'https://example.com/submit'));
 
         $mockClient = $this->createMock(Client::class);
         $mockClient->method('request')->willThrowException($exception);
@@ -787,6 +819,20 @@ class HttpCheckerTest extends TestCase
         $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
 
         // followRedirects catches ConnectException internally and returns Timeout status
+        $this->assertNotNull($result);
+        $this->assertEquals('Timeout', $result['finalStatus']);
+    }
+
+    public function test_verify_with_browser_headers_returns_timeout_on_network_exception(): void
+    {
+        $mockClient = $this->createMock(Client::class);
+        $mockClient->method('request')
+            ->willThrowException($this->createNetworkException('Operation timed out', new Request('GET', 'https://cdn.example.com')));
+        $this->httpChecker->setClient($mockClient);
+
+        $result = $this->httpChecker->verifyWithBrowserHeaders('https://cdn.example.com/style.css');
+
+        // followRedirects catches NetworkExceptionInterface internally and returns Timeout status
         $this->assertNotNull($result);
         $this->assertEquals('Timeout', $result['finalStatus']);
     }
