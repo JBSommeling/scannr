@@ -3,93 +3,86 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/JBSommeling/scannr/tests.yml?label=tests)](https://github.com/JBSommeling/scannr/actions)
 [![License](https://img.shields.io/packagist/l/jbsommeling/scannr.svg)](https://packagist.org/packages/jbsommeling/scannr)
 [![PHP Version Require](https://img.shields.io/packagist/dependency-v/jbsommeling/scannr/php)](https://packagist.org/packages/jbsommeling/scannr)
-[![Code Size](https://img.shields.io/github/languages/code-size/JBSommeling/scannr)](https://github.com/JBSommeling/scannr)
-[![GitHub stars](https://img.shields.io/github/stars/JBSommeling/scannr.svg)](https://github.com/JBSommeling/scannr/stargazers)
 
 # Scannr
 
-A Laravel package that crawls websites to detect broken links, redirect chains, HTTPS downgrades, and more. Includes JavaScript rendering support for SPAs. Use it as a **dev dependency** in your Laravel project or as a **Docker-based GitHub Action** in your CI/CD pipeline.
+Scannr crawls your website and reports broken links, redirect chains, HTTPS downgrades, and
+other link-health problems, then scores the site from 0 to 100. Run it from Artisan as a dev
+dependency in a Laravel project, or as a Docker-based GitHub Action that can fail a build when
+the score drops.
 
-## Features
+## What it checks
 
-- **BFS Crawling** — Systematically crawls websites level by level
-- **Broken Link Detection** — Identifies links returning 4xx/5xx status codes
-- **Multi-Element Scanning** — Extracts URLs from `<a>`, `<link>`, `<script>`, `<img>`, media elements, download triggers, and inline JS handlers
-- **JavaScript Rendering** — Scan SPAs (React, Vue, Angular) with headless browser support via `--js` flag
-- **Smart JS Detection** — Automatically detect SPAs and enable JS rendering only when needed via `--smart-js` flag
-- **Sitemap Integration** — Discover URLs from XML, HTML, or plain text sitemaps (including sitemap index files)
-- **robots.txt Support** — Respects `Disallow` rules and `Crawl-delay` directives
-- **Redirect Chain Tracking** — Follows and reports redirect chains, including loop detection
-- **HTTPS Downgrade Detection** — Warns when redirects downgrade from HTTPS to HTTP
-- **Link Flag System** — Every link is tagged with observation flags (discovery method, platform traits, technical anomalies, validation outcome)
-- **Integrity Scoring** — Weight-based scoring model that rates your site's link health (A–F)
-- **Quality Gates** — Fail CI/CD when critical issues are found or the integrity score drops below a configurable threshold
-- **Rate Limit Backoff** — Automatic exponential backoff on HTTP 429 responses
-- **Noise URL Filtering** — Hides XML namespaces, CDN preconnect hints, and JS framework error docs
-- **Multiple Output Formats** — Table, JSON, or CSV output
-- **Domain Validation** — Warns when the scanned URL doesn't match your `APP_URL`
+Scannr crawls breadth-first from a starting URL, optionally seeded from your sitemap (XML,
+HTML, plain text, or sitemap index). On each page it collects URLs from `<a>`, `<link>`,
+`<script>`, `<img>`, media elements, download triggers, and inline JS handlers, then requests
+each one and records:
 
-## Responsible Use
+- broken links (4xx and 5xx responses) and timeouts;
+- redirect chains, including loops;
+- redirects that downgrade from HTTPS to HTTP;
+- flags on every link describing how it was found, platform traits, technical anomalies, and
+  the validation outcome.
 
-Scannr is intended for scanning websites you own or have explicit permission to test.
+Sites that render in the browser (React, Vue, Angular) can be scanned with a headless browser,
+either always (`--js`) or only when Scannr detects an SPA (`--smart-js`).
 
-Users are responsible for ensuring their usage complies with:
-- Website terms of service
-- Applicable laws and regulations
-- robots.txt directives
-
-Do not use Scannr to:
-- Crawl websites without permission
-- Overload servers or bypass rate limits
-- Access protected or private content
-
-The authors are not responsible for misuse of this tool.
-
----
+Scannr respects `robots.txt` `Disallow` rules and `Crawl-delay`, backs off exponentially on
+HTTP 429, and hides noise such as XML namespaces, CDN preconnect hints, and JS framework error
+docs unless you pass `--advanced`. Results come out as a table, JSON, or CSV.
 
 ## Installation
-
-### As a Laravel Dev Dependency
 
 ```bash
 composer require jbsommeling/scannr
 ```
 
-The package auto-discovers its service provider. To publish the configuration:
+The service provider is auto-discovered. Publish the config if you want to change defaults
+(see [Configuration](#configuration)):
 
 ```bash
 php artisan vendor:publish --tag=scannr-config
 ```
 
-To publish the migration (for `--queue` support):
+`--queue` stores results in the database, so it needs the migration:
 
 ```bash
 php artisan vendor:publish --tag=scannr-migrations
 php artisan migrate
 ```
 
-### JavaScript Rendering (Optional)
-
-For `--js` and `--smart-js` support, install Puppeteer:
+`--js` and `--smart-js` need Node.js and Puppeteer:
 
 ```bash
 npm install puppeteer
 ```
 
----
-
-## CLI Usage
-
-### Basic Scan
+## Running a scan
 
 ```bash
 php artisan site:scan https://example.com
 ```
 
-### Command Signature
+Common variations:
 
-```
-php artisan site:scan {url} [options]
+```bash
+# Show only broken links
+php artisan site:scan https://example.com --status=broken
+
+# Deeper scan, seeded from the sitemap
+php artisan site:scan https://example.com --depth=5 --max=1000 --sitemap
+
+# Scan a React SPA and print JSON
+php artisan site:scan https://my-spa.com --js --format=json
+
+# Check only anchors and images, show only failures
+php artisan site:scan https://example.com --scan-elements=a,img --status=broken
+
+# Wait a random 200–500 ms between requests
+php artisan site:scan https://example.com --delay-min=200 --delay-max=500
+
+# Exit 1 on critical issues or a rating below Good
+php artisan site:scan https://example.com --fail-on-critical --min-rating=good
 ```
 
 ### Options
@@ -100,49 +93,45 @@ php artisan site:scan {url} [options]
 | `--max=N` | 300 | Maximum number of URLs to scan |
 | `--timeout=N` | 5 | Request timeout in seconds |
 | `--format=FORMAT` | table | Output format: `table`, `json`, or `csv` |
-| `--status=FILTER` | all | Filter results: `all`, `ok`, or `broken` |
-| `--filter=TYPE` | all | Filter by element type: `all`, `a`, `link`, `script`, `img`, `media`, `form` |
-| `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated (e.g., `a,img`) |
-| `--sitemap` | false | Use sitemap.xml to discover URLs before crawling |
-| `--js` | false | Enable JavaScript rendering for SPA/React sites |
-| `--smart-js` | false | Auto-detect SPAs and enable JS rendering when needed |
-| `--no-robots` | false | Ignore robots.txt rules |
-| `--advanced` | false | Show noise URLs (XML namespaces, CDN hints, etc.) |
-| `--strip-params=PARAMS` | — | Additional tracking parameters to strip (comma-separated) |
-| `--delay-min=N` | config | Minimum delay between requests in milliseconds |
-| `--delay-max=N` | config | Maximum delay between requests in milliseconds |
-| `--queue` | false | Dispatch scan as a background job |
-| `--fail-on-critical` | false | Fail with exit code 1 if critical issues are found |
-| `--min-rating=GRADE` | none | Minimum acceptable rating: `excellent`, `good`, `needs_attention`, `none` |
+| `--status=FILTER` | all | Show `all`, `ok`, or `broken` results |
+| `--filter=TYPE` | all | Show only one element type: `all`, `a`, `link`, `script`, `img`, `media`, `form` |
+| `--scan-elements=TYPES` | all | Element types to scan: `all`, or comma-separated (e.g. `a,img`) |
+| `--sitemap` | off | Discover URLs from the sitemap before crawling |
+| `--js` | off | Render every page with a headless browser |
+| `--smart-js` | off | Render with a headless browser only when an SPA is detected |
+| `--no-robots` | off | Ignore `robots.txt` rules |
+| `--advanced` | off | Show noise URLs (XML namespaces, CDN hints, etc.) |
+| `--strip-params=PARAMS` | — | Extra tracking parameters to strip (comma-separated) |
+| `--delay-min=N` | config | Minimum delay between requests, in ms |
+| `--delay-max=N` | config | Maximum delay between requests, in ms |
+| `--queue` | off | Run the scan as a background job |
+| `--fail-on-broken` | off | Exit 1 if any link is broken |
+| `--fail-on-critical` | off | Exit 1 if any critical issue is found |
+| `--min-rating=GRADE` | none | Exit 1 below this rating: `excellent`, `good`, `needs_attention`, or `none` |
 
-### Examples
+### Integrity score and quality gates
 
-```bash
-# Show only broken links
-php artisan site:scan https://example.com --status=broken
+Every scan ends with an integrity score from 0 to 100, built from five components: link
+integrity, security hygiene, technical hygiene, redirect health, and link verifiability. The
+score maps to a grade:
 
-# Deep scan with sitemap discovery
-php artisan site:scan https://example.com --depth=5 --max=1000 --sitemap
+| Grade | Score |
+|-------|-------|
+| Excellent | 90 and above |
+| Good | 75 and above |
+| Needs Attention | 50 and above |
+| Critical | below 50 |
 
-# Scan a React SPA with JSON output
-php artisan site:scan https://my-spa.com --js --format=json
+Penalty weights and grade thresholds live in `config/scannr.php`.
 
-# Only scan images and anchors
-php artisan site:scan https://example.com --scan-elements=a,img --status=broken
+A scan only fails, with exit code 1, when you ask it to: `--fail-on-broken`,
+`--fail-on-critical`, or `--min-rating`. Without them the exit code is 0 however bad the
+results are. The same holds for the GitHub Action.
 
-# Throttle requests (200–500ms random delay between each request)
-php artisan site:scan https://example.com --delay-min=200 --delay-max=500
+### Example output
 
-# Fail if any critical issues found or rating drops below "Good"
-php artisan site:scan https://example.com --fail-on-critical --min-rating=good
-
-# Strict quality gate: require "Excellent" rating
-php artisan site:scan https://example.com --fail-on-critical --min-rating=excellent
-```
-
-### Example Output
-
-#### Table (default)
+<details>
+<summary>Table (default)</summary>
 
 ```
 Site Scan: https://www.example.com
@@ -189,7 +178,10 @@ Summary:
 +----------------------------------------------+--------------------------+----------+--------+----------+
 ```
 
-#### JSON (`--format=json`)
+</details>
+
+<details>
+<summary>JSON (<code>--format=json</code>)</summary>
 
 ```json
 {
@@ -248,13 +240,9 @@ Summary:
 }
 ```
 
----
+</details>
 
 ## GitHub Action
-
-Use Scannr in your CI/CD pipeline to catch broken links on every deploy.
-
-### Basic Usage
 
 ```yaml
 name: Scan for broken links
@@ -262,7 +250,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 6am
+    - cron: '0 6 * * 1'  # Mondays at 06:00 UTC
 
 jobs:
   scan:
@@ -272,9 +260,17 @@ jobs:
       - uses: JBSommeling/scannr@v1
         with:
           url: https://example.com
+          fail-on-critical: true
+          min-rating: good
 ```
 
-### All Options
+Without `fail-on-broken`, `fail-on-critical`, or `min-rating`, the step reports results but
+never fails.
+
+### Inputs
+
+Every CLI option except `--queue` is available as an input of the same name. Only `url` is
+required.
 
 ```yaml
 - uses: JBSommeling/scannr@v1
@@ -283,26 +279,36 @@ jobs:
     depth: 5                        # Max crawl depth (default: 3)
     max: 500                        # Max URLs to scan (default: 300)
     timeout: 10                     # Request timeout in seconds (default: 5)
-    format: table                   # Output: table, json, csv (default: table)
-    status: broken                  # Filter: all, ok, broken (default: all)
-    filter: all                     # Element type filter (default: all)
-    scan-elements: a,img            # Elements to scan (default: all)
-    sitemap: true                   # Use sitemap.xml (default: false)
-    js: true                        # JS rendering for SPAs (default: false)
-    smart-js: true                  # Auto-detect SPAs (default: false)
+    format: table                   # table, json, or csv (default: table)
+    status: broken                  # all, ok, or broken (default: all)
+    filter: all                     # Element type to show (default: all)
+    scan-elements: a,img            # Element types to scan (default: all)
+    sitemap: true                   # Seed from sitemap (default: false)
+    js: true                        # Always render with a headless browser (default: false)
+    smart-js: true                  # Render only when an SPA is detected (default: false)
     no-robots: false                # Ignore robots.txt (default: false)
     advanced: false                 # Show noise URLs (default: false)
     strip-params: ref,tracker       # Extra tracking params to strip
-    delay-min: 200                  # Min delay between requests in ms
-    delay-max: 500                  # Max delay between requests in ms
-    fail-on-broken: true            # Fail step on broken links (default: true)
-    fail-on-critical: true          # Fail step on critical issues (default: true)
-    min-rating: good                # Minimum integrity rating (default: good)
+    delay-min: 200                  # Min delay between requests, in ms
+    delay-max: 500                  # Max delay between requests, in ms
+    fail-on-broken: true            # Fail on any broken link (default: false)
+    fail-on-critical: true          # Fail on critical issues (default: false)
+    min-rating: good                # excellent, good, or needs_attention (default: none)
 ```
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `exit-code` | `0` on success, `1` when a quality gate failed |
+| `score` | Integrity score, 0–100 |
+| `grade` | `Excellent`, `Good`, `Needs Attention`, or `Critical` |
+| `broken-count` | Number of broken links |
+| `critical-count` | Number of critical issues |
 
 ### Examples
 
-**Scan a SPA with JavaScript rendering:**
+Scan an SPA and show only broken links:
 
 ```yaml
 - uses: JBSommeling/scannr@v1
@@ -312,7 +318,7 @@ jobs:
     status: broken
 ```
 
-**Get JSON output for downstream processing:**
+Report without failing, then act on the counts in a later step:
 
 ```yaml
 - uses: JBSommeling/scannr@v1
@@ -320,14 +326,13 @@ jobs:
   with:
     url: https://example.com
     format: json
-    fail-on-broken: false
 
-- name: Process results
-  if: steps.scan.outputs.exit-code != '0'
-  run: echo "Broken links detected!"
+- name: Report broken links
+  if: steps.scan.outputs.broken-count != '0'
+  run: echo "Found ${{ steps.scan.outputs.broken-count }} broken links (grade ${{ steps.scan.outputs.grade }})"
 ```
 
-**Deep weekly audit with sitemap:**
+Weekly deep audit seeded from the sitemap:
 
 ```yaml
 - uses: JBSommeling/scannr@v1
@@ -339,7 +344,7 @@ jobs:
     smart-js: true
 ```
 
-**Quality gate — require "Excellent" rating:**
+Strict gate that requires an Excellent rating:
 
 ```yaml
 - uses: JBSommeling/scannr@v1
@@ -349,34 +354,26 @@ jobs:
     min-rating: excellent
 ```
 
-**Relaxed quality gate — only fail on critical issues:**
+## Scan only sites you own
 
-```yaml
-- uses: JBSommeling/scannr@v1
-  with:
-    url: https://example.com
-    fail-on-critical: true
-    min-rating: none
-```
+Scannr is meant for websites you own or have explicit permission to test. You are responsible
+for staying within the site's terms of service, applicable law, and its `robots.txt`. Don't
+use it to crawl sites without permission, overload servers, get around rate limits, or reach
+protected or private content. The authors are not responsible for misuse.
 
----
+Two checks back this up:
 
-## URL Restriction
-
-Scannr is designed for scanning **your own websites**, not arbitrary third-party sites.
-
-### Local Dev Dependency
-
-When running via `php artisan site:scan`, Scannr compares the scan URL's domain against your `APP_URL` environment variable. If they don't match, a warning is displayed:
+**Artisan** compares the scan URL's domain with `APP_URL` and warns on a mismatch. It does
+not block the scan, since scanning a staging or production domain from a local checkout is
+normal.
 
 ```
 ⚠ The scan URL domain (other-site.com) does not match your APP_URL (https://myapp.com).
   Scannr is intended for scanning your own websites.
 ```
 
-### GitHub Action (.scannr.yml)
-
-In CI/CD, you can create a `.scannr.yml` file in your repository root to declare which domains are allowed:
+**The GitHub Action** reads an optional `.scannr.yml` in the repository root. If the file
+exists, the action blocks any URL whose domain isn't listed:
 
 ```yaml
 # .scannr.yml
@@ -386,32 +383,22 @@ allowed_domains:
   - www.example.com
 ```
 
-When `.scannr.yml` is present, the GitHub Action will **block** scans of URLs that don't match any listed domain.
-
-If no `.scannr.yml` exists, the URL input is trusted (since you control your own workflow file).
-
----
+Without `.scannr.yml`, the action trusts the `url` input, because you control the workflow
+file.
 
 ## Configuration
 
-Publish the config file to customize scanner behavior:
+`php artisan vendor:publish --tag=scannr-config` creates `config/scannr.php`, where you can
+change:
 
-```bash
-php artisan vendor:publish --tag=scannr-config
-```
-
-This creates `config/scannr.php` with settings for:
-
-- **Tracking Parameters** — URL params to strip during normalization (utm_*, fbclid, etc.)
-- **User Agent** — The User-Agent header sent with requests
-- **Rate Limiting** — Delay between requests, backoff on 429 responses
-- **Hard Limits** — Maximum caps for depth and URL count
-- **JavaScript Rendering** — Custom paths to Node, npm, and Chrome binaries
-- **Noise URL Detection** — Namespace domains, preconnect hints, framework error patterns
-- **Integrity Scoring** — Penalty weights, confidence multipliers, grade thresholds
-- **External Platforms** — Domains with known bot protection (LinkedIn, GitHub, etc.)
-
----
+- tracking parameters stripped during URL normalization (`utm_*`, `fbclid`, etc.);
+- the User-Agent sent with requests;
+- request delays and 429 backoff;
+- hard caps on depth and URL count;
+- paths to the Node, npm, and Chrome binaries used for JS rendering;
+- noise filtering: namespace domains, preconnect hints, framework error patterns;
+- scoring: penalty weights, confidence multipliers, grade thresholds;
+- external platforms with known bot protection (LinkedIn, GitHub, etc.).
 
 ## Testing
 
@@ -419,8 +406,6 @@ This creates `config/scannr.php` with settings for:
 composer test
 ```
 
----
-
 ## License
 
-This package is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT. See the [license](https://opensource.org/licenses/MIT).
