@@ -8,13 +8,13 @@
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.3.5",
-        "axios": "^1.18.1",
+        "axios": "^1.21.1",
         "concurrently": "^10.0.7",
         "laravel-vite-plugin": "^3.2.1",
         "tailwindcss": "^4.3.5",
-        "vite": "^8.3.6"
+        "vite": "^8.3.8"
     },
     "dependencies": {
-        "puppeteer": "^25.2.1"
+        "puppeteer": "^25.17.0"
     }
 }
